@@ -63,6 +63,43 @@ export interface QueryHistoryEntry {
   executed_at: string;
 }
 
+export interface SavedVisualization {
+  id: number;
+  db_id: string;
+  db_name: string;
+  title: string;
+  sql: string;
+  chart_type: string;
+  config: Record<string, unknown> | null;
+  grid_x: number;
+  grid_y: number;
+  grid_w: number;
+  grid_h: number;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface VisualizationHistoryEntry {
+  id: number;
+  db_id: string;
+  db_name: string;
+  title: string | null;
+  sql: string;
+  chart_type: string;
+  config: Record<string, unknown> | null;
+  row_count: number | null;
+  duration_ms: number | null;
+  status: string;
+  error_message: string | null;
+  created_at: string;
+}
+
+export interface VisualizationRunResponse {
+  columns: string[];
+  rows: Record<string, unknown>[];
+  row_count: number;
+}
+
 const BASE = '/api';
 
 async function request<T>(url: string, options?: RequestInit): Promise<T> {
@@ -125,4 +162,57 @@ export const api = {
     const params = dbId ? `?db_id=${dbId}` : '';
     return request<{ deleted: number }>(`/history${params}`, { method: 'DELETE' });
   },
+
+  // ── Visualizations ──
+
+  runVisualization: (dbId: string, sql: string, chartType: string, title?: string, config?: Record<string, unknown>) =>
+    request<VisualizationRunResponse>('/visualizations/run', {
+      method: 'POST',
+      body: JSON.stringify({ db_id: dbId, sql, chart_type: chartType, title, config }),
+    }),
+
+  listVisualizations: (dbId?: string) => {
+    const params = dbId ? `?db_id=${dbId}` : '';
+    return request<SavedVisualization[]>(`/visualizations${params}`);
+  },
+
+  saveVisualization: (data: {
+    db_id: string; db_name: string; title: string; sql: string;
+    chart_type: string; config?: Record<string, unknown> | null;
+    grid_x?: number; grid_y?: number; grid_w?: number; grid_h?: number;
+  }) =>
+    request<SavedVisualization>('/visualizations', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    }),
+
+  updateVisualization: (id: number, data: Record<string, unknown>) =>
+    request<SavedVisualization>(`/visualizations/${id}`, {
+      method: 'PUT',
+      body: JSON.stringify(data),
+    }),
+
+  deleteVisualization: (id: number) =>
+    request<{ deleted: number }>(`/visualizations/${id}`, { method: 'DELETE' }),
+
+  updateVisualizationLayout: (panels: { id: number; grid_x: number; grid_y: number; grid_w: number; grid_h: number }[]) =>
+    request<{ ok: boolean }>('/visualizations/layout/batch', {
+      method: 'PUT',
+      body: JSON.stringify({ panels }),
+    }),
+
+  getVisualizationHistory: (dbId?: string, limit = 50) => {
+    const params = new URLSearchParams();
+    if (dbId) params.set('db_id', dbId);
+    params.set('limit', String(limit));
+    return request<VisualizationHistoryEntry[]>(`/visualizations/history?${params}`);
+  },
+
+  clearVisualizationHistory: (dbId?: string) => {
+    const params = dbId ? `?db_id=${dbId}` : '';
+    return request<{ deleted: number }>(`/visualizations/history${params}`, { method: 'DELETE' });
+  },
+
+  deleteVisualizationHistoryEntry: (id: number) =>
+    request<{ deleted: number }>(`/visualizations/history/${id}`, { method: 'DELETE' }),
 };

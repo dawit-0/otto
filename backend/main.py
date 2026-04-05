@@ -2,7 +2,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.database import init_db
-from app.routes import databases, query, history
+from app.routes import databases, query, history, visualizations
 
 app = FastAPI(title="Otto")
 
@@ -16,6 +16,7 @@ app.add_middleware(
 app.include_router(databases.router)
 app.include_router(query.router)
 app.include_router(history.router)
+app.include_router(visualizations.router)
 
 
 @app.on_event("startup")
