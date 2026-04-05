@@ -1,0 +1,20 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(git init:*)",
+      "Bash(npm create:*)",
+      "Bash(npm install:*)",
+      "Bash(npx tsc:*)",
+      "Bash(python3 -m venv .venv)",
+      "Bash(source .venv/bin/activate)",
+      "Bash(pip install:*)",
+      "Bash(.venv/bin/python scripts/create_sample_db.py)",
+      "Bash(curl -s http://localhost:8000/api/databases)",
+      "Bash(python -c \"from backend.main import app; print\\(''import ok''\\)\")",
+      "Bash(curl -sv http://localhost:8000/api/databases)",
+      "Bash(curl -s http://localhost:5173/api/databases)",
+      "Bash(gh --version)",
+      "Bash(gh auth:*)"
+    ]
+  }
+}
