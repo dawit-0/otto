@@ -4,8 +4,9 @@ import SchemaGraph from './components/SchemaGraph';
 import DataTable from './components/DataTable';
 import QueryEditor from './components/QueryEditor';
 import ConnectModal from './components/ConnectModal';
+import VisualizationDashboard from './components/VisualizationDashboard';
 
-type View = 'schema' | 'data' | 'query';
+type View = 'schema' | 'data' | 'query' | 'visualize';
 
 export default function App() {
   const [databases, setDatabases] = useState<Database[]>([]);
@@ -135,6 +136,9 @@ export default function App() {
               <button className={`header-tab${view === 'query' ? ' active' : ''}`} onClick={() => setView('query')}>
                 Query
               </button>
+              <button className={`header-tab${view === 'visualize' ? ' active' : ''}`} onClick={() => setView('visualize')}>
+                Visualize
+              </button>
             </div>
 
             {view === 'schema' && (
@@ -173,6 +177,10 @@ export default function App() {
             )}
 
             {view === 'query' && <QueryEditor dbId={activeDb.id} />}
+
+            {view === 'visualize' && (
+              <VisualizationDashboard dbId={activeDb.id} dbName={activeDb.name} />
+            )}
           </>
         ) : (
           <div className="empty-state">
