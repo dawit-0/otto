@@ -51,6 +51,18 @@ export interface QueryResponse {
   message?: string;
 }
 
+export interface QueryHistoryEntry {
+  id: number;
+  db_id: string;
+  db_name: string;
+  sql: string;
+  status: string;
+  row_count: number | null;
+  error_message: string | null;
+  duration_ms: number | null;
+  executed_at: string;
+}
+
 const BASE = '/api';
 
 async function request<T>(url: string, options?: RequestInit): Promise<T> {
@@ -98,4 +110,19 @@ export const api = {
       method: 'POST',
       body: JSON.stringify({ db_id: dbId, sql }),
     }),
+
+  getQueryHistory: (dbId?: string, limit = 50) => {
+    const params = new URLSearchParams();
+    if (dbId) params.set('db_id', dbId);
+    params.set('limit', String(limit));
+    return request<QueryHistoryEntry[]>(`/history?${params}`);
+  },
+
+  deleteHistoryEntry: (id: number) =>
+    request<{ deleted: number }>(`/history/${id}`, { method: 'DELETE' }),
+
+  clearHistory: (dbId?: string) => {
+    const params = dbId ? `?db_id=${dbId}` : '';
+    return request<{ deleted: number }>(`/history${params}`, { method: 'DELETE' });
+  },
 };
