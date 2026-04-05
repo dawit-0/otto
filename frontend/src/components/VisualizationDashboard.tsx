@@ -30,7 +30,7 @@ export default function VisualizationDashboard({ dbId, dbName }: Props) {
   const [showHistory, setShowHistory] = useState(false);
   const [history, setHistory] = useState<VisualizationHistoryEntry[]>([]);
   const [loadingPanels, setLoadingPanels] = useState(true);
-  const [containerRef, containerWidth] = useContainerWidth();
+  const { containerRef, width: containerWidth } = useContainerWidth();
 
   const [historyInitial, setHistoryInitial] = useState<{
     title?: string; sql?: string; chart_type?: string;

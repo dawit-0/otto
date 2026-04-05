@@ -14,7 +14,24 @@
       "Bash(curl -sv http://localhost:8000/api/databases)",
       "Bash(curl -s http://localhost:5173/api/databases)",
       "Bash(gh --version)",
-      "Bash(gh auth:*)"
+      "Bash(gh auth:*)",
+      "Bash(brew list:*)",
+      "Bash(python3.12 -m venv venv)",
+      "Bash(source venv/bin/activate)",
+      "Bash(lsof -ti:8000)",
+      "Bash(xargs kill:*)",
+      "Bash(npm run:*)",
+      "Bash(npx vite:*)",
+      "mcp__Claude_Preview__preview_start",
+      "Bash(node -e \"const rgl = require\\(''react-grid-layout''\\); console.log\\(Object.keys\\(rgl\\)\\)\")",
+      "Bash(node -e \"const pkg = require\\(''/Users/dawit/dev/otto/frontend/node_modules/react-grid-layout/package.json''\\); console.log\\(JSON.stringify\\({main: pkg.main, module: pkg.module, exports: pkg.exports, types: pkg.types}, null, 2\\)\\)\")",
+      "Bash(node -e \"const rgl = require\\(''/Users/dawit/dev/otto/frontend/node_modules/react-grid-layout/dist/index.js''\\); console.log\\(typeof rgl.Responsive, typeof rgl.useContainerWidth, typeof rgl.LayoutItem\\)\")",
+      "Bash(node -e \":*)",
+      "Bash(ls /Users/dawit/dev/otto/frontend/node_modules/react-grid-layout/dist/*.mjs)",
+      "Bash(node -e \"const pkg = require\\(''/Users/dawit/dev/otto/frontend/node_modules/react-grid-layout/package.json''\\); console.log\\(JSON.stringify\\(pkg.peerDependencies, null, 2\\)\\)\")",
+      "Bash(ls /Users/dawit/dev/otto/*.db)",
+      "Bash(curl -s -X POST http://localhost:8000/api/databases/connect -F \"file=@/Users/dawit/dev/otto/sample.db\")",
+      "Bash(curl -s -X DELETE http://localhost:8000/api/databases/sample_77201259)"
     ]
   }
 }

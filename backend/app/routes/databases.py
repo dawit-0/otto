@@ -4,25 +4,46 @@ import sqlite3
 import tempfile
 from pathlib import Path
 
-from fastapi import APIRouter, File, HTTPException, UploadFile
+from fastapi import APIRouter, Depends, File, HTTPException, UploadFile
 from pydantic import BaseModel
+from sqlalchemy.orm import Session
+
+from app.database import get_db
+from app.models.connection import ConnectedDatabase
 
 router = APIRouter(prefix="/api/databases", tags=["databases"])
-
-# In-memory registry of connected databases
-databases: dict[str, str] = {}  # id -> file path
 
 
 class ConnectRequest(BaseModel):
     path: str
 
 
-def get_connection(db_id: str) -> sqlite3.Connection:
-    if db_id not in databases:
+def _resolve_path(db_id: str, db: Session) -> str:
+    """Look up the file path for a db_id from the persistent store."""
+    record = db.query(ConnectedDatabase).filter(ConnectedDatabase.db_id == db_id).first()
+    if not record:
         raise HTTPException(status_code=404, detail="Database not found")
-    conn = sqlite3.connect(databases[db_id])
+    return record.path
+
+
+def get_connection(db_id: str, db: Session) -> sqlite3.Connection:
+    path = _resolve_path(db_id, db)
+    conn = sqlite3.connect(path)
     conn.row_factory = sqlite3.Row
     return conn
+
+
+def get_db_name(db_id: str, db: Session) -> str:
+    record = db.query(ConnectedDatabase).filter(ConnectedDatabase.db_id == db_id).first()
+    return record.name if record else db_id
+
+
+def _register(db_id: str, name: str, path: str, db: Session) -> None:
+    """Insert or update a connected database record."""
+    existing = db.query(ConnectedDatabase).filter(ConnectedDatabase.db_id == db_id).first()
+    if not existing:
+        db.add(ConnectedDatabase(db_id=db_id, name=name, path=path))
+        db.commit()
 
 
 def get_table_info(conn: sqlite3.Connection) -> list[dict]:
@@ -74,7 +95,7 @@ def get_table_info(conn: sqlite3.Connection) -> list[dict]:
 
 
 @router.post("/connect")
-def connect_database(req: ConnectRequest):
+def connect_database(req: ConnectRequest, db: Session = Depends(get_db)):
     path = os.path.expanduser(req.path)
     if not os.path.isfile(path):
         raise HTTPException(status_code=400, detail=f"File not found: {path}")
@@ -87,12 +108,13 @@ def connect_database(req: ConnectRequest):
         raise HTTPException(status_code=400, detail="Not a valid SQLite database")
 
     db_id = Path(path).stem + "_" + str(abs(hash(path)))[:8]
-    databases[db_id] = path
-    return {"id": db_id, "name": Path(path).stem, "path": path}
+    name = Path(path).stem
+    _register(db_id, name, path, db)
+    return {"id": db_id, "name": name, "path": path}
 
 
 @router.post("/upload")
-async def upload_database(file: UploadFile = File(...)):
+async def upload_database(file: UploadFile = File(...), db: Session = Depends(get_db)):
     upload_dir = os.path.join(tempfile.gettempdir(), "otto_uploads")
     os.makedirs(upload_dir, exist_ok=True)
     dest = os.path.join(upload_dir, file.filename)
@@ -108,29 +130,38 @@ async def upload_database(file: UploadFile = File(...)):
         raise HTTPException(status_code=400, detail="Not a valid SQLite database")
 
     db_id = Path(dest).stem + "_" + str(abs(hash(dest)))[:8]
-    databases[db_id] = dest
-    return {"id": db_id, "name": Path(dest).stem, "path": dest}
+    name = Path(dest).stem
+    _register(db_id, name, dest, db)
+    return {"id": db_id, "name": name, "path": dest}
 
 
 @router.get("")
-def list_databases():
+def list_databases(db: Session = Depends(get_db)):
+    records = db.query(ConnectedDatabase).all()
+    # Filter out entries whose files no longer exist
     result = []
-    for db_id, path in databases.items():
-        result.append({"id": db_id, "name": Path(path).stem, "path": path})
+    for r in records:
+        if os.path.isfile(r.path):
+            result.append({"id": r.db_id, "name": r.name, "path": r.path})
+        else:
+            db.delete(r)
+    db.commit()
     return result
 
 
 @router.delete("/{db_id}")
-def disconnect_database(db_id: str):
-    if db_id not in databases:
+def disconnect_database(db_id: str, db: Session = Depends(get_db)):
+    record = db.query(ConnectedDatabase).filter(ConnectedDatabase.db_id == db_id).first()
+    if not record:
         raise HTTPException(status_code=404, detail="Database not found")
-    del databases[db_id]
+    db.delete(record)
+    db.commit()
     return {"ok": True}
 
 
 @router.get("/{db_id}/schema")
-def get_schema(db_id: str):
-    conn = get_connection(db_id)
+def get_schema(db_id: str, db: Session = Depends(get_db)):
+    conn = get_connection(db_id, db)
     try:
         tables = get_table_info(conn)
         return {"tables": tables}
@@ -139,8 +170,8 @@ def get_schema(db_id: str):
 
 
 @router.get("/{db_id}/tables/{table_name}/data")
-def get_table_data(db_id: str, table_name: str, limit: int = 100, offset: int = 0):
-    conn = get_connection(db_id)
+def get_table_data(db_id: str, table_name: str, limit: int = 100, offset: int = 0, db: Session = Depends(get_db)):
+    conn = get_connection(db_id, db)
     try:
         cursor = conn.execute(
             f'SELECT * FROM "{table_name}" LIMIT ? OFFSET ?',

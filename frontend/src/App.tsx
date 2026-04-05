@@ -21,6 +21,16 @@ export default function App() {
   const [dataOffset, setDataOffset] = useState(0);
   const DATA_LIMIT = 100;
 
+  useEffect(() => {
+    api.listDatabases().then((dbs) => {
+      if (dbs.length > 0) {
+        setDatabases(dbs);
+        setActiveDb(dbs[0]);
+        loadSchema(dbs[0]);
+      }
+    }).catch(() => {});
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
   const loadSchema = useCallback(async (db: Database) => {
     try {
       const schema = await api.getSchema(db.id);
@@ -38,7 +48,7 @@ export default function App() {
   }, [loadSchema]);
 
   const handleConnect = (db: Database) => {
-    setDatabases((prev) => [...prev, db]);
+    setDatabases((prev) => prev.some((d) => d.id === db.id) ? prev : [...prev, db]);
     selectDb(db);
     setShowConnect(false);
   };
@@ -46,15 +56,15 @@ export default function App() {
   const handleDisconnect = async (db: Database) => {
     try {
       await api.disconnectDatabase(db.id);
-      setDatabases((prev) => prev.filter((d) => d.id !== db.id));
-      if (activeDb?.id === db.id) {
-        setActiveDb(null);
-        setTables([]);
-        setSelectedTable(null);
-        setTableData(null);
-      }
-    } catch (e) {
-      console.error('Failed to disconnect:', e);
+    } catch {
+      // Backend may already have removed it — proceed with cleanup
+    }
+    setDatabases((prev) => prev.filter((d) => d.id !== db.id));
+    if (activeDb?.id === db.id) {
+      setActiveDb(null);
+      setTables([]);
+      setSelectedTable(null);
+      setTableData(null);
     }
   };
 

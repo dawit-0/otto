@@ -7,7 +7,7 @@ from sqlalchemy.orm import Session
 
 from app.database import get_db
 from app.models.visualization import SavedVisualization, VisualizationHistory
-from app.routes.databases import databases, get_connection
+from app.routes.databases import get_connection, get_db_name
 
 router = APIRouter(prefix="/api/visualizations", tags=["visualizations"])
 
@@ -91,8 +91,8 @@ class VisualizationHistoryResponse(BaseModel):
 
 @router.post("/run")
 def run_visualization(req: RunVisualizationRequest, db: Session = Depends(get_db)):
-    conn = get_connection(req.db_id)
-    db_name = databases.get(req.db_id, req.db_id)
+    conn = get_connection(req.db_id, db)
+    db_name = get_db_name(req.db_id, db)
 
     start = time.perf_counter()
     try:
