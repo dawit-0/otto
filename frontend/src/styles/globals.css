@@ -1118,3 +1118,76 @@ body {
 .recharts-legend-item-text {
   color: var(--text-secondary) !important;
 }
+
+/* ─── AI Query Generation ─── */
+
+.btn-ai {
+  background: linear-gradient(135deg, #6366f1, #8b5cf6);
+  color: #fff;
+  border: none;
+  padding: 6px 14px;
+  border-radius: var(--radius-sm);
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: opacity 0.15s, box-shadow 0.15s;
+}
+.btn-ai:hover {
+  opacity: 0.9;
+  box-shadow: 0 0 12px rgba(139, 92, 246, 0.3);
+}
+.btn-ai-active {
+  box-shadow: 0 0 0 2px var(--ring-color);
+}
+.btn-ai-sm {
+  margin-top: 6px;
+  font-size: 12px;
+  padding: 4px 10px;
+}
+
+.ai-input-panel {
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius);
+  padding: 10px;
+  margin-top: 6px;
+}
+.ai-input-panel-inline {
+  margin-top: 8px;
+}
+.ai-input-row {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+.ai-input {
+  flex: 1;
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  color: var(--text-primary);
+  padding: 8px 10px;
+  font-size: 13px;
+  font-family: inherit;
+  outline: none;
+  transition: border-color 0.15s;
+}
+.ai-input:focus {
+  border-color: var(--accent);
+}
+.ai-input::placeholder {
+  color: var(--text-muted);
+}
+.ai-input:disabled {
+  opacity: 0.6;
+}
+.btn-ai-generate {
+  white-space: nowrap;
+  font-size: 13px;
+  padding: 8px 16px;
+}
+.ai-error {
+  color: var(--danger);
+  font-size: 12px;
+  margin-top: 6px;
+}

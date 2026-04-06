@@ -2,6 +2,7 @@ import { useState, useCallback } from 'react';
 import { api, type VisualizationRunResponse } from '../api';
 import ChartRenderer, { CHART_TYPES, type ChartType } from './charts/ChartRenderer';
 
+
 interface Props {
   dbId: string;
   dbName?: string;
@@ -32,6 +33,12 @@ export default function VisualizationEditor({ dbId, onPin, onClose, initial }: P
   const [statLabel, setStatLabel] = useState<string>((initial?.config?.statLabel as string) || '');
   const [gaugeMin, setGaugeMin] = useState<string>(String(initial?.config?.gaugeMin ?? '0'));
   const [gaugeMax, setGaugeMax] = useState<string>(String(initial?.config?.gaugeMax ?? '100'));
+
+  // AI state
+  const [showAiInput, setShowAiInput] = useState(false);
+  const [aiPrompt, setAiPrompt] = useState('');
+  const [aiLoading, setAiLoading] = useState(false);
+  const [aiError, setAiError] = useState<string | null>(null);
 
   const buildConfig = useCallback((): Record<string, unknown> => {
     const cfg: Record<string, unknown> = {};
@@ -75,6 +82,32 @@ export default function VisualizationEditor({ dbId, onPin, onClose, initial }: P
     if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') {
       e.preventDefault();
       run();
+    }
+  };
+
+  const generateWithAi = async () => {
+    if (!aiPrompt.trim()) return;
+    setAiLoading(true);
+    setAiError(null);
+    try {
+      const res = await api.generateAiQuery(dbId, aiPrompt);
+      setSql(res.sql);
+      setAiPrompt('');
+      setShowAiInput(false);
+    } catch (e: any) {
+      setAiError(e.message);
+    } finally {
+      setAiLoading(false);
+    }
+  };
+
+  const handleAiKeyDown = (e: React.KeyboardEvent) => {
+    if (e.key === 'Enter' && !e.shiftKey) {
+      e.preventDefault();
+      generateWithAi();
+    }
+    if (e.key === 'Escape') {
+      setShowAiInput(false);
     }
   };
 
@@ -127,6 +160,35 @@ export default function VisualizationEditor({ dbId, onPin, onClose, initial }: P
                 placeholder="SELECT category, SUM(amount) as total FROM transactions GROUP BY category;"
                 spellCheck={false}
               />
+              <button
+                className={`btn btn-ai btn-ai-sm${showAiInput ? ' btn-ai-active' : ''}`}
+                onClick={() => setShowAiInput(!showAiInput)}
+              >
+                Ask with AI
+              </button>
+              {showAiInput && (
+                <div className="ai-input-panel ai-input-panel-inline">
+                  <div className="ai-input-row">
+                    <input
+                      className="ai-input"
+                      value={aiPrompt}
+                      onChange={(e) => setAiPrompt(e.target.value)}
+                      onKeyDown={handleAiKeyDown}
+                      placeholder="Describe the query you want in plain English..."
+                      autoFocus
+                      disabled={aiLoading}
+                    />
+                    <button
+                      className="btn btn-primary btn-ai-generate"
+                      onClick={generateWithAi}
+                      disabled={aiLoading || !aiPrompt.trim()}
+                    >
+                      {aiLoading ? 'Generating...' : 'Generate'}
+                    </button>
+                  </div>
+                  {aiError && <div className="ai-error">{aiError}</div>}
+                </div>
+              )}
             </div>
 
             <div className="viz-editor-field">

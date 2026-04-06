@@ -13,6 +13,10 @@ export default function QueryEditor({ dbId }: Props) {
   const [loading, setLoading] = useState(false);
   const [showHistory, setShowHistory] = useState(false);
   const [history, setHistory] = useState<QueryHistoryEntry[]>([]);
+  const [showAiInput, setShowAiInput] = useState(false);
+  const [aiPrompt, setAiPrompt] = useState('');
+  const [aiLoading, setAiLoading] = useState(false);
+  const [aiError, setAiError] = useState<string | null>(null);
 
   const fetchHistory = useCallback(async () => {
     try {
@@ -55,6 +59,32 @@ export default function QueryEditor({ dbId }: Props) {
     setShowHistory(false);
   };
 
+  const generateWithAi = async () => {
+    if (!aiPrompt.trim()) return;
+    setAiLoading(true);
+    setAiError(null);
+    try {
+      const res = await api.generateAiQuery(dbId, aiPrompt);
+      setSql(res.sql);
+      setAiPrompt('');
+      setShowAiInput(false);
+    } catch (e: any) {
+      setAiError(e.message);
+    } finally {
+      setAiLoading(false);
+    }
+  };
+
+  const handleAiKeyDown = (e: React.KeyboardEvent) => {
+    if (e.key === 'Enter' && !e.shiftKey) {
+      e.preventDefault();
+      generateWithAi();
+    }
+    if (e.key === 'Escape') {
+      setShowAiInput(false);
+    }
+  };
+
   const handleClearHistory = async () => {
     await api.clearHistory(dbId);
     setHistory([]);
@@ -92,6 +122,12 @@ export default function QueryEditor({ dbId }: Props) {
             {loading ? 'Running...' : 'Run Query'}
           </button>
           <button
+            className={`btn btn-ai${showAiInput ? ' btn-ai-active' : ''}`}
+            onClick={() => setShowAiInput(!showAiInput)}
+          >
+            Ask with AI
+          </button>
+          <button
             className={`btn btn-sm${showHistory ? ' btn-history-active' : ''}`}
             onClick={() => setShowHistory(!showHistory)}
           >
@@ -106,6 +142,30 @@ export default function QueryEditor({ dbId }: Props) {
           )}
         </div>
       </div>
+
+      {showAiInput && (
+        <div className="ai-input-panel">
+          <div className="ai-input-row">
+            <input
+              className="ai-input"
+              value={aiPrompt}
+              onChange={(e) => setAiPrompt(e.target.value)}
+              onKeyDown={handleAiKeyDown}
+              placeholder="Describe the query you want in plain English..."
+              autoFocus
+              disabled={aiLoading}
+            />
+            <button
+              className="btn btn-primary btn-ai-generate"
+              onClick={generateWithAi}
+              disabled={aiLoading || !aiPrompt.trim()}
+            >
+              {aiLoading ? 'Generating...' : 'Generate'}
+            </button>
+          </div>
+          {aiError && <div className="ai-error">{aiError}</div>}
+        </div>
+      )}
 
       {showHistory && (
         <div className="query-history-panel">
