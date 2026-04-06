@@ -9,7 +9,10 @@ from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
 from app.database import get_db
+from app.logging import get_logger
 from app.models.connection import ConnectedDatabase
+
+logger = get_logger("databases")
 
 router = APIRouter(prefix="/api/databases", tags=["databases"])
 
@@ -97,7 +100,9 @@ def get_table_info(conn: sqlite3.Connection) -> list[dict]:
 @router.post("/connect")
 def connect_database(req: ConnectRequest, db: Session = Depends(get_db)):
     path = os.path.expanduser(req.path)
+    logger.info("Connecting to database at %s", path)
     if not os.path.isfile(path):
+        logger.warning("File not found: %s", path)
         raise HTTPException(status_code=400, detail=f"File not found: {path}")
 
     try:
@@ -105,16 +110,19 @@ def connect_database(req: ConnectRequest, db: Session = Depends(get_db)):
         conn.execute("SELECT 1")
         conn.close()
     except Exception:
+        logger.error("Invalid SQLite database: %s", path)
         raise HTTPException(status_code=400, detail="Not a valid SQLite database")
 
     db_id = Path(path).stem + "_" + str(abs(hash(path)))[:8]
     name = Path(path).stem
     _register(db_id, name, path, db)
+    logger.info("Connected database '%s' (id=%s)", name, db_id)
     return {"id": db_id, "name": name, "path": path}
 
 
 @router.post("/upload")
 async def upload_database(file: UploadFile = File(...), db: Session = Depends(get_db)):
+    logger.info("Uploading database file: %s", file.filename)
     upload_dir = os.path.join(tempfile.gettempdir(), "otto_uploads")
     os.makedirs(upload_dir, exist_ok=True)
     dest = os.path.join(upload_dir, file.filename)
@@ -126,12 +134,14 @@ async def upload_database(file: UploadFile = File(...), db: Session = Depends(ge
         conn.execute("SELECT 1")
         conn.close()
     except Exception:
+        logger.error("Uploaded file is not a valid SQLite database: %s", file.filename)
         os.remove(dest)
         raise HTTPException(status_code=400, detail="Not a valid SQLite database")
 
     db_id = Path(dest).stem + "_" + str(abs(hash(dest)))[:8]
     name = Path(dest).stem
     _register(db_id, name, dest, db)
+    logger.info("Uploaded and connected database '%s' (id=%s)", name, db_id)
     return {"id": db_id, "name": name, "path": dest}
 
 
@@ -153,7 +163,9 @@ def list_databases(db: Session = Depends(get_db)):
 def disconnect_database(db_id: str, db: Session = Depends(get_db)):
     record = db.query(ConnectedDatabase).filter(ConnectedDatabase.db_id == db_id).first()
     if not record:
+        logger.warning("Disconnect requested for unknown db_id=%s", db_id)
         raise HTTPException(status_code=404, detail="Database not found")
+    logger.info("Disconnecting database '%s' (id=%s)", record.name, db_id)
     db.delete(record)
     db.commit()
     return {"ok": True}
@@ -182,6 +194,7 @@ def get_table_data(db_id: str, table_name: str, limit: int = 100, offset: int = 
         count = conn.execute(f'SELECT COUNT(*) FROM "{table_name}"').fetchone()[0]
         return {"columns": columns, "rows": rows, "total": count, "limit": limit, "offset": offset}
     except Exception as e:
+        logger.error("Error reading table '%s' from db_id=%s: %s", table_name, db_id, e)
         raise HTTPException(status_code=400, detail=str(e))
     finally:
         conn.close()
