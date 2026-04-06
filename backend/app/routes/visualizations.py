@@ -6,8 +6,11 @@ from sqlalchemy import desc
 from sqlalchemy.orm import Session
 
 from app.database import get_db
+from app.logging import get_logger
 from app.models.visualization import SavedVisualization, VisualizationHistory
 from app.routes.databases import get_connection, get_db_name
+
+logger = get_logger("visualizations")
 
 router = APIRouter(prefix="/api/visualizations", tags=["visualizations"])
 
@@ -93,6 +96,10 @@ class VisualizationHistoryResponse(BaseModel):
 def run_visualization(req: RunVisualizationRequest, db: Session = Depends(get_db)):
     conn = get_connection(req.db_id, db)
     db_name = get_db_name(req.db_id, db)
+    logger.info(
+        "Running visualization '%s' (type=%s) on '%s'",
+        req.title or "untitled", req.chart_type, db_name,
+    )
 
     start = time.perf_counter()
     try:
@@ -105,6 +112,11 @@ def run_visualization(req: RunVisualizationRequest, db: Session = Depends(get_db
         else:
             columns = []
             rows = []
+
+        logger.info(
+            "Visualization '%s' succeeded: %d rows in %.1fms",
+            req.title or "untitled", len(rows), duration_ms,
+        )
 
         db.add(VisualizationHistory(
             db_id=req.db_id,
@@ -123,6 +135,10 @@ def run_visualization(req: RunVisualizationRequest, db: Session = Depends(get_db
 
     except Exception as e:
         duration_ms = (time.perf_counter() - start) * 1000
+        logger.error(
+            "Visualization '%s' failed after %.1fms: %s",
+            req.title or "untitled", duration_ms, e,
+        )
         db.add(VisualizationHistory(
             db_id=req.db_id,
             db_name=db_name,

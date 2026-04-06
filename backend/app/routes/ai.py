@@ -6,7 +6,10 @@ from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
 from app.database import get_db
+from app.logging import get_logger
 from app.routes.databases import get_connection, get_table_info
+
+logger = get_logger("ai")
 
 router = APIRouter(prefix="/api/ai", tags=["ai"])
 
@@ -37,6 +40,7 @@ def _build_schema_summary(conn) -> str:
 
 @router.post("/generate-query")
 def generate_query(req: AiQueryRequest, db: Session = Depends(get_db)):
+    logger.info("AI query generation requested for db_id=%s: %.100s", req.db_id, req.prompt)
     conn = get_connection(req.db_id, db)
     try:
         schema_summary = _build_schema_summary(conn)
@@ -71,6 +75,7 @@ def generate_query(req: AiQueryRequest, db: Session = Depends(get_db)):
         )
 
         if result.returncode != 0:
+            logger.error("Claude CLI returned non-zero exit code: %s", result.stderr.strip())
             raise HTTPException(
                 status_code=500,
                 detail=f"Claude CLI error: {result.stderr.strip() or 'Unknown error'}",
@@ -85,11 +90,14 @@ def generate_query(req: AiQueryRequest, db: Session = Depends(get_db)):
             lines = [l for l in lines if not l.strip().startswith("```")]
             sql = "\n".join(lines).strip()
 
+        logger.info("AI generated query for db_id=%s: %.100s", req.db_id, sql)
         return {"sql": sql}
 
     except subprocess.TimeoutExpired:
+        logger.error("AI query generation timed out after 30s for db_id=%s", req.db_id)
         raise HTTPException(status_code=504, detail="AI query generation timed out")
     except FileNotFoundError:
+        logger.error("Claude CLI not found on system PATH")
         raise HTTPException(
             status_code=500,
             detail="Claude CLI not found. Please install and configure the Claude CLI.",
