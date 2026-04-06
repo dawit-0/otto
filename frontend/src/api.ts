@@ -215,4 +215,12 @@ export const api = {
 
   deleteVisualizationHistoryEntry: (id: number) =>
     request<{ deleted: number }>(`/visualizations/history/${id}`, { method: 'DELETE' }),
+
+  // ── AI ──
+
+  generateAiQuery: (dbId: string, prompt: string) =>
+    request<{ sql: string }>('/ai/generate-query', {
+      method: 'POST',
+      body: JSON.stringify({ db_id: dbId, prompt }),
+    }),
 };
