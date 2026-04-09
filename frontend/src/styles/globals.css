@@ -506,6 +506,59 @@ body {
   color: var(--danger);
 }
 
+/* ─── Saved Queries ─── */
+.saved-query-item {
+  display: flex;
+  align-items: flex-start;
+  gap: 4px;
+}
+.saved-query-item-btn {
+  flex: 1;
+  min-width: 0;
+}
+.saved-query-item-name {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-primary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.saved-query-item-desc {
+  font-size: 11px;
+  color: var(--text-muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.saved-query-item-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding-top: 6px;
+  opacity: 0;
+  transition: opacity 0.15s ease;
+}
+.saved-query-item:hover .saved-query-item-actions {
+  opacity: 1;
+}
+.saved-query-preview {
+  margin-bottom: 16px;
+}
+.saved-query-preview-sql {
+  background: var(--bg-primary);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: 10px 12px;
+  font-family: var(--font-mono);
+  font-size: 12px;
+  color: var(--text-secondary);
+  max-height: 120px;
+  overflow-y: auto;
+  white-space: pre-wrap;
+  word-break: break-all;
+}
+
 /* ─── Data Table ─── */
 .data-table-container {
   flex: 1;

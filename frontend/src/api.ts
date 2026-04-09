@@ -100,6 +100,17 @@ export interface VisualizationRunResponse {
   row_count: number;
 }
 
+export interface SavedQueryEntry {
+  id: number;
+  db_id: string;
+  db_name: string;
+  name: string;
+  sql: string;
+  description: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
 const BASE = '/api';
 
 async function request<T>(url: string, options?: RequestInit): Promise<T> {
@@ -215,6 +226,28 @@ export const api = {
 
   deleteVisualizationHistoryEntry: (id: number) =>
     request<{ deleted: number }>(`/visualizations/history/${id}`, { method: 'DELETE' }),
+
+  // ── Saved Queries ──
+
+  listSavedQueries: (dbId?: string) => {
+    const params = dbId ? `?db_id=${dbId}` : '';
+    return request<SavedQueryEntry[]>(`/saved-queries${params}`);
+  },
+
+  saveQuery: (data: { db_id: string; db_name: string; name: string; sql: string; description?: string }) =>
+    request<SavedQueryEntry>('/saved-queries', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    }),
+
+  updateSavedQuery: (id: number, data: { name?: string; sql?: string; description?: string }) =>
+    request<SavedQueryEntry>(`/saved-queries/${id}`, {
+      method: 'PUT',
+      body: JSON.stringify(data),
+    }),
+
+  deleteSavedQuery: (id: number) =>
+    request<{ deleted: number }>(`/saved-queries/${id}`, { method: 'DELETE' }),
 
   // ── AI ──
 
