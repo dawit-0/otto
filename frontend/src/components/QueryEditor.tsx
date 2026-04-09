@@ -1,12 +1,13 @@
 import { useState, useEffect, useCallback } from 'react';
-import { api, type QueryResponse, type QueryHistoryEntry } from '../api';
+import { api, type QueryResponse, type QueryHistoryEntry, type SavedQueryEntry } from '../api';
 import DataTable from './DataTable';
 
 interface Props {
   dbId: string;
+  dbName: string;
 }
 
-export default function QueryEditor({ dbId }: Props) {
+export default function QueryEditor({ dbId, dbName }: Props) {
   const [sql, setSql] = useState('');
   const [result, setResult] = useState<QueryResponse | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -17,6 +18,14 @@ export default function QueryEditor({ dbId }: Props) {
   const [aiPrompt, setAiPrompt] = useState('');
   const [aiLoading, setAiLoading] = useState(false);
   const [aiError, setAiError] = useState<string | null>(null);
+
+  // Saved queries state
+  const [showSaved, setShowSaved] = useState(false);
+  const [savedQueries, setSavedQueries] = useState<SavedQueryEntry[]>([]);
+  const [showSaveModal, setShowSaveModal] = useState(false);
+  const [saveName, setSaveName] = useState('');
+  const [saveDescription, setSaveDescription] = useState('');
+  const [editingQuery, setEditingQuery] = useState<SavedQueryEntry | null>(null);
 
   const fetchHistory = useCallback(async () => {
     try {
@@ -30,6 +39,71 @@ export default function QueryEditor({ dbId }: Props) {
   useEffect(() => {
     if (showHistory) fetchHistory();
   }, [showHistory, fetchHistory]);
+
+  const fetchSavedQueries = useCallback(async () => {
+    try {
+      const entries = await api.listSavedQueries(dbId);
+      setSavedQueries(entries);
+    } catch {
+      // non-critical
+    }
+  }, [dbId]);
+
+  useEffect(() => {
+    if (showSaved) fetchSavedQueries();
+  }, [showSaved, fetchSavedQueries]);
+
+  const handleSaveQuery = async () => {
+    if (!saveName.trim() || !sql.trim()) return;
+    try {
+      if (editingQuery) {
+        const updated = await api.updateSavedQuery(editingQuery.id, {
+          name: saveName,
+          sql,
+          description: saveDescription || undefined,
+        });
+        setSavedQueries((prev) => prev.map((q) => q.id === updated.id ? updated : q));
+      } else {
+        const saved = await api.saveQuery({
+          db_id: dbId,
+          db_name: dbName,
+          name: saveName,
+          sql,
+          description: saveDescription || undefined,
+        });
+        setSavedQueries((prev) => [saved, ...prev]);
+      }
+      setShowSaveModal(false);
+      setSaveName('');
+      setSaveDescription('');
+      setEditingQuery(null);
+    } catch {
+      // keep modal open on error
+    }
+  };
+
+  const handleDeleteSavedQuery = async (id: number) => {
+    await api.deleteSavedQuery(id);
+    setSavedQueries((prev) => prev.filter((q) => q.id !== id));
+  };
+
+  const loadFromSaved = (entry: SavedQueryEntry) => {
+    setSql(entry.sql);
+    setShowSaved(false);
+  };
+
+  const openSaveModal = (existing?: SavedQueryEntry) => {
+    if (existing) {
+      setEditingQuery(existing);
+      setSaveName(existing.name);
+      setSaveDescription(existing.description || '');
+    } else {
+      setEditingQuery(null);
+      setSaveName('');
+      setSaveDescription('');
+    }
+    setShowSaveModal(true);
+  };
 
   const run = async () => {
     if (!sql.trim()) return;
@@ -128,8 +202,22 @@ export default function QueryEditor({ dbId }: Props) {
             Ask with AI
           </button>
           <button
+            className="btn btn-sm"
+            onClick={() => openSaveModal()}
+            disabled={!sql.trim()}
+            title="Save current query"
+          >
+            Save
+          </button>
+          <button
+            className={`btn btn-sm${showSaved ? ' btn-history-active' : ''}`}
+            onClick={() => { setShowSaved(!showSaved); if (showHistory) setShowHistory(false); }}
+          >
+            Saved
+          </button>
+          <button
             className={`btn btn-sm${showHistory ? ' btn-history-active' : ''}`}
-            onClick={() => setShowHistory(!showHistory)}
+            onClick={() => { setShowHistory(!showHistory); if (showSaved) setShowSaved(false); }}
           >
             History
           </button>
@@ -205,6 +293,91 @@ export default function QueryEditor({ dbId }: Props) {
               ))}
             </div>
           )}
+        </div>
+      )}
+
+      {showSaved && (
+        <div className="query-history-panel">
+          <div className="query-history-header">
+            <span className="query-history-title">Saved Queries</span>
+          </div>
+          {savedQueries.length === 0 ? (
+            <div className="query-history-empty">No saved queries yet</div>
+          ) : (
+            <div className="query-history-list">
+              {savedQueries.map((entry) => (
+                <div key={entry.id} className="saved-query-item">
+                  <button
+                    className="query-history-item saved-query-item-btn"
+                    onClick={() => loadFromSaved(entry)}
+                  >
+                    <div className="saved-query-item-name">{entry.name}</div>
+                    {entry.description && (
+                      <div className="saved-query-item-desc">{entry.description}</div>
+                    )}
+                    <div className="query-history-item-sql">{entry.sql}</div>
+                  </button>
+                  <div className="saved-query-item-actions">
+                    <button
+                      className="btn-icon"
+                      onClick={() => { setSql(entry.sql); openSaveModal(entry); }}
+                      title="Edit"
+                    >
+                      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                        <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" /><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z" />
+                      </svg>
+                    </button>
+                    <button
+                      className="btn-icon"
+                      onClick={() => handleDeleteSavedQuery(entry.id)}
+                      title="Delete"
+                    >
+                      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                        <polyline points="3 6 5 6 21 6" /><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
+                      </svg>
+                    </button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+
+      {showSaveModal && (
+        <div className="modal-overlay" onClick={() => setShowSaveModal(false)}>
+          <div className="modal" onClick={(e) => e.stopPropagation()}>
+            <div className="modal-title">{editingQuery ? 'Update Saved Query' : 'Save Query'}</div>
+            <div className="modal-field">
+              <label>Name</label>
+              <input
+                value={saveName}
+                onChange={(e) => setSaveName(e.target.value)}
+                placeholder="My useful query"
+                autoFocus
+                onKeyDown={(e) => { if (e.key === 'Enter') handleSaveQuery(); if (e.key === 'Escape') setShowSaveModal(false); }}
+              />
+            </div>
+            <div className="modal-field">
+              <label>Description (optional)</label>
+              <input
+                value={saveDescription}
+                onChange={(e) => setSaveDescription(e.target.value)}
+                placeholder="What does this query do?"
+                onKeyDown={(e) => { if (e.key === 'Enter') handleSaveQuery(); if (e.key === 'Escape') setShowSaveModal(false); }}
+              />
+            </div>
+            <div className="saved-query-preview">
+              <label style={{ display: 'block', fontSize: 12, fontWeight: 500, color: 'var(--text-secondary)', marginBottom: 6 }}>SQL</label>
+              <pre className="saved-query-preview-sql">{sql}</pre>
+            </div>
+            <div className="modal-actions">
+              <button className="btn" onClick={() => setShowSaveModal(false)}>Cancel</button>
+              <button className="btn btn-primary" onClick={handleSaveQuery} disabled={!saveName.trim()}>
+                {editingQuery ? 'Update' : 'Save'}
+              </button>
+            </div>
+          </div>
         </div>
       )}
 

@@ -186,7 +186,7 @@ export default function App() {
               </div>
             )}
 
-            {view === 'query' && <QueryEditor dbId={activeDb.id} />}
+            {view === 'query' && <QueryEditor dbId={activeDb.id} dbName={activeDb.name} />}
 
             {view === 'visualize' && (
               <VisualizationDashboard dbId={activeDb.id} dbName={activeDb.name} />
