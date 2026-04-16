@@ -11,6 +11,7 @@ from sqlalchemy.orm import Session
 from app.database import get_db
 from app.logging import get_logger
 from app.models.connection import ConnectedDatabase
+from app.utils.sql_safety import assert_valid_table, quote_identifier
 
 logger = get_logger("databases")
 
@@ -54,7 +55,8 @@ def get_table_info(conn: sqlite3.Connection) -> list[dict]:
     tables = []
     for row in cursor.fetchall():
         name = row["name"]
-        cols_cursor = conn.execute(f'PRAGMA table_info("{name}")')
+        quoted = quote_identifier(name)
+        cols_cursor = conn.execute(f"PRAGMA table_info({quoted})")
         columns = []
         for col in cols_cursor.fetchall():
             columns.append({
@@ -65,10 +67,10 @@ def get_table_info(conn: sqlite3.Connection) -> list[dict]:
                 "default": col["dflt_value"],
             })
 
-        count_cursor = conn.execute(f'SELECT COUNT(*) as cnt FROM "{name}"')
+        count_cursor = conn.execute(f"SELECT COUNT(*) as cnt FROM {quoted}")
         row_count = count_cursor.fetchone()["cnt"]
 
-        fk_cursor = conn.execute(f'PRAGMA foreign_key_list("{name}")')
+        fk_cursor = conn.execute(f"PRAGMA foreign_key_list({quoted})")
         foreign_keys = []
         for fk in fk_cursor.fetchall():
             foreign_keys.append({
@@ -77,10 +79,11 @@ def get_table_info(conn: sqlite3.Connection) -> list[dict]:
                 "to_column": fk["to"],
             })
 
-        idx_cursor = conn.execute(f'PRAGMA index_list("{name}")')
+        idx_cursor = conn.execute(f"PRAGMA index_list({quoted})")
         indexes = []
         for idx in idx_cursor.fetchall():
-            idx_info = conn.execute(f"PRAGMA index_info(\"{idx['name']}\")").fetchall()
+            quoted_idx = quote_identifier(idx["name"])
+            idx_info = conn.execute(f"PRAGMA index_info({quoted_idx})").fetchall()
             indexes.append({
                 "name": idx["name"],
                 "unique": bool(idx["unique"]),
@@ -185,14 +188,23 @@ def get_schema(db_id: str, db: Session = Depends(get_db)):
 def get_table_data(db_id: str, table_name: str, limit: int = 100, offset: int = 0, db: Session = Depends(get_db)):
     conn = get_connection(db_id, db)
     try:
+        try:
+            assert_valid_table(conn, table_name)
+        except ValueError:
+            logger.warning("Rejected table data request for unknown table '%s' on db_id=%s", table_name, db_id)
+            raise HTTPException(status_code=404, detail=f"Unknown table: {table_name}")
+
+        quoted = quote_identifier(table_name)
         cursor = conn.execute(
-            f'SELECT * FROM "{table_name}" LIMIT ? OFFSET ?',
+            f"SELECT * FROM {quoted} LIMIT ? OFFSET ?",
             (limit, offset),
         )
         columns = [desc[0] for desc in cursor.description]
         rows = [dict(row) for row in cursor.fetchall()]
-        count = conn.execute(f'SELECT COUNT(*) FROM "{table_name}"').fetchone()[0]
+        count = conn.execute(f"SELECT COUNT(*) FROM {quoted}").fetchone()[0]
         return {"columns": columns, "rows": rows, "total": count, "limit": limit, "offset": offset}
+    except HTTPException:
+        raise
     except Exception as e:
         logger.error("Error reading table '%s' from db_id=%s: %s", table_name, db_id, e)
         raise HTTPException(status_code=400, detail=str(e))

@@ -119,7 +119,8 @@ def test_get_table_data_pagination(client, sample_db):
 def test_get_table_data_nonexistent_table(client, sample_db):
     info = _connect(client, sample_db)
     resp = client.get(f"/api/databases/{info['id']}/tables/nope/data")
-    assert resp.status_code == 400
+    assert resp.status_code == 404
+    assert "unknown table" in resp.json()["detail"].lower()
 
 
 # ── Upload ──
