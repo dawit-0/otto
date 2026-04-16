@@ -382,7 +382,7 @@ export default function QueryEditor({ dbId, dbName }: Props) {
       )}
 
       {result && result.columns.length > 0 && (
-        <DataTable columns={result.columns} rows={result.rows} />
+        <DataTable columns={result.columns} rows={result.rows} exportFilename="query-results" />
       )}
       {result && result.columns.length === 0 && !error && (
         <div className="empty-state">

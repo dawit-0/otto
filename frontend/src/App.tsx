@@ -172,6 +172,7 @@ export default function App() {
                   limit={DATA_LIMIT}
                   offset={dataOffset}
                   onPageChange={handlePageChange}
+                  exportFilename={selectedTable}
                 />
               </>
             )}
