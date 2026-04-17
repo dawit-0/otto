@@ -5,6 +5,7 @@ import DataTable from './components/DataTable';
 import QueryEditor from './components/QueryEditor';
 import ConnectModal from './components/ConnectModal';
 import VisualizationDashboard from './components/VisualizationDashboard';
+import { type ChartType } from './components/charts/ChartRenderer';
 
 type View = 'schema' | 'data' | 'query' | 'visualize';
 
@@ -15,6 +16,9 @@ export default function App() {
   const [selectedTable, setSelectedTable] = useState<string | null>(null);
   const [view, setView] = useState<View>('schema');
   const [showConnect, setShowConnect] = useState(false);
+  const [pendingVisualization, setPendingVisualization] = useState<{
+    sql: string; chartType: ChartType; xColumn: string; yColumns: string[];
+  } | null>(null);
 
   // Table data state
   const [tableData, setTableData] = useState<{ columns: string[]; rows: Record<string, unknown>[]; total: number } | null>(null);
@@ -87,6 +91,11 @@ export default function App() {
 
   const handlePageChange = (offset: number) => {
     if (selectedTable) loadTableData(selectedTable, offset);
+  };
+
+  const handleVisualizeQuery = (sql: string, chartType: ChartType, xColumn: string, yColumns: string[]) => {
+    setPendingVisualization({ sql, chartType, xColumn, yColumns });
+    setView('visualize');
   };
 
   return (
@@ -187,10 +196,21 @@ export default function App() {
               </div>
             )}
 
-            {view === 'query' && <QueryEditor dbId={activeDb.id} dbName={activeDb.name} />}
+            {view === 'query' && (
+              <QueryEditor
+                dbId={activeDb.id}
+                dbName={activeDb.name}
+                onVisualize={handleVisualizeQuery}
+              />
+            )}
 
             {view === 'visualize' && (
-              <VisualizationDashboard dbId={activeDb.id} dbName={activeDb.name} />
+              <VisualizationDashboard
+                dbId={activeDb.id}
+                dbName={activeDb.name}
+                initialQuery={pendingVisualization}
+                onInitialQueryConsumed={() => setPendingVisualization(null)}
+              />
             )}
           </>
         ) : (

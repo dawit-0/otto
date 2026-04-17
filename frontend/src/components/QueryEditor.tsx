@@ -1,13 +1,16 @@
 import { useState, useEffect, useCallback } from 'react';
 import { api, type QueryResponse, type QueryHistoryEntry, type SavedQueryEntry } from '../api';
 import DataTable from './DataTable';
+import QueryInsights from './QueryInsights';
+import { type ChartType } from './charts/ChartRenderer';
 
 interface Props {
   dbId: string;
   dbName: string;
+  onVisualize?: (sql: string, chartType: ChartType, xColumn: string, yColumns: string[]) => void;
 }
 
-export default function QueryEditor({ dbId, dbName }: Props) {
+export default function QueryEditor({ dbId, dbName, onVisualize }: Props) {
   const [sql, setSql] = useState('');
   const [result, setResult] = useState<QueryResponse | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -382,7 +385,16 @@ export default function QueryEditor({ dbId, dbName }: Props) {
       )}
 
       {result && result.columns.length > 0 && (
-        <DataTable columns={result.columns} rows={result.rows} exportFilename="query-results" />
+        <>
+          <QueryInsights
+            columns={result.columns}
+            rows={result.rows}
+            onVisualize={(chartType, xColumn, yColumns) => {
+              if (onVisualize) onVisualize(sql, chartType, xColumn, yColumns);
+            }}
+          />
+          <DataTable columns={result.columns} rows={result.rows} exportFilename="query-results" />
+        </>
       )}
       {result && result.columns.length === 0 && !error && (
         <div className="empty-state">
