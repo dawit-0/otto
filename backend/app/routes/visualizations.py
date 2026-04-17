@@ -89,6 +89,25 @@ class VisualizationHistoryResponse(BaseModel):
     model_config = {"from_attributes": True}
 
 
+def _panel_to_response(p: SavedVisualization) -> VisualizationResponse:
+    return VisualizationResponse(
+        id=p.id, db_id=p.db_id, db_name=p.db_name, title=p.title,
+        sql=p.sql, chart_type=p.chart_type, config=p.config,
+        grid_x=p.grid_x, grid_y=p.grid_y, grid_w=p.grid_w, grid_h=p.grid_h,
+        created_at=p.created_at.isoformat(), updated_at=p.updated_at.isoformat(),
+    )
+
+
+def _history_to_response(e: VisualizationHistory) -> VisualizationHistoryResponse:
+    return VisualizationHistoryResponse(
+        id=e.id, db_id=e.db_id, db_name=e.db_name, title=e.title,
+        sql=e.sql, chart_type=e.chart_type, config=e.config,
+        row_count=e.row_count, duration_ms=e.duration_ms,
+        status=e.status, error_message=e.error_message,
+        created_at=e.created_at.isoformat(),
+    )
+
+
 # ── Run a visualization query (+ record history) ──
 
 
@@ -165,15 +184,7 @@ def list_visualizations(db_id: str | None = None, db: Session = Depends(get_db))
     if db_id:
         query = query.filter(SavedVisualization.db_id == db_id)
     panels = query.order_by(SavedVisualization.created_at).all()
-    return [
-        VisualizationResponse(
-            id=p.id, db_id=p.db_id, db_name=p.db_name, title=p.title,
-            sql=p.sql, chart_type=p.chart_type, config=p.config,
-            grid_x=p.grid_x, grid_y=p.grid_y, grid_w=p.grid_w, grid_h=p.grid_h,
-            created_at=p.created_at.isoformat(), updated_at=p.updated_at.isoformat(),
-        )
-        for p in panels
-    ]
+    return [_panel_to_response(p) for p in panels]
 
 
 @router.post("", response_model=VisualizationResponse)
@@ -186,12 +197,7 @@ def save_visualization(req: SaveVisualizationRequest, db: Session = Depends(get_
     db.add(panel)
     db.commit()
     db.refresh(panel)
-    return VisualizationResponse(
-        id=panel.id, db_id=panel.db_id, db_name=panel.db_name, title=panel.title,
-        sql=panel.sql, chart_type=panel.chart_type, config=panel.config,
-        grid_x=panel.grid_x, grid_y=panel.grid_y, grid_w=panel.grid_w, grid_h=panel.grid_h,
-        created_at=panel.created_at.isoformat(), updated_at=panel.updated_at.isoformat(),
-    )
+    return _panel_to_response(panel)
 
 
 @router.put("/layout/batch")
@@ -226,16 +232,7 @@ def get_visualization_history(
         .limit(limit)
         .all()
     )
-    return [
-        VisualizationHistoryResponse(
-            id=e.id, db_id=e.db_id, db_name=e.db_name, title=e.title,
-            sql=e.sql, chart_type=e.chart_type, config=e.config,
-            row_count=e.row_count, duration_ms=e.duration_ms,
-            status=e.status, error_message=e.error_message,
-            created_at=e.created_at.isoformat(),
-        )
-        for e in entries
-    ]
+    return [_history_to_response(e) for e in entries]
 
 
 @router.delete("/history")
@@ -270,12 +267,7 @@ def update_visualization(panel_id: int, req: UpdateVisualizationRequest, db: Ses
         setattr(panel, field, value)
     db.commit()
     db.refresh(panel)
-    return VisualizationResponse(
-        id=panel.id, db_id=panel.db_id, db_name=panel.db_name, title=panel.title,
-        sql=panel.sql, chart_type=panel.chart_type, config=panel.config,
-        grid_x=panel.grid_x, grid_y=panel.grid_y, grid_w=panel.grid_w, grid_h=panel.grid_h,
-        created_at=panel.created_at.isoformat(), updated_at=panel.updated_at.isoformat(),
-    )
+    return _panel_to_response(panel)
 
 
 @router.delete("/{panel_id}")
