@@ -181,6 +181,37 @@ export default function QueryEditor({ dbId, dbName }: Props) {
     return `${(ms / 1000).toFixed(2)}s`;
   };
 
+  const downloadBlob = (content: string, mime: string, filename: string) => {
+    const blob = new Blob([content], { type: mime });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = filename;
+    a.click();
+    URL.revokeObjectURL(url);
+  };
+
+  const exportCSV = () => {
+    if (!result || result.columns.length === 0) return;
+    const escape = (v: unknown) => {
+      if (v === null || v === undefined) return '';
+      const s = String(v);
+      return s.includes(',') || s.includes('\n') || s.includes('"')
+        ? `"${s.replace(/"/g, '""')}"`
+        : s;
+    };
+    const lines = [
+      result.columns.join(','),
+      ...result.rows.map((row) => result.columns.map((c) => escape(row[c])).join(',')),
+    ];
+    downloadBlob(lines.join('\n'), 'text/csv', `query_${Date.now()}.csv`);
+  };
+
+  const exportJSON = () => {
+    if (!result || result.columns.length === 0) return;
+    downloadBlob(JSON.stringify(result.rows, null, 2), 'application/json', `query_${Date.now()}.json`);
+  };
+
   return (
     <div className="query-panel">
       <div className="query-editor">
@@ -382,7 +413,28 @@ export default function QueryEditor({ dbId, dbName }: Props) {
       )}
 
       {result && result.columns.length > 0 && (
-        <DataTable columns={result.columns} rows={result.rows} />
+        <>
+          <div className="results-toolbar">
+            <span className="results-toolbar-count">
+              {result.row_count} row{result.row_count !== 1 ? 's' : ''}
+            </span>
+            <div className="results-toolbar-actions">
+              <button className="btn btn-sm" onClick={exportCSV} title="Download as CSV">
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/>
+                </svg>
+                CSV
+              </button>
+              <button className="btn btn-sm" onClick={exportJSON} title="Download as JSON">
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/>
+                </svg>
+                JSON
+              </button>
+            </div>
+          </div>
+          <DataTable columns={result.columns} rows={result.rows} />
+        </>
       )}
       {result && result.columns.length === 0 && !error && (
         <div className="empty-state">
