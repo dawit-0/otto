@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { Responsive, useContainerWidth, type LayoutItem } from 'react-grid-layout';
 import 'react-grid-layout/css/styles.css';
 import 'react-resizable/css/styles.css';
@@ -10,9 +10,18 @@ import {
 import ChartRenderer, { type ChartType } from './charts/ChartRenderer';
 import VisualizationEditor from './VisualizationEditor';
 
+interface InitialQuery {
+  sql: string;
+  chartType: ChartType;
+  xColumn: string;
+  yColumns: string[];
+}
+
 interface Props {
   dbId: string;
   dbName: string;
+  initialQuery?: InitialQuery | null;
+  onInitialQueryConsumed?: () => void;
 }
 
 interface PanelData {
@@ -23,19 +32,38 @@ interface PanelData {
   error: string | null;
 }
 
-export default function VisualizationDashboard({ dbId, dbName }: Props) {
+export default function VisualizationDashboard({ dbId, dbName, initialQuery, onInitialQueryConsumed }: Props) {
   const [panels, setPanels] = useState<PanelData[]>([]);
   const [showEditor, setShowEditor] = useState(false);
   const [editingPanel, setEditingPanel] = useState<SavedVisualization | null>(null);
   const [showHistory, setShowHistory] = useState(false);
   const [history, setHistory] = useState<VisualizationHistoryEntry[]>([]);
   const [loadingPanels, setLoadingPanels] = useState(true);
-  const { containerRef, width: containerWidth } = useContainerWidth();
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const [containerRef, containerWidth] = useContainerWidth() as any as [(el: HTMLDivElement | null) => void, number];
 
   const [historyInitial, setHistoryInitial] = useState<{
     title?: string; sql?: string; chart_type?: string;
     config?: Record<string, unknown> | null;
   } | undefined>(undefined);
+
+  const prevInitialQuery = useRef<InitialQuery | null | undefined>(undefined);
+  useEffect(() => {
+    if (initialQuery && initialQuery !== prevInitialQuery.current) {
+      prevInitialQuery.current = initialQuery;
+      setEditingPanel(null);
+      setHistoryInitial({
+        sql: initialQuery.sql,
+        chart_type: initialQuery.chartType,
+        config: {
+          xColumn: initialQuery.xColumn,
+          yColumns: initialQuery.yColumns,
+        },
+      });
+      setShowEditor(true);
+      onInitialQueryConsumed?.();
+    }
+  }, [initialQuery, onInitialQueryConsumed]);
 
   const loadPanels = useCallback(async () => {
     setLoadingPanels(true);

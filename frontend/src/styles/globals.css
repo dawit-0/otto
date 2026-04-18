@@ -1183,6 +1183,130 @@ body {
   max-height: 240px;
 }
 
+/* ─── Query Insights ─── */
+.query-insights {
+  border-bottom: 1px solid var(--border);
+  background: var(--bg-secondary);
+  padding: 10px 14px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  flex-shrink: 0;
+}
+.query-insights-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+.query-insights-label {
+  font-size: 10px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--text-muted);
+}
+.btn-insights-visualize {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 12px;
+  font-size: 12px;
+  background: var(--accent-subtle);
+  border-color: rgba(99, 102, 241, 0.3);
+  color: var(--accent-hover);
+  transition: all 0.15s ease;
+}
+.btn-insights-visualize:hover {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #fff;
+}
+.query-insights-chart-badge {
+  font-size: 10px;
+  font-weight: 600;
+  background: rgba(255, 255, 255, 0.15);
+  border-radius: 4px;
+  padding: 1px 6px;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}
+.query-insights-cards {
+  display: flex;
+  gap: 8px;
+  overflow-x: auto;
+  padding-bottom: 2px;
+}
+.query-insights-card {
+  flex-shrink: 0;
+  width: 140px;
+  background: var(--bg-primary);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: 8px 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  transition: border-color 0.15s ease;
+}
+.query-insights-card:hover {
+  border-color: var(--border-strong);
+}
+.qi-type-number { border-left: 2px solid var(--info); }
+.qi-type-date   { border-left: 2px solid var(--success); }
+.qi-type-text   { border-left: 2px solid var(--text-muted); }
+.qi-card-header {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  margin-bottom: 2px;
+}
+.qi-type-icon {
+  font-size: 9px;
+  font-weight: 700;
+  font-family: var(--font-mono);
+  width: 14px;
+  height: 14px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 3px;
+  background: var(--bg-tertiary);
+  color: var(--text-muted);
+  flex-shrink: 0;
+}
+.qi-col-name {
+  font-size: 11px;
+  font-weight: 600;
+  font-family: var(--font-mono);
+  color: var(--text-primary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.qi-stat {
+  font-size: 11px;
+  font-family: var(--font-mono);
+  color: var(--text-secondary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.qi-sub-stat {
+  font-size: 10px;
+  color: var(--text-muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.qi-null-badge {
+  margin-top: 2px;
+  font-size: 9px;
+  font-weight: 600;
+  color: var(--warning);
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}
+
 /* ─── Recharts overrides for dark theme ─── */
 .recharts-text {
   fill: var(--text-muted) !important;
