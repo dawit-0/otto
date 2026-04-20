@@ -185,6 +185,86 @@ def get_schema(db_id: str, db: Session = Depends(get_db)):
         driver.close(conn)
 
 
+@router.get("/{db_id}/overview")
+def get_overview(db_id: str, db: Session = Depends(get_db)):
+    record = _resolve_record(db_id, db)
+    driver = get_driver(record)
+    conn = driver.connect()
+    try:
+        tables = driver.get_table_info(conn)
+
+        # DB-type-specific metadata
+        if record.db_type == "postgres":
+            _, rows = driver.execute(conn, "SELECT version()")
+            db_version = rows[0].get("version", "")[:60] if rows else ""
+            _, view_rows = driver.execute(
+                conn,
+                "SELECT count(*) AS cnt FROM information_schema.views WHERE table_schema = 'public'",
+            )
+            view_count = int(view_rows[0]["cnt"]) if view_rows else 0
+            _, trig_rows = driver.execute(
+                conn,
+                "SELECT count(*) AS cnt FROM information_schema.triggers WHERE trigger_schema = 'public'",
+            )
+            trigger_count = int(trig_rows[0]["cnt"]) if trig_rows else 0
+            file_size_bytes = 0
+            display_path = record.connection_string or ""
+        else:
+            _, rows = driver.execute(conn, "SELECT sqlite_version() AS v")
+            db_version = rows[0]["v"] if rows else ""
+            _, master_rows = driver.execute(
+                conn,
+                "SELECT type FROM sqlite_master WHERE type IN ('view','trigger') AND name NOT LIKE 'sqlite_%'",
+            )
+            view_count = sum(1 for r in master_rows if r["type"] == "view")
+            trigger_count = sum(1 for r in master_rows if r["type"] == "trigger")
+            try:
+                file_size_bytes = os.path.getsize(record.path)
+            except OSError:
+                file_size_bytes = 0
+            display_path = record.path
+
+        total_rows = sum(t["row_count"] for t in tables)
+        total_columns = sum(len(t["columns"]) for t in tables)
+        total_indexes = sum(len(t["indexes"]) for t in tables)
+
+        table_summaries = [
+            {
+                "name": t["name"],
+                "row_count": t["row_count"],
+                "column_count": len(t["columns"]),
+                "index_count": len(t["indexes"]),
+                "fk_count": len(t["foreign_keys"]),
+                "has_pk": any(c["pk"] for c in t["columns"]),
+                "columns": [
+                    {"name": c["name"], "type": c["type"] or "ANY", "pk": c["pk"], "notnull": c["notnull"]}
+                    for c in t["columns"]
+                ],
+            }
+            for t in tables
+        ]
+
+        return {
+            "db_info": {
+                "path": display_path,
+                "file_size_bytes": file_size_bytes,
+                "db_version": db_version,
+                "db_type": record.db_type,
+            },
+            "stats": {
+                "table_count": len(tables),
+                "total_rows": total_rows,
+                "total_columns": total_columns,
+                "index_count": total_indexes,
+                "view_count": view_count,
+                "trigger_count": trigger_count,
+            },
+            "tables": table_summaries,
+        }
+    finally:
+        driver.close(conn)
+
+
 @router.get("/{db_id}/tables/{table_name}/data")
 def get_table_data(db_id: str, table_name: str, limit: int = 100, offset: int = 0, db: Session = Depends(get_db)):
     driver = get_driver_for_db(db_id, db)

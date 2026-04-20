@@ -6,16 +6,17 @@ import QueryEditor from './components/QueryEditor';
 import ConnectModal from './components/ConnectModal';
 import VisualizationDashboard from './components/VisualizationDashboard';
 import AskOtto from './components/AskOtto';
+import OverviewTab from './components/OverviewTab';
 import { type ChartType } from './components/charts/ChartRenderer';
 
-type View = 'schema' | 'data' | 'query' | 'visualize' | 'ask';
+type View = 'overview' | 'schema' | 'data' | 'query' | 'visualize' | 'ask';
 
 export default function App() {
   const [databases, setDatabases] = useState<Database[]>([]);
   const [activeDb, setActiveDb] = useState<Database | null>(null);
   const [tables, setTables] = useState<TableInfo[]>([]);
   const [selectedTable, setSelectedTable] = useState<string | null>(null);
-  const [view, setView] = useState<View>('schema');
+  const [view, setView] = useState<View>('overview');
   const [showConnect, setShowConnect] = useState(false);
   const [pendingVisualization, setPendingVisualization] = useState<{
     sql: string; chartType: ChartType; xColumn: string; yColumns: string[];
@@ -52,6 +53,7 @@ export default function App() {
   const selectDb = useCallback((db: Database) => {
     setActiveDb(db);
     loadSchema(db);
+    setView('overview');
   }, [loadSchema]);
 
   const handleConnect = (db: Database) => {
@@ -157,6 +159,9 @@ export default function App() {
         {activeDb ? (
           <>
             <div className="header">
+              <button className={`header-tab${view === 'overview' ? ' active' : ''}`} onClick={() => setView('overview')}>
+                Overview
+              </button>
               <button className={`header-tab${view === 'schema' ? ' active' : ''}`} onClick={() => setView('schema')}>
                 Schema
               </button>
@@ -173,6 +178,13 @@ export default function App() {
                 ◆ Ask Otto
               </button>
             </div>
+
+            {view === 'overview' && (
+              <OverviewTab
+                dbId={activeDb.id}
+                onSelectTable={handleSelectTable}
+              />
+            )}
 
             {view === 'schema' && (
               <SchemaGraph
