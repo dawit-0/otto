@@ -184,6 +184,70 @@ def get_schema(db_id: str, db: Session = Depends(get_db)):
         conn.close()
 
 
+@router.get("/{db_id}/overview")
+def get_overview(db_id: str, db: Session = Depends(get_db)):
+    record = db.query(ConnectedDatabase).filter(ConnectedDatabase.db_id == db_id).first()
+    if not record:
+        raise HTTPException(status_code=404, detail="Database not found")
+
+    conn = get_connection(db_id, db)
+    try:
+        sqlite_version = conn.execute("SELECT sqlite_version()").fetchone()[0]
+        page_count = conn.execute("PRAGMA page_count").fetchone()[0]
+        page_size = conn.execute("PRAGMA page_size").fetchone()[0]
+
+        master = conn.execute(
+            "SELECT type, name FROM sqlite_master WHERE type IN ('table','view','index','trigger') AND name NOT LIKE 'sqlite_%'"
+        ).fetchall()
+        view_count = sum(1 for r in master if r[0] == "view")
+        trigger_count = sum(1 for r in master if r[0] == "trigger")
+
+        tables = get_table_info(conn)
+        total_rows = sum(t["row_count"] for t in tables)
+        total_columns = sum(len(t["columns"]) for t in tables)
+        total_indexes = sum(len(t["indexes"]) for t in tables)
+
+        table_summaries = [
+            {
+                "name": t["name"],
+                "row_count": t["row_count"],
+                "column_count": len(t["columns"]),
+                "index_count": len(t["indexes"]),
+                "fk_count": len(t["foreign_keys"]),
+                "has_pk": any(c["pk"] for c in t["columns"]),
+                "columns": [
+                    {"name": c["name"], "type": c["type"] or "ANY", "pk": c["pk"], "notnull": c["notnull"]}
+                    for c in t["columns"]
+                ],
+            }
+            for t in tables
+        ]
+
+        try:
+            file_size_bytes = os.path.getsize(record.path)
+        except OSError:
+            file_size_bytes = page_count * page_size
+
+        return {
+            "db_info": {
+                "path": record.path,
+                "file_size_bytes": file_size_bytes,
+                "sqlite_version": sqlite_version,
+            },
+            "stats": {
+                "table_count": len(tables),
+                "total_rows": total_rows,
+                "total_columns": total_columns,
+                "index_count": total_indexes,
+                "view_count": view_count,
+                "trigger_count": trigger_count,
+            },
+            "tables": table_summaries,
+        }
+    finally:
+        conn.close()
+
+
 @router.get("/{db_id}/tables/{table_name}/data")
 def get_table_data(db_id: str, table_name: str, limit: int = 100, offset: int = 0, db: Session = Depends(get_db)):
     conn = get_connection(db_id, db)

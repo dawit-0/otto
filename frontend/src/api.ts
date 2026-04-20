@@ -111,6 +111,33 @@ export interface SavedQueryEntry {
   updated_at: string;
 }
 
+export interface OverviewTableSummary {
+  name: string;
+  row_count: number;
+  column_count: number;
+  index_count: number;
+  fk_count: number;
+  has_pk: boolean;
+  columns: { name: string; type: string; pk: boolean; notnull: boolean }[];
+}
+
+export interface OverviewResponse {
+  db_info: {
+    path: string;
+    file_size_bytes: number;
+    sqlite_version: string;
+  };
+  stats: {
+    table_count: number;
+    total_rows: number;
+    total_columns: number;
+    index_count: number;
+    view_count: number;
+    trigger_count: number;
+  };
+  tables: OverviewTableSummary[];
+}
+
 const BASE = '/api';
 
 async function request<T>(url: string, options?: RequestInit): Promise<T> {
@@ -149,6 +176,8 @@ export const api = {
     request<{ ok: boolean }>(`/databases/${id}`, { method: 'DELETE' }),
 
   getSchema: (id: string) => request<SchemaResponse>(`/databases/${id}/schema`),
+
+  getOverview: (id: string) => request<OverviewResponse>(`/databases/${id}/overview`),
 
   getTableData: (id: string, table: string, limit = 100, offset = 0) =>
     request<TableDataResponse>(`/databases/${id}/tables/${table}/data?limit=${limit}&offset=${offset}`),
