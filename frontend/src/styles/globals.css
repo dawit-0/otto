@@ -642,6 +642,124 @@ body {
   flex-direction: column;
   overflow: hidden;
 }
+
+/* ─── Filter Toolbar ─── */
+.filter-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 14px;
+  border-bottom: 1px solid var(--border);
+  background: var(--bg-secondary);
+  flex-shrink: 0;
+}
+.filter-toolbar-search {
+  position: relative;
+  display: flex;
+  align-items: center;
+  flex: 1;
+  max-width: 320px;
+}
+.filter-search-icon {
+  position: absolute;
+  left: 10px;
+  color: var(--text-muted);
+  pointer-events: none;
+  flex-shrink: 0;
+}
+.filter-search-input {
+  width: 100%;
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  color: var(--text-primary);
+  font-size: 13px;
+  padding: 6px 30px 6px 32px;
+  outline: none;
+  transition: border-color 0.15s;
+}
+.filter-search-input::placeholder {
+  color: var(--text-muted);
+}
+.filter-search-input:focus {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 2px var(--ring-color);
+}
+.filter-search-clear {
+  position: absolute;
+  right: 8px;
+  background: none;
+  border: none;
+  color: var(--text-muted);
+  cursor: pointer;
+  font-size: 11px;
+  line-height: 1;
+  padding: 2px 4px;
+  border-radius: 3px;
+}
+.filter-search-clear:hover {
+  color: var(--text-primary);
+  background: var(--bg-hover);
+}
+.filter-toolbar-right {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-left: auto;
+}
+.filter-badge {
+  font-size: 12px;
+  color: var(--text-secondary);
+  background: var(--accent-subtle);
+  border: 1px solid rgba(99, 102, 241, 0.2);
+  border-radius: 4px;
+  padding: 3px 8px;
+  white-space: nowrap;
+}
+.filter-badge strong {
+  color: var(--accent-hover);
+  font-family: var(--font-mono);
+  font-size: 11px;
+}
+
+/* ─── Sortable Column Headers ─── */
+.data-table th.sortable {
+  cursor: pointer;
+  user-select: none;
+}
+.data-table th.sortable:hover {
+  background: var(--bg-hover);
+  color: var(--text-primary);
+}
+.th-content {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+}
+.sort-icon {
+  opacity: 0.3;
+  transition: opacity 0.15s;
+  flex-shrink: 0;
+}
+.sort-icon-active {
+  opacity: 1;
+  color: var(--accent-hover);
+}
+.sort-icon-idle {
+  opacity: 0;
+  transition: opacity 0.15s;
+}
+.data-table th.sortable:hover .sort-icon-idle {
+  opacity: 1;
+}
+.no-results-row {
+  text-align: center;
+  color: var(--text-muted);
+  font-style: italic;
+  padding: 32px 14px !important;
+  white-space: normal !important;
+  max-width: none !important;
+}
 .table-browser-header {
   padding: 12px 16px;
   border-bottom: 1px solid var(--border);

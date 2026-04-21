@@ -9,6 +9,14 @@ import { type ChartType } from './components/charts/ChartRenderer';
 
 type View = 'schema' | 'data' | 'query' | 'visualize';
 
+interface DataFilter {
+  sortColumn: string | null;
+  sortOrder: 'asc' | 'desc';
+  search: string;
+}
+
+const DEFAULT_FILTER: DataFilter = { sortColumn: null, sortOrder: 'asc', search: '' };
+
 export default function App() {
   const [databases, setDatabases] = useState<Database[]>([]);
   const [activeDb, setActiveDb] = useState<Database | null>(null);
@@ -23,6 +31,7 @@ export default function App() {
   // Table data state
   const [tableData, setTableData] = useState<{ columns: string[]; rows: Record<string, unknown>[]; total: number } | null>(null);
   const [dataOffset, setDataOffset] = useState(0);
+  const [dataFilter, setDataFilter] = useState<DataFilter>(DEFAULT_FILTER);
   const DATA_LIMIT = 100;
 
   useEffect(() => {
@@ -72,10 +81,18 @@ export default function App() {
     }
   };
 
-  const loadTableData = useCallback(async (tableName: string, offset = 0) => {
+  const loadTableData = useCallback(async (tableName: string, offset = 0, filter: DataFilter = DEFAULT_FILTER) => {
     if (!activeDb) return;
     try {
-      const data = await api.getTableData(activeDb.id, tableName, DATA_LIMIT, offset);
+      const data = await api.getTableData(
+        activeDb.id,
+        tableName,
+        DATA_LIMIT,
+        offset,
+        filter.sortColumn ?? undefined,
+        filter.sortColumn ? filter.sortOrder : undefined,
+        filter.search || undefined,
+      );
       setTableData({ columns: data.columns, rows: data.rows, total: data.total });
       setDataOffset(offset);
     } catch (e) {
@@ -86,11 +103,33 @@ export default function App() {
   const handleSelectTable = useCallback((name: string) => {
     setSelectedTable(name);
     setView('data');
-    loadTableData(name, 0);
+    setDataFilter(DEFAULT_FILTER);
+    loadTableData(name, 0, DEFAULT_FILTER);
   }, [loadTableData]);
 
   const handlePageChange = (offset: number) => {
-    if (selectedTable) loadTableData(selectedTable, offset);
+    if (selectedTable) loadTableData(selectedTable, offset, dataFilter);
+  };
+
+  const handleSortChange = (column: string) => {
+    const newFilter: DataFilter = {
+      ...dataFilter,
+      sortColumn: column,
+      sortOrder: dataFilter.sortColumn === column && dataFilter.sortOrder === 'asc' ? 'desc' : 'asc',
+    };
+    setDataFilter(newFilter);
+    if (selectedTable) loadTableData(selectedTable, 0, newFilter);
+  };
+
+  const handleSearchChange = (search: string) => {
+    const newFilter: DataFilter = { ...dataFilter, search };
+    setDataFilter(newFilter);
+    if (selectedTable) loadTableData(selectedTable, 0, newFilter);
+  };
+
+  const handleClearFilters = () => {
+    setDataFilter(DEFAULT_FILTER);
+    if (selectedTable) loadTableData(selectedTable, 0, DEFAULT_FILTER);
   };
 
   const handleVisualizeQuery = (sql: string, chartType: ChartType, xColumn: string, yColumns: string[]) => {
@@ -175,6 +214,7 @@ export default function App() {
                   <span className="table-browser-info">{tableData.total.toLocaleString()} rows</span>
                 </div>
                 <DataTable
+                  key={selectedTable}
                   columns={tableData.columns}
                   rows={tableData.rows}
                   total={tableData.total}
@@ -182,6 +222,12 @@ export default function App() {
                   offset={dataOffset}
                   onPageChange={handlePageChange}
                   exportFilename={selectedTable}
+                  sortColumn={dataFilter.sortColumn}
+                  sortOrder={dataFilter.sortOrder}
+                  onSortChange={handleSortChange}
+                  onSearchChange={handleSearchChange}
+                  onClearFilters={handleClearFilters}
+                  hasActiveFilters={!!dataFilter.search || !!dataFilter.sortColumn}
                 />
               </>
             )}

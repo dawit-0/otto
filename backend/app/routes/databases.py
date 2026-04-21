@@ -185,7 +185,16 @@ def get_schema(db_id: str, db: Session = Depends(get_db)):
 
 
 @router.get("/{db_id}/tables/{table_name}/data")
-def get_table_data(db_id: str, table_name: str, limit: int = 100, offset: int = 0, db: Session = Depends(get_db)):
+def get_table_data(
+    db_id: str,
+    table_name: str,
+    limit: int = 100,
+    offset: int = 0,
+    sort_column: str | None = None,
+    sort_order: str = "asc",
+    search: str | None = None,
+    db: Session = Depends(get_db),
+):
     conn = get_connection(db_id, db)
     try:
         try:
@@ -195,13 +204,31 @@ def get_table_data(db_id: str, table_name: str, limit: int = 100, offset: int = 
             raise HTTPException(status_code=404, detail=f"Unknown table: {table_name}")
 
         quoted = quote_identifier(table_name)
+
+        col_cursor = conn.execute(f"PRAGMA table_info({quoted})")
+        column_names = [row["name"] for row in col_cursor.fetchall()]
+
+        # Build WHERE clause for global search across all columns
+        params: list = []
+        where_clause = ""
+        if search and search.strip():
+            conditions = [f"CAST({quote_identifier(col)} AS TEXT) LIKE ?" for col in column_names]
+            where_clause = "WHERE " + " OR ".join(conditions)
+            params.extend([f"%{search}%"] * len(column_names))
+
+        # Build ORDER BY clause — validate column against known names to prevent injection
+        order_clause = ""
+        if sort_column and sort_column in column_names:
+            direction = "DESC" if sort_order.lower() == "desc" else "ASC"
+            order_clause = f"ORDER BY {quote_identifier(sort_column)} {direction}"
+
         cursor = conn.execute(
-            f"SELECT * FROM {quoted} LIMIT ? OFFSET ?",
-            (limit, offset),
+            f"SELECT * FROM {quoted} {where_clause} {order_clause} LIMIT ? OFFSET ?",
+            (*params, limit, offset),
         )
         columns = [desc[0] for desc in cursor.description]
         rows = [dict(row) for row in cursor.fetchall()]
-        count = conn.execute(f"SELECT COUNT(*) FROM {quoted}").fetchone()[0]
+        count = conn.execute(f"SELECT COUNT(*) FROM {quoted} {where_clause}", params).fetchone()[0]
         return {"columns": columns, "rows": rows, "total": count, "limit": limit, "offset": offset}
     except HTTPException:
         raise
