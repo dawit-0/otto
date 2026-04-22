@@ -393,24 +393,33 @@ body {
   flex-direction: column;
   gap: 10px;
 }
-.query-editor textarea {
-  width: 100%;
-  min-height: 120px;
-  padding: 12px;
-  background: var(--bg-secondary);
+/* ─── CodeMirror SQL editor shared styles ─── */
+.sql-editor-cm {
   border: 1px solid var(--border);
   border-radius: var(--radius);
-  color: var(--text-primary);
-  font-family: var(--font-mono);
-  font-size: 13px;
-  resize: vertical;
-  outline: none;
-  transition: border-color 0.15s ease;
-  line-height: 1.6;
+  overflow: hidden;
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+  min-height: 120px;
 }
-.query-editor textarea:focus {
+.sql-editor-cm:focus-within {
   border-color: var(--accent);
   box-shadow: 0 0 0 2px var(--ring-color);
+}
+.sql-editor-cm .cm-editor {
+  min-height: 120px;
+  font-family: var(--font-mono);
+  font-size: 13px;
+}
+.sql-editor-cm .cm-editor.cm-focused {
+  outline: none;
+}
+.sql-editor-cm .cm-scroller {
+  line-height: 1.65;
+  overflow: auto;
+  min-height: 120px;
+}
+.sql-editor-cm .cm-line {
+  padding-left: 4px;
 }
 .query-editor-actions {
   display: flex;
@@ -976,24 +985,16 @@ body {
   border-color: var(--accent);
   box-shadow: 0 0 0 2px var(--ring-color);
 }
-.viz-editor-field textarea {
-  width: 100%;
+/* viz editor inherits the shared .sql-editor-cm styles */
+.viz-editor-field .sql-editor-cm {
   min-height: 100px;
-  padding: 10px;
-  background: var(--bg-primary);
-  border: 1px solid var(--border);
-  border-radius: var(--radius-sm);
-  color: var(--text-primary);
-  font-family: var(--font-mono);
-  font-size: 12px;
-  resize: vertical;
-  outline: none;
-  line-height: 1.6;
-  transition: border-color 0.15s ease;
 }
-.viz-editor-field textarea:focus {
-  border-color: var(--accent);
-  box-shadow: 0 0 0 2px var(--ring-color);
+.viz-editor-field .sql-editor-cm .cm-editor {
+  min-height: 100px;
+  font-size: 12px;
+}
+.viz-editor-field .sql-editor-cm .cm-scroller {
+  min-height: 100px;
 }
 .viz-editor-row {
   display: flex;

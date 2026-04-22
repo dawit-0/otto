@@ -1,6 +1,7 @@
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useEffect } from 'react';
 import { api, type VisualizationRunResponse } from '../api';
 import ChartRenderer, { CHART_TYPES, type ChartType } from './charts/ChartRenderer';
+import SQLEditor from './SQLEditor';
 
 
 interface Props {
@@ -21,6 +22,7 @@ interface Props {
 
 export default function VisualizationEditor({ dbId, onPin, onClose, initial }: Props) {
   const [sql, setSql] = useState(initial?.sql || '');
+  const [schema, setSchema] = useState<Record<string, string[]>>({});
   const [title, setTitle] = useState(initial?.title || '');
   const [chartType, setChartType] = useState<ChartType>((initial?.chart_type as ChartType) || 'bar');
   const [result, setResult] = useState<VisualizationRunResponse | null>(null);
@@ -39,6 +41,14 @@ export default function VisualizationEditor({ dbId, onPin, onClose, initial }: P
   const [aiPrompt, setAiPrompt] = useState('');
   const [aiLoading, setAiLoading] = useState(false);
   const [aiError, setAiError] = useState<string | null>(null);
+
+  useEffect(() => {
+    api.getSchema(dbId).then((res) => {
+      const s: Record<string, string[]> = {};
+      for (const table of res.tables) s[table.name] = table.columns.map((c) => c.name);
+      setSchema(s);
+    }).catch(() => {});
+  }, [dbId]);
 
   const buildConfig = useCallback((): Record<string, unknown> => {
     const cfg: Record<string, unknown> = {};
@@ -75,13 +85,6 @@ export default function VisualizationEditor({ dbId, onPin, onClose, initial }: P
       setResult(null);
     } finally {
       setLoading(false);
-    }
-  };
-
-  const handleKeyDown = (e: React.KeyboardEvent) => {
-    if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') {
-      e.preventDefault();
-      run();
     }
   };
 
@@ -153,12 +156,12 @@ export default function VisualizationEditor({ dbId, onPin, onClose, initial }: P
 
             <div className="viz-editor-field">
               <label>SQL Query</label>
-              <textarea
+              <SQLEditor
                 value={sql}
-                onChange={(e) => setSql(e.target.value)}
-                onKeyDown={handleKeyDown}
+                onChange={setSql}
+                onExecute={run}
+                schema={schema}
                 placeholder="SELECT category, SUM(amount) as total FROM transactions GROUP BY category;"
-                spellCheck={false}
               />
               <button
                 className={`btn btn-ai btn-ai-sm${showAiInput ? ' btn-ai-active' : ''}`}
