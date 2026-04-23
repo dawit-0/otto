@@ -1,8 +1,161 @@
-import { useState, useEffect, useCallback } from 'react';
-import { api, type QueryResponse, type QueryHistoryEntry, type SavedQueryEntry } from '../api';
+import { useState, useEffect, useCallback, useRef } from 'react';
+import { api, type QueryResponse, type QueryHistoryEntry, type SavedQueryEntry, type TableInfo } from '../api';
 import DataTable from './DataTable';
 import QueryInsights from './QueryInsights';
 import { type ChartType } from './charts/ChartRenderer';
+
+// ─── Autocomplete engine ───────────────────────────────────────────────────
+
+const SQL_KEYWORDS = [
+  'SELECT', 'DISTINCT', 'FROM', 'WHERE', 'JOIN', 'LEFT JOIN', 'RIGHT JOIN',
+  'INNER JOIN', 'CROSS JOIN', 'ON', 'ORDER BY', 'GROUP BY', 'HAVING',
+  'LIMIT', 'OFFSET', 'INSERT INTO', 'VALUES', 'UPDATE', 'SET', 'DELETE FROM',
+  'AS', 'AND', 'OR', 'NOT', 'IN', 'NOT IN', 'LIKE', 'BETWEEN',
+  'IS NULL', 'IS NOT NULL', 'COUNT', 'SUM', 'AVG', 'MIN', 'MAX',
+  'COALESCE', 'NULLIF', 'CASE', 'WHEN', 'THEN', 'ELSE', 'END',
+  'UNION', 'UNION ALL', 'INTERSECT', 'EXCEPT',
+  'WITH', 'EXPLAIN', 'PRAGMA', 'CREATE TABLE', 'DROP TABLE', 'ALTER TABLE',
+];
+
+const TABLE_CONTEXTS = new Set([
+  'FROM', 'JOIN', 'LEFT JOIN', 'RIGHT JOIN', 'INNER JOIN', 'CROSS JOIN',
+  'INTO', 'UPDATE', 'TABLE',
+]);
+
+const COLUMN_CONTEXTS = new Set([
+  'SELECT', 'WHERE', 'ON', 'SET', 'HAVING', 'ORDER BY', 'GROUP BY', 'BY', 'DISTINCT',
+]);
+
+type SuggestionKind = 'keyword' | 'table' | 'column';
+
+interface Suggestion {
+  kind: SuggestionKind;
+  label: string;
+  detail?: string;
+  insert: string;
+}
+
+function getLastSqlContext(textBeforeWord: string): string {
+  const upper = textBeforeWord.toUpperCase().replace(/\s+/g, ' ');
+  const keywords = [
+    'LEFT JOIN', 'RIGHT JOIN', 'INNER JOIN', 'CROSS JOIN',
+    'ORDER BY', 'GROUP BY', 'INSERT INTO', 'DELETE FROM',
+    'IS NOT NULL', 'NOT IN', 'UNION ALL',
+    'SELECT', 'DISTINCT', 'FROM', 'WHERE', 'JOIN', 'INTO', 'UPDATE',
+    'ON', 'SET', 'HAVING', 'TABLE',
+  ];
+  let lastPos = -1;
+  let lastKw = '';
+  for (const kw of keywords) {
+    const re = new RegExp(`\\b${kw.replace(' ', '\\s+')}\\b`, 'g');
+    let m;
+    while ((m = re.exec(upper)) !== null) {
+      if (m.index > lastPos) {
+        lastPos = m.index;
+        lastKw = kw;
+      }
+    }
+  }
+  return lastKw;
+}
+
+function isInsideString(textBefore: string): boolean {
+  let count = 0;
+  for (let i = 0; i < textBefore.length; i++) {
+    if (textBefore[i] === "'") {
+      if (textBefore[i + 1] === "'") { i++; } else { count++; }
+    }
+  }
+  return count % 2 === 1;
+}
+
+function computeSuggestions(sql: string, cursor: number, tables: TableInfo[]): { suggestions: Suggestion[]; word: string } {
+  const textBefore = sql.slice(0, cursor);
+
+  if (isInsideString(textBefore)) return { suggestions: [], word: '' };
+
+  const wordMatch = textBefore.match(/[\w.]+$/);
+  if (!wordMatch || wordMatch[0].length === 0) return { suggestions: [], word: '' };
+  const word = wordMatch[0];
+
+  // Dot notation: table.col prefix
+  if (word.includes('.')) {
+    const dotIdx = word.lastIndexOf('.');
+    const tablePrefix = word.slice(0, dotIdx);
+    const colPrefix = word.slice(dotIdx + 1).toLowerCase();
+    const table = tables.find(t => t.name.toLowerCase() === tablePrefix.toLowerCase());
+    if (!table) return { suggestions: [], word };
+    const suggestions = table.columns
+      .filter(c => c.name.toLowerCase().startsWith(colPrefix))
+      .map(c => ({
+        kind: 'column' as SuggestionKind,
+        label: c.name,
+        detail: c.type || '',
+        insert: `${tablePrefix}.${c.name}`,
+      }))
+      .slice(0, 8);
+    return { suggestions, word };
+  }
+
+  const lower = word.toLowerCase();
+  const textBeforeWord = textBefore.slice(0, textBefore.length - word.length);
+  const context = getLastSqlContext(textBeforeWord);
+
+  const results: Suggestion[] = [];
+
+  if (TABLE_CONTEXTS.has(context)) {
+    tables.forEach(t => {
+      if (t.name.toLowerCase().startsWith(lower))
+        results.push({ kind: 'table', label: t.name, detail: `${t.row_count} rows`, insert: t.name });
+    });
+    tables.forEach(t =>
+      t.columns.forEach(c => {
+        if (c.name.toLowerCase().startsWith(lower))
+          results.push({ kind: 'column', label: c.name, detail: t.name, insert: c.name });
+      })
+    );
+  } else if (COLUMN_CONTEXTS.has(context)) {
+    tables.forEach(t =>
+      t.columns.forEach(c => {
+        if (c.name.toLowerCase().startsWith(lower))
+          results.push({ kind: 'column', label: c.name, detail: t.name, insert: c.name });
+      })
+    );
+    tables.forEach(t => {
+      if (t.name.toLowerCase().startsWith(lower))
+        results.push({ kind: 'table', label: t.name, detail: `${t.row_count} rows`, insert: t.name });
+    });
+  } else {
+    SQL_KEYWORDS.forEach(kw => {
+      if (kw.toLowerCase().startsWith(lower))
+        results.push({ kind: 'keyword', label: kw, insert: kw });
+    });
+    tables.forEach(t => {
+      if (t.name.toLowerCase().startsWith(lower))
+        results.push({ kind: 'table', label: t.name, detail: `${t.row_count} rows`, insert: t.name });
+    });
+    tables.forEach(t =>
+      t.columns.forEach(c => {
+        if (c.name.toLowerCase().startsWith(lower))
+          results.push({ kind: 'column', label: c.name, detail: t.name, insert: c.name });
+      })
+    );
+  }
+
+  const seen = new Set<string>();
+  const suggestions = results.filter(s => {
+    const key = `${s.kind}:${s.insert}`;
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  }).slice(0, 8);
+
+  return { suggestions, word };
+}
+
+const KIND_LABEL: Record<SuggestionKind, string> = { keyword: 'kw', table: 'tbl', column: 'col' };
+
+// ─── Component ────────────────────────────────────────────────────────────
 
 interface Props {
   dbId: string;
@@ -29,6 +182,22 @@ export default function QueryEditor({ dbId, dbName, onVisualize }: Props) {
   const [saveName, setSaveName] = useState('');
   const [saveDescription, setSaveDescription] = useState('');
   const [editingQuery, setEditingQuery] = useState<SavedQueryEntry | null>(null);
+
+  // Autocomplete state
+  const [acSuggestions, setAcSuggestions] = useState<Suggestion[]>([]);
+  const [acIndex, setAcIndex] = useState(0);
+  const [acVisible, setAcVisible] = useState(false);
+  const [acWord, setAcWord] = useState('');
+  const schemaTablesRef = useRef<TableInfo[]>([]);
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const acListRef = useRef<HTMLDivElement>(null);
+
+  // Load schema for autocomplete
+  useEffect(() => {
+    api.getSchema(dbId)
+      .then(s => { schemaTablesRef.current = s.tables; })
+      .catch(() => { schemaTablesRef.current = []; });
+  }, [dbId]);
 
   const fetchHistory = useCallback(async () => {
     try {
@@ -124,9 +293,80 @@ export default function QueryEditor({ dbId, dbName, onVisualize }: Props) {
     }
   };
 
-  const handleKeyDown = (e: React.KeyboardEvent) => {
+  // Accept the currently highlighted autocomplete suggestion
+  const acceptSuggestion = useCallback((suggestion: Suggestion) => {
+    const textarea = textareaRef.current;
+    if (!textarea) return;
+    const cursor = textarea.selectionStart;
+    const before = sql.slice(0, cursor);
+    const after = sql.slice(cursor);
+    const newBefore = before.replace(/[\w.]+$/, '') + suggestion.insert;
+    const newSql = newBefore + after;
+    setSql(newSql);
+    setAcVisible(false);
+    requestAnimationFrame(() => {
+      textarea.focus();
+      textarea.selectionStart = textarea.selectionEnd = newBefore.length;
+    });
+  }, [sql]);
+
+  const handleSqlChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
+    const value = e.target.value;
+    setSql(value);
+    const cursor = e.target.selectionStart;
+    const { suggestions, word } = computeSuggestions(value, cursor, schemaTablesRef.current);
+    if (suggestions.length > 0) {
+      setAcSuggestions(suggestions);
+      setAcWord(word);
+      setAcIndex(0);
+      setAcVisible(true);
+    } else {
+      setAcVisible(false);
+    }
+  };
+
+  const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
+    if (acVisible) {
+      if (e.key === 'ArrowDown') {
+        e.preventDefault();
+        setAcIndex(i => {
+          const next = Math.min(i + 1, acSuggestions.length - 1);
+          // Scroll the highlighted item into view
+          requestAnimationFrame(() => {
+            acListRef.current?.children[next]?.scrollIntoView({ block: 'nearest' });
+          });
+          return next;
+        });
+        return;
+      }
+      if (e.key === 'ArrowUp') {
+        e.preventDefault();
+        setAcIndex(i => {
+          const next = Math.max(i - 1, 0);
+          requestAnimationFrame(() => {
+            acListRef.current?.children[next]?.scrollIntoView({ block: 'nearest' });
+          });
+          return next;
+        });
+        return;
+      }
+      if (e.key === 'Tab' || e.key === 'Enter') {
+        if (acSuggestions[acIndex]) {
+          e.preventDefault();
+          acceptSuggestion(acSuggestions[acIndex]);
+        }
+        return;
+      }
+      if (e.key === 'Escape') {
+        e.preventDefault();
+        setAcVisible(false);
+        return;
+      }
+    }
+
     if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') {
       e.preventDefault();
+      setAcVisible(false);
       run();
     }
   };
@@ -187,13 +427,38 @@ export default function QueryEditor({ dbId, dbName, onVisualize }: Props) {
   return (
     <div className="query-panel">
       <div className="query-editor">
-        <textarea
-          value={sql}
-          onChange={(e) => setSql(e.target.value)}
-          onKeyDown={handleKeyDown}
-          placeholder="SELECT * FROM table_name LIMIT 100;"
-          spellCheck={false}
-        />
+        <div className="ac-wrapper">
+          <textarea
+            ref={textareaRef}
+            value={sql}
+            onChange={handleSqlChange}
+            onKeyDown={handleKeyDown}
+            onBlur={() => setTimeout(() => setAcVisible(false), 120)}
+            placeholder="SELECT * FROM table_name LIMIT 100;"
+            spellCheck={false}
+          />
+          {acVisible && acSuggestions.length > 0 && (
+            <div className="ac-dropdown" ref={acListRef}>
+              {acSuggestions.map((s, i) => (
+                <div
+                  key={`${s.kind}:${s.insert}`}
+                  className={`ac-item${i === acIndex ? ' ac-item-active' : ''}`}
+                  onMouseDown={(e) => { e.preventDefault(); acceptSuggestion(s); }}
+                  onMouseEnter={() => setAcIndex(i)}
+                >
+                  <span className={`ac-badge ac-badge-${s.kind}`}>{KIND_LABEL[s.kind]}</span>
+                  <span className="ac-label">{highlightMatch(s.label, acWord)}</span>
+                  {s.detail && <span className="ac-detail">{s.detail}</span>}
+                </div>
+              ))}
+              <div className="ac-footer">
+                <span>↑↓ navigate</span>
+                <span>Tab / Enter to insert</span>
+                <span>Esc to close</span>
+              </div>
+            </div>
+          )}
+        </div>
         <div className="query-editor-actions">
           <button className="btn btn-primary" onClick={run} disabled={loading || !sql.trim()}>
             {loading ? 'Running...' : 'Run Query'}
@@ -412,5 +677,18 @@ export default function QueryEditor({ dbId, dbName, onVisualize }: Props) {
         </div>
       )}
     </div>
+  );
+}
+
+// Highlight the matched prefix in the suggestion label
+function highlightMatch(label: string, word: string): React.ReactNode {
+  if (!word || word.includes('.')) return label;
+  const matchWord = word.includes('.') ? word.split('.').pop()! : word;
+  if (!matchWord || !label.toLowerCase().startsWith(matchWord.toLowerCase())) return label;
+  return (
+    <>
+      <strong>{label.slice(0, matchWord.length)}</strong>
+      {label.slice(matchWord.length)}
+    </>
   );
 }
