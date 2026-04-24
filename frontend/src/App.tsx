@@ -5,9 +5,10 @@ import DataTable from './components/DataTable';
 import QueryEditor from './components/QueryEditor';
 import ConnectModal from './components/ConnectModal';
 import VisualizationDashboard from './components/VisualizationDashboard';
+import AskOtto from './components/AskOtto';
 import { type ChartType } from './components/charts/ChartRenderer';
 
-type View = 'schema' | 'data' | 'query' | 'visualize';
+type View = 'schema' | 'data' | 'query' | 'visualize' | 'ask';
 
 export default function App() {
   const [databases, setDatabases] = useState<Database[]>([]);
@@ -19,6 +20,8 @@ export default function App() {
   const [pendingVisualization, setPendingVisualization] = useState<{
     sql: string; chartType: ChartType; xColumn: string; yColumns: string[];
   } | null>(null);
+  const [askSeedSql, setAskSeedSql] = useState<string | null>(null);
+  const [queryKey, setQueryKey] = useState(0);
 
   // Table data state
   const [tableData, setTableData] = useState<{ columns: string[]; rows: Record<string, unknown>[]; total: number } | null>(null);
@@ -158,6 +161,9 @@ export default function App() {
               <button className={`header-tab${view === 'visualize' ? ' active' : ''}`} onClick={() => setView('visualize')}>
                 Visualize
               </button>
+              <button className={`header-tab header-tab-ask${view === 'ask' ? ' active' : ''}`} onClick={() => setView('ask')}>
+                ◆ Ask Otto
+              </button>
             </div>
 
             {view === 'schema' && (
@@ -198,8 +204,10 @@ export default function App() {
 
             {view === 'query' && (
               <QueryEditor
+                key={`${activeDb.id}-${queryKey}`}
                 dbId={activeDb.id}
                 dbName={activeDb.name}
+                initialSql={askSeedSql ?? undefined}
                 onVisualize={handleVisualizeQuery}
               />
             )}
@@ -210,6 +218,19 @@ export default function App() {
                 dbName={activeDb.name}
                 initialQuery={pendingVisualization}
                 onInitialQueryConsumed={() => setPendingVisualization(null)}
+              />
+            )}
+
+            {view === 'ask' && (
+              <AskOtto
+                key={activeDb.id}
+                dbId={activeDb.id}
+                dbName={activeDb.name}
+                onUseSql={(sql) => {
+                  setAskSeedSql(sql);
+                  setQueryKey((k) => k + 1);
+                  setView('query');
+                }}
               />
             )}
           </>

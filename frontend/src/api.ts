@@ -256,4 +256,16 @@ export const api = {
       method: 'POST',
       body: JSON.stringify({ db_id: dbId, prompt }),
     }),
+
+  askOtto: (dbId: string, question: string) =>
+    request<{
+      sql: string;
+      explanation: string;
+      columns: string[];
+      rows: Record<string, unknown>[];
+      row_count: number;
+    }>('/ai/ask', {
+      method: 'POST',
+      body: JSON.stringify({ db_id: dbId, question }),
+    }),
 };
