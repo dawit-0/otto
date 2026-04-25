@@ -393,24 +393,14 @@ body {
   flex-direction: column;
   gap: 10px;
 }
-.query-editor textarea {
+/* ─── CodeMirror SQL Editor ─── */
+.sql-editor-cm {
   width: 100%;
-  min-height: 120px;
-  padding: 12px;
-  background: var(--bg-secondary);
-  border: 1px solid var(--border);
-  border-radius: var(--radius);
-  color: var(--text-primary);
-  font-family: var(--font-mono);
-  font-size: 13px;
-  resize: vertical;
-  outline: none;
-  transition: border-color 0.15s ease;
-  line-height: 1.6;
 }
-.query-editor textarea:focus {
-  border-color: var(--accent);
-  box-shadow: 0 0 0 2px var(--ring-color);
+.sql-editor-cm .cm-editor {
+  width: 100%;
+  border-radius: var(--radius);
+  overflow: hidden;
 }
 .query-editor-actions {
   display: flex;

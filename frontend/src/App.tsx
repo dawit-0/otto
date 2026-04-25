@@ -200,6 +200,7 @@ export default function App() {
               <QueryEditor
                 dbId={activeDb.id}
                 dbName={activeDb.name}
+                schema={tables}
                 onVisualize={handleVisualizeQuery}
               />
             )}
