@@ -1,16 +1,18 @@
 import { useState, useEffect, useCallback } from 'react';
-import { api, type QueryResponse, type QueryHistoryEntry, type SavedQueryEntry } from '../api';
+import { api, type QueryResponse, type QueryHistoryEntry, type SavedQueryEntry, type TableInfo } from '../api';
 import DataTable from './DataTable';
 import QueryInsights from './QueryInsights';
+import SqlEditor from './SqlEditor';
 import { type ChartType } from './charts/ChartRenderer';
 
 interface Props {
   dbId: string;
   dbName: string;
+  schema?: TableInfo[];
   onVisualize?: (sql: string, chartType: ChartType, xColumn: string, yColumns: string[]) => void;
 }
 
-export default function QueryEditor({ dbId, dbName, onVisualize }: Props) {
+export default function QueryEditor({ dbId, dbName, schema = [], onVisualize }: Props) {
   const [sql, setSql] = useState('');
   const [result, setResult] = useState<QueryResponse | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -124,13 +126,6 @@ export default function QueryEditor({ dbId, dbName, onVisualize }: Props) {
     }
   };
 
-  const handleKeyDown = (e: React.KeyboardEvent) => {
-    if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') {
-      e.preventDefault();
-      run();
-    }
-  };
-
   const loadFromHistory = (entry: QueryHistoryEntry) => {
     setSql(entry.sql);
     setShowHistory(false);
@@ -187,12 +182,11 @@ export default function QueryEditor({ dbId, dbName, onVisualize }: Props) {
   return (
     <div className="query-panel">
       <div className="query-editor">
-        <textarea
+        <SqlEditor
           value={sql}
-          onChange={(e) => setSql(e.target.value)}
-          onKeyDown={handleKeyDown}
-          placeholder="SELECT * FROM table_name LIMIT 100;"
-          spellCheck={false}
+          onChange={setSql}
+          onRun={run}
+          schema={schema}
         />
         <div className="query-editor-actions">
           <button className="btn btn-primary" onClick={run} disabled={loading || !sql.trim()}>
@@ -224,7 +218,7 @@ export default function QueryEditor({ dbId, dbName, onVisualize }: Props) {
           >
             History
           </button>
-          <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>Cmd+Enter to execute</span>
+          <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>⌘↵ to run · Tab to accept suggestion</span>
           {error && <span className="query-status error">{error}</span>}
           {result && !error && (
             <span className="query-status success">
