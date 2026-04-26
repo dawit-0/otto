@@ -1,9 +1,10 @@
 import { useState, useEffect, useCallback } from 'react';
-import { api, type Database, type TableInfo } from './api';
+import { api, type Database, type TableInfo, type QueryHistoryEntry, type SavedQueryEntry } from './api';
 import SchemaGraph from './components/SchemaGraph';
 import DataTable from './components/DataTable';
 import QueryEditor from './components/QueryEditor';
 import ConnectModal from './components/ConnectModal';
+import CommandPalette from './components/CommandPalette';
 import VisualizationDashboard from './components/VisualizationDashboard';
 import { type ChartType } from './components/charts/ChartRenderer';
 
@@ -19,6 +20,12 @@ export default function App() {
   const [pendingVisualization, setPendingVisualization] = useState<{
     sql: string; chartType: ChartType; xColumn: string; yColumns: string[];
   } | null>(null);
+  const [pendingQuery, setPendingQuery] = useState<string | null>(null);
+
+  // Command palette
+  const [showCommandPalette, setShowCommandPalette] = useState(false);
+  const [paletteHistory, setPaletteHistory] = useState<QueryHistoryEntry[]>([]);
+  const [paletteSavedQueries, setPaletteSavedQueries] = useState<SavedQueryEntry[]>([]);
 
   // Table data state
   const [tableData, setTableData] = useState<{ columns: string[]; rows: Record<string, unknown>[]; total: number } | null>(null);
@@ -34,6 +41,26 @@ export default function App() {
       }
     }).catch(() => {});
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Global Cmd+K / Ctrl+K shortcut
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      if ((e.metaKey || e.ctrlKey) && e.key === 'k') {
+        e.preventDefault();
+        setShowCommandPalette(prev => !prev);
+      }
+    };
+    window.addEventListener('keydown', handler);
+    return () => window.removeEventListener('keydown', handler);
+  }, []);
+
+  // Load palette data when palette opens
+  useEffect(() => {
+    if (showCommandPalette && activeDb) {
+      api.getQueryHistory(activeDb.id, 20).then(setPaletteHistory).catch(() => {});
+      api.listSavedQueries(activeDb.id).then(setPaletteSavedQueries).catch(() => {});
+    }
+  }, [showCommandPalette, activeDb]);
 
   const loadSchema = useCallback(async (db: Database) => {
     try {
@@ -106,6 +133,14 @@ export default function App() {
           <div className="sidebar-logo">
             <span>&#9672;</span> Otto
           </div>
+          <button
+            className="btn-icon"
+            title="Command palette (⌘K)"
+            onClick={() => setShowCommandPalette(true)}
+            style={{ fontSize: 12, color: 'var(--text-muted)', border: '1px solid var(--border)', borderRadius: 'var(--radius-sm)', padding: '3px 7px', fontFamily: 'var(--font-mono)' }}
+          >
+            ⌘K
+          </button>
         </div>
 
         <div className="sidebar-section">
@@ -200,6 +235,8 @@ export default function App() {
               <QueryEditor
                 dbId={activeDb.id}
                 dbName={activeDb.name}
+                injectedSql={pendingQuery}
+                onInjectedSqlConsumed={() => setPendingQuery(null)}
                 onVisualize={handleVisualizeQuery}
               />
             )}
@@ -228,6 +265,22 @@ export default function App() {
       </div>
 
       {showConnect && <ConnectModal onConnect={handleConnect} onClose={() => setShowConnect(false)} />}
+
+      {showCommandPalette && (
+        <CommandPalette
+          databases={databases}
+          activeDb={activeDb}
+          tables={tables}
+          savedQueries={paletteSavedQueries}
+          queryHistory={paletteHistory}
+          onSelectTable={handleSelectTable}
+          onSelectDb={selectDb}
+          onLoadQuery={(sql) => setPendingQuery(sql)}
+          onSetView={setView}
+          onConnect={() => setShowConnect(true)}
+          onClose={() => setShowCommandPalette(false)}
+        />
+      )}
     </div>
   );
 }
