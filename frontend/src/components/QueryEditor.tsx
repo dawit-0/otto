@@ -7,10 +7,12 @@ import { type ChartType } from './charts/ChartRenderer';
 interface Props {
   dbId: string;
   dbName: string;
+  injectedSql?: string | null;
+  onInjectedSqlConsumed?: () => void;
   onVisualize?: (sql: string, chartType: ChartType, xColumn: string, yColumns: string[]) => void;
 }
 
-export default function QueryEditor({ dbId, dbName, onVisualize }: Props) {
+export default function QueryEditor({ dbId, dbName, injectedSql, onInjectedSqlConsumed, onVisualize }: Props) {
   const [sql, setSql] = useState('');
   const [result, setResult] = useState<QueryResponse | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -55,6 +57,13 @@ export default function QueryEditor({ dbId, dbName, onVisualize }: Props) {
   useEffect(() => {
     if (showSaved) fetchSavedQueries();
   }, [showSaved, fetchSavedQueries]);
+
+  useEffect(() => {
+    if (injectedSql) {
+      setSql(injectedSql);
+      onInjectedSqlConsumed?.();
+    }
+  }, [injectedSql]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const handleSaveQuery = async () => {
     if (!saveName.trim() || !sql.trim()) return;
