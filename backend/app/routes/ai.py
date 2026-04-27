@@ -1,6 +1,4 @@
-import json
-import subprocess
-
+import anthropic
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
@@ -13,10 +11,31 @@ logger = get_logger("ai")
 
 router = APIRouter(prefix="/api/ai", tags=["ai"])
 
+MODEL = "claude-opus-4-7"
+MAX_TOKENS = 1024
+
+SYSTEM_PROMPT = (
+    "You are a SQL query generator for SQLite databases. "
+    "Given a database schema and a user request in plain English, "
+    "return ONLY a valid SQLite SQL query. "
+    "Do NOT include any explanation, markdown, code fences, or extra text. "
+    "Return ONLY the raw SQL query text, nothing else."
+)
+
 
 class AiQueryRequest(BaseModel):
     db_id: str
     prompt: str
+
+
+_client: anthropic.Anthropic | None = None
+
+
+def get_client() -> anthropic.Anthropic:
+    global _client
+    if _client is None:
+        _client = anthropic.Anthropic()
+    return _client
 
 
 def _build_schema_summary(conn) -> str:
@@ -38,6 +57,18 @@ def _build_schema_summary(conn) -> str:
     return "\n".join(lines)
 
 
+def _strip_code_fences(text: str) -> str:
+    text = text.strip()
+    if text.startswith("```"):
+        lines = [l for l in text.split("\n") if not l.strip().startswith("```")]
+        text = "\n".join(lines).strip()
+    return text
+
+
+def _extract_text(response) -> str:
+    return "".join(b.text for b in response.content if b.type == "text")
+
+
 @router.post("/generate-query")
 def generate_query(req: AiQueryRequest, db: Session = Depends(get_db)):
     logger.info("AI query generation requested for db_id=%s: %.100s", req.db_id, req.prompt)
@@ -47,14 +78,6 @@ def generate_query(req: AiQueryRequest, db: Session = Depends(get_db)):
     finally:
         conn.close()
 
-    system_prompt = (
-        "You are a SQL query generator for SQLite databases. "
-        "Given a database schema and a user request in plain English, "
-        "return ONLY a valid SQLite SQL query. "
-        "Do NOT include any explanation, markdown, code fences, or extra text. "
-        "Return ONLY the raw SQL query text, nothing else."
-    )
-
     user_prompt = (
         f"Database schema:\n{schema_summary}\n\n"
         f"User request: {req.prompt}\n\n"
@@ -62,43 +85,39 @@ def generate_query(req: AiQueryRequest, db: Session = Depends(get_db)):
     )
 
     try:
-        result = subprocess.run(
-            [
-                "claude",
-                "--print",
-                "--system-prompt", system_prompt,
-                user_prompt,
-            ],
-            capture_output=True,
-            text=True,
-            timeout=30,
+        response = get_client().messages.create(
+            model=MODEL,
+            max_tokens=MAX_TOKENS,
+            system=SYSTEM_PROMPT,
+            messages=[{"role": "user", "content": user_prompt}],
         )
-
-        if result.returncode != 0:
-            logger.error("Claude CLI returned non-zero exit code: %s", result.stderr.strip())
-            raise HTTPException(
-                status_code=500,
-                detail=f"Claude CLI error: {result.stderr.strip() or 'Unknown error'}",
-            )
-
-        sql = result.stdout.strip()
-
-        # Strip markdown code fences if the model included them despite instructions
-        if sql.startswith("```"):
-            lines = sql.split("\n")
-            # Remove first line (```sql or ```) and last line (```)
-            lines = [l for l in lines if not l.strip().startswith("```")]
-            sql = "\n".join(lines).strip()
-
-        logger.info("AI generated query for db_id=%s: %.100s", req.db_id, sql)
-        return {"sql": sql}
-
-    except subprocess.TimeoutExpired:
-        logger.error("AI query generation timed out after 30s for db_id=%s", req.db_id)
-        raise HTTPException(status_code=504, detail="AI query generation timed out")
-    except FileNotFoundError:
-        logger.error("Claude CLI not found on system PATH")
+    except anthropic.AuthenticationError as e:
+        logger.error("Anthropic authentication failed: %s", e)
         raise HTTPException(
             status_code=500,
-            detail="Claude CLI not found. Please install and configure the Claude CLI.",
+            detail="AI service authentication failed. Check ANTHROPIC_API_KEY.",
         )
+    except anthropic.RateLimitError as e:
+        logger.error("Anthropic rate limit hit: %s", e)
+        raise HTTPException(
+            status_code=429,
+            detail="AI service rate limit exceeded. Try again shortly.",
+        )
+    except anthropic.APIConnectionError as e:
+        logger.error("Anthropic connection error: %s", e)
+        raise HTTPException(status_code=502, detail="Could not reach AI service.")
+    except anthropic.APIStatusError as e:
+        logger.error("Anthropic API error %s: %s", e.status_code, e)
+        raise HTTPException(
+            status_code=502,
+            detail=f"AI service error: {getattr(e, 'message', None) or str(e)}",
+        )
+
+    sql = _strip_code_fences(_extract_text(response))
+
+    if not sql:
+        logger.error("AI returned empty SQL for db_id=%s", req.db_id)
+        raise HTTPException(status_code=502, detail="AI returned an empty response")
+
+    logger.info("AI generated query for db_id=%s: %.100s", req.db_id, sql)
+    return {"sql": sql}
