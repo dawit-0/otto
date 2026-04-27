@@ -100,6 +100,21 @@ export interface VisualizationRunResponse {
   row_count: number;
 }
 
+export interface SearchTableResult {
+  table: string;
+  columns: string[];
+  rows: Record<string, unknown>[];
+  match_count: number;
+  showing: number;
+}
+
+export interface SearchResponse {
+  query: string;
+  total_tables_searched: number;
+  total_matches: number;
+  results: SearchTableResult[];
+}
+
 export interface SavedQueryEntry {
   id: number;
   db_id: string;
@@ -248,6 +263,11 @@ export const api = {
 
   deleteSavedQuery: (id: number) =>
     request<{ deleted: number }>(`/saved-queries/${id}`, { method: 'DELETE' }),
+
+  searchDatabase: (id: string, q: string, limit = 5) =>
+    request<SearchResponse>(
+      `/databases/${id}/search?q=${encodeURIComponent(q)}&limit=${limit}`
+    ),
 
   // ── AI ──
 
