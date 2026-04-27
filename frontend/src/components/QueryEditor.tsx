@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback } from 'react';
 import { api, type QueryResponse, type QueryHistoryEntry, type SavedQueryEntry } from '../api';
 import DataTable from './DataTable';
 import QueryInsights from './QueryInsights';
+import SQLEditor from './SQLEditor';
 import { type ChartType } from './charts/ChartRenderer';
 
 interface Props {
@@ -12,6 +13,7 @@ interface Props {
 
 export default function QueryEditor({ dbId, dbName, onVisualize }: Props) {
   const [sql, setSql] = useState('');
+  const [schema, setSchema] = useState<Record<string, string[]>>({});
   const [result, setResult] = useState<QueryResponse | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
@@ -29,6 +31,15 @@ export default function QueryEditor({ dbId, dbName, onVisualize }: Props) {
   const [saveName, setSaveName] = useState('');
   const [saveDescription, setSaveDescription] = useState('');
   const [editingQuery, setEditingQuery] = useState<SavedQueryEntry | null>(null);
+
+  // Fetch schema for autocomplete whenever the active database changes
+  useEffect(() => {
+    api.getSchema(dbId).then((res) => {
+      const s: Record<string, string[]> = {};
+      for (const table of res.tables) s[table.name] = table.columns.map((c) => c.name);
+      setSchema(s);
+    }).catch(() => {});
+  }, [dbId]);
 
   const fetchHistory = useCallback(async () => {
     try {
@@ -124,13 +135,6 @@ export default function QueryEditor({ dbId, dbName, onVisualize }: Props) {
     }
   };
 
-  const handleKeyDown = (e: React.KeyboardEvent) => {
-    if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') {
-      e.preventDefault();
-      run();
-    }
-  };
-
   const loadFromHistory = (entry: QueryHistoryEntry) => {
     setSql(entry.sql);
     setShowHistory(false);
@@ -187,12 +191,12 @@ export default function QueryEditor({ dbId, dbName, onVisualize }: Props) {
   return (
     <div className="query-panel">
       <div className="query-editor">
-        <textarea
+        <SQLEditor
           value={sql}
-          onChange={(e) => setSql(e.target.value)}
-          onKeyDown={handleKeyDown}
+          onChange={setSql}
+          onExecute={run}
+          schema={schema}
           placeholder="SELECT * FROM table_name LIMIT 100;"
-          spellCheck={false}
         />
         <div className="query-editor-actions">
           <button className="btn btn-primary" onClick={run} disabled={loading || !sql.trim()}>
