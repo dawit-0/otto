@@ -5,9 +5,10 @@ import DataTable from './components/DataTable';
 import QueryEditor from './components/QueryEditor';
 import ConnectModal from './components/ConnectModal';
 import VisualizationDashboard from './components/VisualizationDashboard';
+import SearchView from './components/SearchView';
 import { type ChartType } from './components/charts/ChartRenderer';
 
-type View = 'schema' | 'data' | 'query' | 'visualize';
+type View = 'schema' | 'data' | 'query' | 'visualize' | 'search';
 
 export default function App() {
   const [databases, setDatabases] = useState<Database[]>([]);
@@ -19,6 +20,7 @@ export default function App() {
   const [pendingVisualization, setPendingVisualization] = useState<{
     sql: string; chartType: ChartType; xColumn: string; yColumns: string[];
   } | null>(null);
+  const [searchFocusTrigger, setSearchFocusTrigger] = useState(0);
 
   // Table data state
   const [tableData, setTableData] = useState<{ columns: string[]; rows: Record<string, unknown>[]; total: number } | null>(null);
@@ -34,6 +36,20 @@ export default function App() {
       }
     }).catch(() => {});
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if ((e.metaKey || e.ctrlKey) && e.key === 'k') {
+        e.preventDefault();
+        if (activeDb) {
+          setView('search');
+          setSearchFocusTrigger((n) => n + 1);
+        }
+      }
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [activeDb]);
 
   const loadSchema = useCallback(async (db: Database) => {
     try {
@@ -158,6 +174,13 @@ export default function App() {
               <button className={`header-tab${view === 'visualize' ? ' active' : ''}`} onClick={() => setView('visualize')}>
                 Visualize
               </button>
+              <button
+                className={`header-tab${view === 'search' ? ' active' : ''}`}
+                onClick={() => { setView('search'); setSearchFocusTrigger((n) => n + 1); }}
+                title="Search all tables (⌘K)"
+              >
+                &#9906; Search
+              </button>
             </div>
 
             {view === 'schema' && (
@@ -210,6 +233,15 @@ export default function App() {
                 dbName={activeDb.name}
                 initialQuery={pendingVisualization}
                 onInitialQueryConsumed={() => setPendingVisualization(null)}
+              />
+            )}
+
+            {view === 'search' && (
+              <SearchView
+                dbId={activeDb.id}
+                dbName={activeDb.name}
+                autoFocusTrigger={searchFocusTrigger}
+                onNavigateToTable={handleSelectTable}
               />
             )}
           </>
