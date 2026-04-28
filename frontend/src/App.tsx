@@ -5,6 +5,7 @@ import DataTable from './components/DataTable';
 import QueryEditor from './components/QueryEditor';
 import ConnectModal from './components/ConnectModal';
 import VisualizationDashboard from './components/VisualizationDashboard';
+import CommandPalette from './components/CommandPalette';
 import { type ChartType } from './components/charts/ChartRenderer';
 
 type View = 'schema' | 'data' | 'query' | 'visualize';
@@ -16,6 +17,8 @@ export default function App() {
   const [selectedTable, setSelectedTable] = useState<string | null>(null);
   const [view, setView] = useState<View>('schema');
   const [showConnect, setShowConnect] = useState(false);
+  const [showPalette, setShowPalette] = useState(false);
+  const [injectedSql, setInjectedSql] = useState<string | null>(null);
   const [pendingVisualization, setPendingVisualization] = useState<{
     sql: string; chartType: ChartType; xColumn: string; yColumns: string[];
   } | null>(null);
@@ -34,6 +37,17 @@ export default function App() {
       }
     }).catch(() => {});
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      if ((e.metaKey || e.ctrlKey) && e.key === 'k') {
+        e.preventDefault();
+        setShowPalette(prev => !prev);
+      }
+    };
+    window.addEventListener('keydown', handler);
+    return () => window.removeEventListener('keydown', handler);
+  }, []);
 
   const loadSchema = useCallback(async (db: Database) => {
     try {
@@ -158,6 +172,9 @@ export default function App() {
               <button className={`header-tab${view === 'visualize' ? ' active' : ''}`} onClick={() => setView('visualize')}>
                 Visualize
               </button>
+              <button className="header-cmd-k" onClick={() => setShowPalette(true)} title="Open command palette">
+                <span>⌘K</span>
+              </button>
             </div>
 
             {view === 'schema' && (
@@ -201,6 +218,8 @@ export default function App() {
                 dbId={activeDb.id}
                 dbName={activeDb.name}
                 onVisualize={handleVisualizeQuery}
+                injectedSql={injectedSql}
+                onInjectedSqlConsumed={() => setInjectedSql(null)}
               />
             )}
 
@@ -228,6 +247,20 @@ export default function App() {
       </div>
 
       {showConnect && <ConnectModal onConnect={handleConnect} onClose={() => setShowConnect(false)} />}
+
+      {showPalette && (
+        <CommandPalette
+          tables={tables}
+          databases={databases}
+          activeDb={activeDb}
+          onSelectTable={handleSelectTable}
+          onSelectDb={selectDb}
+          onNavigate={(v) => setView(v)}
+          onOpenConnect={() => setShowConnect(true)}
+          onLoadSql={(sql) => setInjectedSql(sql)}
+          onClose={() => setShowPalette(false)}
+        />
+      )}
     </div>
   );
 }
