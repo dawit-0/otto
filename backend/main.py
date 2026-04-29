@@ -3,7 +3,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from app.database import init_db
 from app.logging import setup_logging, get_logger
-from app.routes import databases, query, history, visualizations, ai, saved_queries
+from app.routes import databases, query, history, visualizations, ai, ai_chat, saved_queries
 
 import time
 
@@ -24,6 +24,7 @@ app.include_router(query.router)
 app.include_router(history.router)
 app.include_router(visualizations.router)
 app.include_router(ai.router)
+app.include_router(ai_chat.router)
 app.include_router(saved_queries.router)
 
 

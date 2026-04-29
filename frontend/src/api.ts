@@ -256,4 +256,21 @@ export const api = {
       method: 'POST',
       body: JSON.stringify({ db_id: dbId, prompt }),
     }),
+
+  chatWithAi: (
+    dbId: string,
+    messages: { role: string; content: string }[],
+    message: string,
+  ) =>
+    request<{
+      answer: string;
+      sql: string | null;
+      columns: string[] | null;
+      rows: Record<string, unknown>[] | null;
+      row_count: number | null;
+      query_error: string | null;
+    }>('/ai/chat', {
+      method: 'POST',
+      body: JSON.stringify({ db_id: dbId, messages, message }),
+    }),
 };
