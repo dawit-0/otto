@@ -5,9 +5,10 @@ import DataTable from './components/DataTable';
 import QueryEditor from './components/QueryEditor';
 import ConnectModal from './components/ConnectModal';
 import VisualizationDashboard from './components/VisualizationDashboard';
+import ChatPanel from './components/ChatPanel';
 import { type ChartType } from './components/charts/ChartRenderer';
 
-type View = 'schema' | 'data' | 'query' | 'visualize';
+type View = 'schema' | 'data' | 'query' | 'visualize' | 'chat';
 
 export default function App() {
   const [databases, setDatabases] = useState<Database[]>([]);
@@ -19,6 +20,7 @@ export default function App() {
   const [pendingVisualization, setPendingVisualization] = useState<{
     sql: string; chartType: ChartType; xColumn: string; yColumns: string[];
   } | null>(null);
+  const [chatEditorSql, setChatEditorSql] = useState<string | null>(null);
 
   // Table data state
   const [tableData, setTableData] = useState<{ columns: string[]; rows: Record<string, unknown>[]; total: number } | null>(null);
@@ -98,6 +100,11 @@ export default function App() {
     setView('visualize');
   };
 
+  const handleChatOpenInEditor = (sql: string) => {
+    setChatEditorSql(sql);
+    setView('query');
+  };
+
   return (
     <div className="app-layout">
       {/* Sidebar */}
@@ -158,6 +165,9 @@ export default function App() {
               <button className={`header-tab${view === 'visualize' ? ' active' : ''}`} onClick={() => setView('visualize')}>
                 Visualize
               </button>
+              <button className={`header-tab header-tab-chat${view === 'chat' ? ' active' : ''}`} onClick={() => setView('chat')}>
+                &#9830; Ask Otto
+              </button>
             </div>
 
             {view === 'schema' && (
@@ -200,6 +210,8 @@ export default function App() {
               <QueryEditor
                 dbId={activeDb.id}
                 dbName={activeDb.name}
+                initialSql={chatEditorSql}
+                onInitialSqlConsumed={() => setChatEditorSql(null)}
                 onVisualize={handleVisualizeQuery}
               />
             )}
@@ -210,6 +222,13 @@ export default function App() {
                 dbName={activeDb.name}
                 initialQuery={pendingVisualization}
                 onInitialQueryConsumed={() => setPendingVisualization(null)}
+              />
+            )}
+
+            {view === 'chat' && (
+              <ChatPanel
+                dbId={activeDb.id}
+                onUseInEditor={handleChatOpenInEditor}
               />
             )}
           </>
