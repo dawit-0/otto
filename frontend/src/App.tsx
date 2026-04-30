@@ -2,12 +2,14 @@ import { useState, useEffect, useCallback } from 'react';
 import { api, type Database, type TableInfo } from './api';
 import SchemaGraph from './components/SchemaGraph';
 import DataTable from './components/DataTable';
+import TableProfiler from './components/TableProfiler';
 import QueryEditor from './components/QueryEditor';
 import ConnectModal from './components/ConnectModal';
 import VisualizationDashboard from './components/VisualizationDashboard';
 import { type ChartType } from './components/charts/ChartRenderer';
 
 type View = 'schema' | 'data' | 'query' | 'visualize';
+type DataSubView = 'browse' | 'profile';
 
 export default function App() {
   const [databases, setDatabases] = useState<Database[]>([]);
@@ -15,6 +17,7 @@ export default function App() {
   const [tables, setTables] = useState<TableInfo[]>([]);
   const [selectedTable, setSelectedTable] = useState<string | null>(null);
   const [view, setView] = useState<View>('schema');
+  const [dataSubView, setDataSubView] = useState<DataSubView>('browse');
   const [showConnect, setShowConnect] = useState(false);
   const [pendingVisualization, setPendingVisualization] = useState<{
     sql: string; chartType: ChartType; xColumn: string; yColumns: string[];
@@ -86,6 +89,7 @@ export default function App() {
   const handleSelectTable = useCallback((name: string) => {
     setSelectedTable(name);
     setView('data');
+    setDataSubView('browse');
     loadTableData(name, 0);
   }, [loadTableData]);
 
@@ -172,17 +176,37 @@ export default function App() {
               <>
                 <div className="table-browser-header">
                   <span className="table-browser-title">{selectedTable}</span>
-                  <span className="table-browser-info">{tableData.total.toLocaleString()} rows</span>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                    <span className="table-browser-info">{tableData.total.toLocaleString()} rows</span>
+                    <div className="data-view-toggle">
+                      <button
+                        className={`data-view-toggle-btn${dataSubView === 'browse' ? ' active' : ''}`}
+                        onClick={() => setDataSubView('browse')}
+                      >
+                        Browse
+                      </button>
+                      <button
+                        className={`data-view-toggle-btn${dataSubView === 'profile' ? ' active' : ''}`}
+                        onClick={() => setDataSubView('profile')}
+                      >
+                        Profile
+                      </button>
+                    </div>
+                  </div>
                 </div>
-                <DataTable
-                  columns={tableData.columns}
-                  rows={tableData.rows}
-                  total={tableData.total}
-                  limit={DATA_LIMIT}
-                  offset={dataOffset}
-                  onPageChange={handlePageChange}
-                  exportFilename={selectedTable}
-                />
+                {dataSubView === 'browse' ? (
+                  <DataTable
+                    columns={tableData.columns}
+                    rows={tableData.rows}
+                    total={tableData.total}
+                    limit={DATA_LIMIT}
+                    offset={dataOffset}
+                    onPageChange={handlePageChange}
+                    exportFilename={selectedTable}
+                  />
+                ) : (
+                  <TableProfiler dbId={activeDb!.id} tableName={selectedTable} />
+                )}
               </>
             )}
 

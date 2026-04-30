@@ -184,6 +184,144 @@ def get_schema(db_id: str, db: Session = Depends(get_db)):
         conn.close()
 
 
+def _type_affinity(declared_type: str) -> str:
+    """Map a SQLite declared type to a broad affinity category."""
+    t = declared_type.upper()
+    if "INT" in t:
+        return "numeric"
+    if any(k in t for k in ("CHAR", "CLOB", "TEXT")):
+        return "text"
+    if any(k in t for k in ("REAL", "FLOA", "DOUB")):
+        return "numeric"
+    if any(k in t for k in ("DATE", "TIME")):
+        return "text"
+    if t in ("", "BLOB"):
+        return "other"
+    # NUMERIC affinity (e.g. NUMERIC, DECIMAL)
+    return "numeric"
+
+
+def _profile_column(conn: sqlite3.Connection, table_quoted: str, col_name: str, declared_type: str, row_count: int) -> dict:
+    col_quoted = quote_identifier(col_name)
+    affinity = _type_affinity(declared_type)
+
+    null_count = conn.execute(
+        f"SELECT COUNT(*) FROM {table_quoted} WHERE {col_quoted} IS NULL"
+    ).fetchone()[0]
+    null_pct = round(null_count / row_count * 100, 1) if row_count > 0 else 0.0
+
+    unique_count = conn.execute(
+        f"SELECT COUNT(DISTINCT {col_quoted}) FROM {table_quoted}"
+    ).fetchone()[0]
+    unique_pct = round(unique_count / row_count * 100, 1) if row_count > 0 else 0.0
+
+    sample_rows = conn.execute(
+        f"SELECT DISTINCT {col_quoted} FROM {table_quoted} WHERE {col_quoted} IS NOT NULL LIMIT 3"
+    ).fetchall()
+    sample_values = [row[0] for row in sample_rows]
+
+    result: dict = {
+        "name": col_name,
+        "type": declared_type,
+        "affinity": affinity,
+        "null_count": null_count,
+        "null_pct": null_pct,
+        "unique_count": unique_count,
+        "unique_pct": unique_pct,
+        "sample_values": sample_values,
+    }
+
+    non_null = row_count - null_count
+
+    if affinity == "numeric" and non_null > 0:
+        stats = conn.execute(
+            f"SELECT MIN(CAST({col_quoted} AS REAL)), MAX(CAST({col_quoted} AS REAL)), AVG(CAST({col_quoted} AS REAL)) "
+            f"FROM {table_quoted} WHERE {col_quoted} IS NOT NULL"
+        ).fetchone()
+        min_val, max_val, avg_val = stats
+        result["min"] = min_val
+        result["max"] = max_val
+        result["avg"] = round(avg_val, 4) if avg_val is not None else None
+
+        # Build a 10-bucket histogram
+        histogram = []
+        if min_val is not None and max_val is not None and min_val != max_val:
+            span = max_val - min_val
+            bucket_rows = conn.execute(
+                f"SELECT CAST(MIN(CAST((CAST({col_quoted} AS REAL) - ?) / ? * 10 AS INT), 9) AS INT) AS b, COUNT(*) "
+                f"FROM {table_quoted} WHERE {col_quoted} IS NOT NULL GROUP BY b ORDER BY b",
+                (min_val, span),
+            ).fetchall()
+            bucket_map = {row[0]: row[1] for row in bucket_rows}
+            for i in range(10):
+                start = min_val + (span * i / 10)
+                end = min_val + (span * (i + 1) / 10)
+                histogram.append({
+                    "bucket_start": round(start, 4),
+                    "bucket_end": round(end, 4),
+                    "count": bucket_map.get(i, 0),
+                })
+        elif min_val is not None:
+            histogram.append({"bucket_start": min_val, "bucket_end": min_val, "count": non_null})
+        result["histogram"] = histogram
+
+    elif affinity == "text" and non_null > 0:
+        avg_len = conn.execute(
+            f"SELECT AVG(LENGTH(CAST({col_quoted} AS TEXT))) FROM {table_quoted} WHERE {col_quoted} IS NOT NULL"
+        ).fetchone()[0]
+        result["avg_length"] = round(avg_len, 1) if avg_len is not None else None
+
+        top_rows = conn.execute(
+            f"SELECT CAST({col_quoted} AS TEXT), COUNT(*) as cnt FROM {table_quoted} "
+            f"WHERE {col_quoted} IS NOT NULL GROUP BY {col_quoted} ORDER BY cnt DESC LIMIT 10"
+        ).fetchall()
+        result["top_values"] = [{"value": str(r[0]), "count": r[1]} for r in top_rows]
+
+    return result
+
+
+@router.get("/{db_id}/tables/{table_name}/profile")
+def get_table_profile(db_id: str, table_name: str, db: Session = Depends(get_db)):
+    conn = get_connection(db_id, db)
+    try:
+        try:
+            assert_valid_table(conn, table_name)
+        except ValueError:
+            raise HTTPException(status_code=404, detail=f"Unknown table: {table_name}")
+
+        quoted = quote_identifier(table_name)
+        row_count = conn.execute(f"SELECT COUNT(*) FROM {quoted}").fetchone()[0]
+
+        cols_cursor = conn.execute(f"PRAGMA table_info({quoted})")
+        columns = []
+        for col in cols_cursor.fetchall():
+            try:
+                profile = _profile_column(conn, quoted, col["name"], col["type"] or "", row_count)
+                columns.append(profile)
+            except Exception as e:
+                logger.warning("Failed to profile column '%s': %s", col["name"], e)
+                columns.append({
+                    "name": col["name"],
+                    "type": col["type"] or "",
+                    "affinity": "other",
+                    "null_count": 0,
+                    "null_pct": 0.0,
+                    "unique_count": 0,
+                    "unique_pct": 0.0,
+                    "sample_values": [],
+                })
+
+        logger.info("Profiled table '%s' (db_id=%s): %d columns, %d rows", table_name, db_id, len(columns), row_count)
+        return {"table": table_name, "row_count": row_count, "columns": columns}
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error("Error profiling table '%s' from db_id=%s: %s", table_name, db_id, e)
+        raise HTTPException(status_code=400, detail=str(e))
+    finally:
+        conn.close()
+
+
 @router.get("/{db_id}/tables/{table_name}/data")
 def get_table_data(db_id: str, table_name: str, limit: int = 100, offset: int = 0, db: Session = Depends(get_db)):
     conn = get_connection(db_id, db)
