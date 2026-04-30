@@ -111,6 +111,37 @@ export interface SavedQueryEntry {
   updated_at: string;
 }
 
+export interface ColumnHistogramBucket {
+  bucket_start: number;
+  bucket_end: number;
+  count: number;
+}
+
+export interface ColumnProfile {
+  name: string;
+  type: string;
+  affinity: 'numeric' | 'text' | 'other';
+  null_count: number;
+  null_pct: number;
+  unique_count: number;
+  unique_pct: number;
+  sample_values: (string | number | null)[];
+  // numeric only
+  min?: number | null;
+  max?: number | null;
+  avg?: number | null;
+  histogram?: ColumnHistogramBucket[];
+  // text only
+  avg_length?: number | null;
+  top_values?: { value: string; count: number }[];
+}
+
+export interface TableProfileResponse {
+  table: string;
+  row_count: number;
+  columns: ColumnProfile[];
+}
+
 const BASE = '/api';
 
 async function request<T>(url: string, options?: RequestInit): Promise<T> {
@@ -152,6 +183,9 @@ export const api = {
 
   getTableData: (id: string, table: string, limit = 100, offset = 0) =>
     request<TableDataResponse>(`/databases/${id}/tables/${table}/data?limit=${limit}&offset=${offset}`),
+
+  getTableProfile: (id: string, table: string) =>
+    request<TableProfileResponse>(`/databases/${id}/tables/${table}/profile`),
 
   executeQuery: (dbId: string, sql: string) =>
     request<QueryResponse>('/query', {
