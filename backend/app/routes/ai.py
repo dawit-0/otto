@@ -1,3 +1,5 @@
+import re
+
 import anthropic
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
@@ -22,10 +24,33 @@ SYSTEM_PROMPT = (
     "Return ONLY the raw SQL query text, nothing else."
 )
 
+CHAT_SYSTEM_PROMPT = """\
+You are Otto, a friendly and insightful AI data analyst for SQLite databases.
+Help users explore and understand their data through natural conversation.
+
+When a question requires querying data:
+- Write exactly ONE SQL query in a ```sql code block
+- Keep the SQL valid for SQLite
+- After the SQL block, briefly explain what the results mean and highlight interesting patterns
+
+When a question doesn't need data (e.g. "what tables exist?", "describe the schema"), answer directly without SQL.
+Be concise, clear, and point out interesting trends or anomalies when you see them.
+"""
+
 
 class AiQueryRequest(BaseModel):
     db_id: str
     prompt: str
+
+
+class ChatMessage(BaseModel):
+    role: str
+    content: str
+
+
+class ChatRequest(BaseModel):
+    db_id: str
+    messages: list[ChatMessage]
 
 
 _client: anthropic.Anthropic | None = None
@@ -121,3 +146,83 @@ def generate_query(req: AiQueryRequest, db: Session = Depends(get_db)):
 
     logger.info("AI generated query for db_id=%s: %.100s", req.db_id, sql)
     return {"sql": sql}
+
+
+def _extract_sql_block(text: str) -> str | None:
+    """Return the first ```sql ... ``` block from the AI's response, or None."""
+    match = re.search(r"```sql\s*([\s\S]*?)\s*```", text, re.IGNORECASE)
+    return match.group(1).strip() if match else None
+
+
+def _run_sql(db_id: str, sql: str, db: Session) -> tuple[list[str], list[dict], int, str | None]:
+    """Execute sql and return (columns, rows, row_count, error)."""
+    try:
+        conn = get_connection(db_id, db)
+        try:
+            cursor = conn.execute(sql)
+            if cursor.description:
+                columns = [d[0] for d in cursor.description]
+                rows = [dict(zip(columns, row)) for row in cursor.fetchall()]
+                return columns, rows, len(rows), None
+            return [], [], cursor.rowcount, None
+        finally:
+            conn.close()
+    except Exception as exc:
+        return [], [], 0, str(exc)
+
+
+@router.post("/chat")
+def chat(req: ChatRequest, db: Session = Depends(get_db)):
+    logger.info("Chat request for db_id=%s, %d messages", req.db_id, len(req.messages))
+
+    conn = get_connection(req.db_id, db)
+    try:
+        schema_summary = _build_schema_summary(conn)
+    finally:
+        conn.close()
+
+    system = f"{CHAT_SYSTEM_PROMPT}\nDatabase schema:\n{schema_summary}"
+
+    try:
+        response = get_client().messages.create(
+            model=MODEL,
+            max_tokens=2048,
+            system=system,
+            messages=[{"role": m.role, "content": m.content} for m in req.messages],
+        )
+    except anthropic.AuthenticationError as e:
+        logger.error("Anthropic authentication failed: %s", e)
+        raise HTTPException(status_code=500, detail="AI authentication failed. Check ANTHROPIC_API_KEY.")
+    except anthropic.RateLimitError as e:
+        logger.error("Anthropic rate limit hit: %s", e)
+        raise HTTPException(status_code=429, detail="AI rate limit exceeded. Try again shortly.")
+    except anthropic.APIConnectionError as e:
+        logger.error("Anthropic connection error: %s", e)
+        raise HTTPException(status_code=502, detail="Could not reach AI service.")
+    except anthropic.APIStatusError as e:
+        logger.error("Anthropic API error %s: %s", e.status_code, e)
+        raise HTTPException(status_code=502, detail=f"AI error: {getattr(e, 'message', None) or str(e)}")
+
+    message_text = _extract_text(response)
+    sql = _extract_sql_block(message_text)
+
+    columns: list[str] = []
+    rows: list[dict] = []
+    row_count = 0
+    sql_error: str | None = None
+
+    if sql:
+        columns, rows, row_count, sql_error = _run_sql(req.db_id, sql, db)
+        if sql_error:
+            logger.warning("Chat SQL failed for db_id=%s: %s", req.db_id, sql_error)
+        else:
+            logger.info("Chat SQL returned %d rows for db_id=%s", row_count, req.db_id)
+
+    return {
+        "message": message_text,
+        "sql": sql,
+        "columns": columns,
+        "rows": rows,
+        "row_count": row_count,
+        "sql_error": sql_error,
+    }

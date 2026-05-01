@@ -100,6 +100,15 @@ export interface VisualizationRunResponse {
   row_count: number;
 }
 
+export interface ChatResponse {
+  message: string;
+  sql: string | null;
+  columns: string[];
+  rows: Record<string, unknown>[];
+  row_count: number;
+  sql_error: string | null;
+}
+
 export interface SavedQueryEntry {
   id: number;
   db_id: string;
@@ -255,5 +264,11 @@ export const api = {
     request<{ sql: string }>('/ai/generate-query', {
       method: 'POST',
       body: JSON.stringify({ db_id: dbId, prompt }),
+    }),
+
+  chat: (dbId: string, messages: { role: string; content: string }[]) =>
+    request<ChatResponse>('/ai/chat', {
+      method: 'POST',
+      body: JSON.stringify({ db_id: dbId, messages }),
     }),
 };
