@@ -5,9 +5,10 @@ import DataTable from './components/DataTable';
 import QueryEditor from './components/QueryEditor';
 import ConnectModal from './components/ConnectModal';
 import VisualizationDashboard from './components/VisualizationDashboard';
+import DataChat from './components/DataChat';
 import { type ChartType } from './components/charts/ChartRenderer';
 
-type View = 'schema' | 'data' | 'query' | 'visualize';
+type View = 'schema' | 'data' | 'query' | 'visualize' | 'chat';
 
 export default function App() {
   const [databases, setDatabases] = useState<Database[]>([]);
@@ -19,6 +20,7 @@ export default function App() {
   const [pendingVisualization, setPendingVisualization] = useState<{
     sql: string; chartType: ChartType; xColumn: string; yColumns: string[];
   } | null>(null);
+  const [chatPendingQuery, setChatPendingQuery] = useState<string | null>(null);
 
   // Table data state
   const [tableData, setTableData] = useState<{ columns: string[]; rows: Record<string, unknown>[]; total: number } | null>(null);
@@ -98,6 +100,11 @@ export default function App() {
     setView('visualize');
   };
 
+  const handleChatOpenInQuery = (sql: string) => {
+    setChatPendingQuery(sql);
+    setView('query');
+  };
+
   return (
     <div className="app-layout">
       {/* Sidebar */}
@@ -158,6 +165,9 @@ export default function App() {
               <button className={`header-tab${view === 'visualize' ? ' active' : ''}`} onClick={() => setView('visualize')}>
                 Visualize
               </button>
+              <button className={`header-tab${view === 'chat' ? ' active' : ''}`} onClick={() => setView('chat')}>
+                Chat
+              </button>
             </div>
 
             {view === 'schema' && (
@@ -201,6 +211,16 @@ export default function App() {
                 dbId={activeDb.id}
                 dbName={activeDb.name}
                 onVisualize={handleVisualizeQuery}
+                initialSql={chatPendingQuery}
+                onInitialSqlConsumed={() => setChatPendingQuery(null)}
+              />
+            )}
+
+            {view === 'chat' && (
+              <DataChat
+                dbId={activeDb.id}
+                dbName={activeDb.name}
+                onOpenInQuery={handleChatOpenInQuery}
               />
             )}
 
