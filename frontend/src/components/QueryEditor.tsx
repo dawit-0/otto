@@ -1,16 +1,22 @@
-import { useState, useEffect, useCallback } from 'react';
-import { api, type QueryResponse, type QueryHistoryEntry, type SavedQueryEntry } from '../api';
+import { useState, useEffect, useCallback, useRef } from 'react';
+import { api, type QueryResponse, type QueryHistoryEntry, type SavedQueryEntry, type TableInfo } from '../api';
 import DataTable from './DataTable';
 import QueryInsights from './QueryInsights';
+import SqlAutocomplete from './SqlAutocomplete';
+import { getCompletionContext, getSuggestions, getCaretViewportCoords } from '../utils/sqlAutocomplete';
+import type { Suggestion } from '../utils/sqlAutocomplete';
 import { type ChartType } from './charts/ChartRenderer';
+
+const MAX_SUGGESTIONS = 12;
 
 interface Props {
   dbId: string;
   dbName: string;
+  tables: TableInfo[];
   onVisualize?: (sql: string, chartType: ChartType, xColumn: string, yColumns: string[]) => void;
 }
 
-export default function QueryEditor({ dbId, dbName, onVisualize }: Props) {
+export default function QueryEditor({ dbId, dbName, tables, onVisualize }: Props) {
   const [sql, setSql] = useState('');
   const [result, setResult] = useState<QueryResponse | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -29,6 +35,13 @@ export default function QueryEditor({ dbId, dbName, onVisualize }: Props) {
   const [saveName, setSaveName] = useState('');
   const [saveDescription, setSaveDescription] = useState('');
   const [editingQuery, setEditingQuery] = useState<SavedQueryEntry | null>(null);
+
+  // Autocomplete state
+  const [acSuggestions, setAcSuggestions] = useState<Suggestion[]>([]);
+  const [acIndex, setAcIndex] = useState(0);
+  const [acStyle, setAcStyle] = useState<React.CSSProperties>({});
+  const [acVisible, setAcVisible] = useState(false);
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
 
   const fetchHistory = useCallback(async () => {
     try {
@@ -55,6 +68,86 @@ export default function QueryEditor({ dbId, dbName, onVisualize }: Props) {
   useEffect(() => {
     if (showSaved) fetchSavedQueries();
   }, [showSaved, fetchSavedQueries]);
+
+  // Reset autocomplete when db changes
+  useEffect(() => {
+    setAcVisible(false);
+  }, [dbId]);
+
+  const updateAutocomplete = useCallback(
+    (text: string, cursorPos: number, textarea: HTMLTextAreaElement) => {
+      if (tables.length === 0) {
+        setAcVisible(false);
+        return;
+      }
+
+      const ctx = getCompletionContext(text, cursorPos);
+      if (!ctx.kind) {
+        setAcVisible(false);
+        return;
+      }
+
+      const suggestions = getSuggestions(ctx, tables).slice(0, MAX_SUGGESTIONS);
+      if (suggestions.length === 0) {
+        setAcVisible(false);
+        return;
+      }
+
+      const { top, left } = getCaretViewportCoords(textarea, cursorPos);
+
+      // Flip above if there isn't room below
+      const dropdownHeight = Math.min(suggestions.length, MAX_SUGGESTIONS) * 30 + 8;
+      const flipUp = top + dropdownHeight > window.innerHeight - 8;
+
+      setAcSuggestions(suggestions);
+      setAcIndex(0);
+      setAcStyle(
+        flipUp
+          ? { position: 'fixed', bottom: window.innerHeight - top + 24, left, maxHeight: 300 }
+          : { position: 'fixed', top, left, maxHeight: 300 },
+      );
+      setAcVisible(true);
+    },
+    [tables],
+  );
+
+  const applyCompletion = useCallback(
+    (suggestion: Suggestion) => {
+      const textarea = textareaRef.current;
+      if (!textarea) return;
+
+      const pos = textarea.selectionStart ?? sql.length;
+      const before = sql.slice(0, pos);
+      const tokenMatch = before.match(/[\w.]*$/);
+      const token = tokenMatch ? tokenMatch[0] : '';
+      const tokenStart = pos - token.length;
+
+      // For qualified completions (users.na → users.name), replace only the part after dot
+      const dotIdx = token.indexOf('.');
+      const insertStart = dotIdx !== -1 ? tokenStart + dotIdx + 1 : tokenStart;
+
+      const insertText = suggestion.label;
+      const newSql = sql.slice(0, insertStart) + insertText + sql.slice(pos);
+      setSql(newSql);
+      setAcVisible(false);
+
+      const newPos = insertStart + insertText.length;
+      setTimeout(() => {
+        if (textarea) {
+          textarea.setSelectionRange(newPos, newPos);
+          textarea.focus();
+        }
+      }, 0);
+    },
+    [sql],
+  );
+
+  const handleSqlChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
+    const val = e.target.value;
+    setSql(val);
+    const pos = e.target.selectionStart ?? val.length;
+    updateAutocomplete(val, pos, e.target);
+  };
 
   const handleSaveQuery = async () => {
     if (!saveName.trim() || !sql.trim()) return;
@@ -115,8 +208,8 @@ export default function QueryEditor({ dbId, dbName, onVisualize }: Props) {
     try {
       const res = await api.executeQuery(dbId, sql);
       setResult(res);
-    } catch (e: any) {
-      setError(e.message);
+    } catch (e: unknown) {
+      setError(e instanceof Error ? e.message : 'Query failed');
       setResult(null);
     } finally {
       setLoading(false);
@@ -124,11 +217,47 @@ export default function QueryEditor({ dbId, dbName, onVisualize }: Props) {
     }
   };
 
-  const handleKeyDown = (e: React.KeyboardEvent) => {
+  const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
+    if (acVisible) {
+      if (e.key === 'ArrowDown') {
+        e.preventDefault();
+        setAcIndex((i) => Math.min(i + 1, acSuggestions.length - 1));
+        return;
+      }
+      if (e.key === 'ArrowUp') {
+        e.preventDefault();
+        setAcIndex((i) => Math.max(i - 1, 0));
+        return;
+      }
+      if (e.key === 'Tab' || (e.key === 'Enter' && !e.metaKey && !e.ctrlKey)) {
+        if (acSuggestions[acIndex]) {
+          e.preventDefault();
+          applyCompletion(acSuggestions[acIndex]);
+          return;
+        }
+      }
+      if (e.key === 'Escape') {
+        e.preventDefault();
+        setAcVisible(false);
+        return;
+      }
+    }
+
     if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') {
       e.preventDefault();
       run();
     }
+  };
+
+  const handleTextareaClick = (e: React.MouseEvent<HTMLTextAreaElement>) => {
+    const ta = e.currentTarget;
+    const pos = ta.selectionStart ?? sql.length;
+    updateAutocomplete(sql, pos, ta);
+  };
+
+  const handleTextareaBlur = () => {
+    // Delay so click on suggestion fires first
+    setTimeout(() => setAcVisible(false), 120);
   };
 
   const loadFromHistory = (entry: QueryHistoryEntry) => {
@@ -145,8 +274,8 @@ export default function QueryEditor({ dbId, dbName, onVisualize }: Props) {
       setSql(res.sql);
       setAiPrompt('');
       setShowAiInput(false);
-    } catch (e: any) {
-      setAiError(e.message);
+    } catch (e: unknown) {
+      setAiError(e instanceof Error ? e.message : 'Generation failed');
     } finally {
       setAiLoading(false);
     }
@@ -187,13 +316,26 @@ export default function QueryEditor({ dbId, dbName, onVisualize }: Props) {
   return (
     <div className="query-panel">
       <div className="query-editor">
-        <textarea
-          value={sql}
-          onChange={(e) => setSql(e.target.value)}
-          onKeyDown={handleKeyDown}
-          placeholder="SELECT * FROM table_name LIMIT 100;"
-          spellCheck={false}
-        />
+        <div style={{ position: 'relative' }}>
+          <textarea
+            ref={textareaRef}
+            value={sql}
+            onChange={handleSqlChange}
+            onKeyDown={handleKeyDown}
+            onClick={handleTextareaClick}
+            onBlur={handleTextareaBlur}
+            placeholder="SELECT * FROM table_name LIMIT 100;"
+            spellCheck={false}
+          />
+          {acVisible && (
+            <SqlAutocomplete
+              suggestions={acSuggestions}
+              activeIndex={acIndex}
+              style={acStyle}
+              onSelect={applyCompletion}
+            />
+          )}
+        </div>
         <div className="query-editor-actions">
           <button className="btn btn-primary" onClick={run} disabled={loading || !sql.trim()}>
             {loading ? 'Running...' : 'Run Query'}

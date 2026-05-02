@@ -1391,3 +1391,79 @@ body {
   font-size: 12px;
   margin-top: 6px;
 }
+
+/* ─── SQL Autocomplete ─── */
+.sql-autocomplete {
+  list-style: none;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow-lg);
+  overflow-y: auto;
+  min-width: 220px;
+  max-width: 340px;
+  z-index: 9999;
+  padding: 4px 0;
+}
+
+.sql-autocomplete-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 5px 10px;
+  cursor: pointer;
+  font-size: 12px;
+  font-family: var(--font-mono);
+  transition: background 0.1s ease;
+  white-space: nowrap;
+}
+
+.sql-autocomplete-item:hover,
+.sql-autocomplete-item.active {
+  background: var(--bg-hover);
+}
+
+.sql-autocomplete-item.active {
+  background: var(--accent-subtle);
+}
+
+.sql-ac-kind {
+  width: 16px;
+  height: 16px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 9px;
+  font-weight: 700;
+  border-radius: 3px;
+  flex-shrink: 0;
+  font-family: var(--font-mono);
+}
+
+.sql-ac-kind-table {
+  background: rgba(59, 130, 246, 0.2);
+  color: var(--info);
+}
+
+.sql-ac-kind-column {
+  background: rgba(34, 197, 94, 0.15);
+  color: var(--success);
+}
+
+.sql-ac-kind-keyword {
+  background: rgba(245, 158, 11, 0.15);
+  color: var(--warning);
+}
+
+.sql-ac-label {
+  flex: 1;
+  color: var(--text-primary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.sql-ac-detail {
+  font-size: 10px;
+  color: var(--text-muted);
+  flex-shrink: 0;
+}
