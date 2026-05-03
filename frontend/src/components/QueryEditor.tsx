@@ -8,11 +8,17 @@ interface Props {
   dbId: string;
   dbName: string;
   onVisualize?: (sql: string, chartType: ChartType, xColumn: string, yColumns: string[]) => void;
+  initialSql?: string | null;
+  onInitialSqlConsumed?: () => void;
 }
 
-export default function QueryEditor({ dbId, dbName, onVisualize }: Props) {
+export default function QueryEditor({ dbId, dbName, onVisualize, initialSql, onInitialSqlConsumed }: Props) {
   const [sql, setSql] = useState('');
   const [result, setResult] = useState<QueryResponse | null>(null);
+
+  useEffect(() => {
+    if (initialSql) { setSql(initialSql); onInitialSqlConsumed?.(); }
+  }, [initialSql]); // eslint-disable-line react-hooks/exhaustive-deps
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [showHistory, setShowHistory] = useState(false);
