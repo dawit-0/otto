@@ -1,10 +1,11 @@
 import { useState, useEffect, useCallback } from 'react';
-import { api, type Database, type TableInfo } from './api';
+import { api, type Database, type TableInfo, type SavedQueryEntry, type QueryHistoryEntry } from './api';
 import SchemaGraph from './components/SchemaGraph';
 import DataTable from './components/DataTable';
 import QueryEditor from './components/QueryEditor';
 import ConnectModal from './components/ConnectModal';
 import VisualizationDashboard from './components/VisualizationDashboard';
+import CommandPalette from './components/CommandPalette';
 import { type ChartType } from './components/charts/ChartRenderer';
 
 type View = 'schema' | 'data' | 'query' | 'visualize';
@@ -19,6 +20,10 @@ export default function App() {
   const [pendingVisualization, setPendingVisualization] = useState<{
     sql: string; chartType: ChartType; xColumn: string; yColumns: string[];
   } | null>(null);
+  const [showCommandPalette, setShowCommandPalette] = useState(false);
+  const [paletteSavedQueries, setPaletteSavedQueries] = useState<SavedQueryEntry[]>([]);
+  const [paletteHistory, setPaletteHistory] = useState<QueryHistoryEntry[]>([]);
+  const [pendingQuerySql, setPendingQuerySql] = useState<string | null>(null);
 
   // Table data state
   const [tableData, setTableData] = useState<{ columns: string[]; rows: Record<string, unknown>[]; total: number } | null>(null);
@@ -34,6 +39,28 @@ export default function App() {
       }
     }).catch(() => {});
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const openCommandPalette = useCallback(async (db: Database) => {
+    setShowCommandPalette(true);
+    const [sq, hist] = await Promise.all([
+      api.listSavedQueries(db.id).catch(() => [] as SavedQueryEntry[]),
+      api.getQueryHistory(db.id, 20).catch(() => [] as QueryHistoryEntry[]),
+    ]);
+    setPaletteSavedQueries(sq);
+    setPaletteHistory(hist);
+  }, []);
+
+  useEffect(() => {
+    const down = (e: KeyboardEvent) => {
+      if ((e.metaKey || e.ctrlKey) && e.key === 'k') {
+        e.preventDefault();
+        if (activeDb) openCommandPalette(activeDb);
+      }
+      if (e.key === 'Escape') setShowCommandPalette(false);
+    };
+    window.addEventListener('keydown', down);
+    return () => window.removeEventListener('keydown', down);
+  }, [activeDb, openCommandPalette]);
 
   const loadSchema = useCallback(async (db: Database) => {
     try {
@@ -158,6 +185,14 @@ export default function App() {
               <button className={`header-tab${view === 'visualize' ? ' active' : ''}`} onClick={() => setView('visualize')}>
                 Visualize
               </button>
+              <div style={{ flex: 1 }} />
+              <button className="cmd-trigger" onClick={() => openCommandPalette(activeDb!)}>
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <circle cx="11" cy="11" r="8" /><line x1="21" y1="21" x2="16.65" y2="16.65" />
+                </svg>
+                Search
+                <kbd className="cmd-trigger-kbd">⌘K</kbd>
+              </button>
             </div>
 
             {view === 'schema' && (
@@ -201,6 +236,8 @@ export default function App() {
                 dbId={activeDb.id}
                 dbName={activeDb.name}
                 onVisualize={handleVisualizeQuery}
+                initialSql={pendingQuerySql}
+                onInitialSqlConsumed={() => setPendingQuerySql(null)}
               />
             )}
 
@@ -228,6 +265,22 @@ export default function App() {
       </div>
 
       {showConnect && <ConnectModal onConnect={handleConnect} onClose={() => setShowConnect(false)} />}
+
+      {showCommandPalette && activeDb && (
+        <CommandPalette
+          databases={databases}
+          activeDb={activeDb}
+          tables={tables}
+          savedQueries={paletteSavedQueries}
+          recentHistory={paletteHistory}
+          onClose={() => setShowCommandPalette(false)}
+          onSelectDb={selectDb}
+          onSelectTable={handleSelectTable}
+          onNavigate={setView}
+          onLoadQuery={(sql) => setPendingQuerySql(sql)}
+          onShowConnect={() => { setShowCommandPalette(false); setShowConnect(true); }}
+        />
+      )}
     </div>
   );
 }
