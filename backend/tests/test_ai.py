@@ -232,3 +232,125 @@ def test_get_client_lazy_init(monkeypatch):
     second = ai_module.get_client()
     assert first is sentinel
     assert second is sentinel
+
+
+# ── analyze-results tests ──────────────────────────────────────────────────
+
+
+_SAMPLE_COLUMNS = ["id", "name", "revenue"]
+_SAMPLE_ROWS = [
+    {"id": 1, "name": "Alice", "revenue": 1000},
+    {"id": 2, "name": "Bob", "revenue": 2500},
+]
+_SAMPLE_SQL = "SELECT id, name, revenue FROM sales"
+
+
+def _insight_payload(db_id):
+    return {
+        "db_id": db_id,
+        "sql": _SAMPLE_SQL,
+        "columns": _SAMPLE_COLUMNS,
+        "rows": _SAMPLE_ROWS,
+    }
+
+
+def test_analyze_results_success(client, sample_db, mock_anthropic):
+    db_id = _setup(client, sample_db)
+    mock_anthropic.messages.create.return_value = _make_response(
+        "**Summary**\nTwo rows of sales data.\n**Key Findings**\n- Bob leads with 2500."
+    )
+
+    resp = client.post("/api/ai/analyze-results", json=_insight_payload(db_id))
+    assert resp.status_code == 200
+    data = resp.json()
+    assert "insight" in data
+    assert "Bob" in data["insight"]
+
+
+def test_analyze_results_passes_sql_and_data_to_llm(client, sample_db, mock_anthropic):
+    db_id = _setup(client, sample_db)
+    mock_anthropic.messages.create.return_value = _make_response("Some insight")
+
+    client.post("/api/ai/analyze-results", json=_insight_payload(db_id))
+
+    call_kwargs = mock_anthropic.messages.create.call_args.kwargs
+    user_content = call_kwargs["messages"][0]["content"]
+    assert _SAMPLE_SQL in user_content
+    assert "Alice" in user_content
+    assert "revenue" in user_content
+    assert "authors" in user_content  # schema is included
+
+
+def test_analyze_results_uses_insight_system_prompt(client, sample_db, mock_anthropic):
+    db_id = _setup(client, sample_db)
+    mock_anthropic.messages.create.return_value = _make_response("insight")
+
+    client.post("/api/ai/analyze-results", json=_insight_payload(db_id))
+
+    call_kwargs = mock_anthropic.messages.create.call_args.kwargs
+    assert call_kwargs["system"] == ai_module.INSIGHT_SYSTEM_PROMPT
+    assert call_kwargs["model"] == ai_module.MODEL
+
+
+def test_analyze_results_caps_rows_in_prompt(client, sample_db, mock_anthropic):
+    db_id = _setup(client, sample_db)
+    mock_anthropic.messages.create.return_value = _make_response("insight")
+
+    many_rows = [{"id": i, "val": i * 10} for i in range(100)]
+    resp = client.post(
+        "/api/ai/analyze-results",
+        json={"db_id": db_id, "sql": "SELECT * FROM t", "columns": ["id", "val"], "rows": many_rows},
+    )
+    assert resp.status_code == 200
+
+    user_content = mock_anthropic.messages.create.call_args.kwargs["messages"][0]["content"]
+    assert "more rows not shown" in user_content
+
+
+def test_analyze_results_unknown_db_returns_404(client, mock_anthropic):
+    resp = client.post(
+        "/api/ai/analyze-results",
+        json={"db_id": "nonexistent_xyz", "sql": "SELECT 1", "columns": [], "rows": []},
+    )
+    assert resp.status_code == 404
+    mock_anthropic.messages.create.assert_not_called()
+
+
+def test_analyze_results_empty_response_returns_502(client, sample_db, mock_anthropic):
+    db_id = _setup(client, sample_db)
+    mock_anthropic.messages.create.return_value = _make_response("   ")
+
+    resp = client.post("/api/ai/analyze-results", json=_insight_payload(db_id))
+    assert resp.status_code == 502
+
+
+def test_analyze_results_auth_error_returns_500(client, sample_db, mock_anthropic):
+    db_id = _setup(client, sample_db)
+    mock_anthropic.messages.create.side_effect = _api_error(anthropic.AuthenticationError, 401)
+
+    resp = client.post("/api/ai/analyze-results", json=_insight_payload(db_id))
+    assert resp.status_code == 500
+    assert "ANTHROPIC_API_KEY" in resp.json()["detail"]
+
+
+def test_analyze_results_rate_limit_returns_429(client, sample_db, mock_anthropic):
+    db_id = _setup(client, sample_db)
+    mock_anthropic.messages.create.side_effect = _api_error(anthropic.RateLimitError, 429)
+
+    resp = client.post("/api/ai/analyze-results", json=_insight_payload(db_id))
+    assert resp.status_code == 429
+
+
+def test_format_rows_as_text_includes_truncation_note():
+    rows = [{"a": i} for i in range(50)]
+    result = ai_module._format_rows_as_text(["a"], rows, max_rows=5)
+    assert "more rows not shown" in result
+    lines = result.split("\n")
+    data_lines = [l for l in lines if l and not l.startswith("-") and l != "a"]
+    assert len(data_lines) == 6  # 5 data rows + truncation note
+
+
+def test_format_rows_as_text_no_truncation_when_within_limit():
+    rows = [{"x": 1}, {"x": 2}]
+    result = ai_module._format_rows_as_text(["x"], rows, max_rows=10)
+    assert "not shown" not in result

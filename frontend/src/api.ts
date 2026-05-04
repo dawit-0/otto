@@ -256,4 +256,10 @@ export const api = {
       method: 'POST',
       body: JSON.stringify({ db_id: dbId, prompt }),
     }),
+
+  analyzeResults: (dbId: string, sql: string, columns: string[], rows: Record<string, unknown>[]) =>
+    request<{ insight: string }>('/ai/analyze-results', {
+      method: 'POST',
+      body: JSON.stringify({ db_id: dbId, sql, columns, rows }),
+    }),
 };
