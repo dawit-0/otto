@@ -13,6 +13,8 @@ router = APIRouter(prefix="/api/ai", tags=["ai"])
 
 MODEL = "claude-opus-4-7"
 MAX_TOKENS = 1024
+INSIGHT_MAX_TOKENS = 1024
+INSIGHT_MAX_ROWS = 40
 
 SYSTEM_PROMPT = (
     "You are a SQL query generator for SQLite databases. "
@@ -26,6 +28,13 @@ SYSTEM_PROMPT = (
 class AiQueryRequest(BaseModel):
     db_id: str
     prompt: str
+
+
+class AiInsightRequest(BaseModel):
+    db_id: str
+    sql: str
+    columns: list[str]
+    rows: list[dict]
 
 
 _client: anthropic.Anthropic | None = None
@@ -84,12 +93,49 @@ def generate_query(req: AiQueryRequest, db: Session = Depends(get_db)):
         "Return ONLY the SQL query."
     )
 
+    response = _call_anthropic(SYSTEM_PROMPT, user_prompt, MAX_TOKENS)
+    sql = _strip_code_fences(_extract_text(response))
+
+    if not sql:
+        logger.error("AI returned empty SQL for db_id=%s", req.db_id)
+        raise HTTPException(status_code=502, detail="AI returned an empty response")
+
+    logger.info("AI generated query for db_id=%s: %.100s", req.db_id, sql)
+    return {"sql": sql}
+
+
+INSIGHT_SYSTEM_PROMPT = (
+    "You are a data analyst assistant embedded in a SQLite database explorer. "
+    "Given a SQL query and a sample of its results, provide a concise, insightful analysis. "
+    "Structure your response with these sections using **bold** headers:\n"
+    "**Summary** — 1-2 sentences describing what the data shows overall.\n"
+    "**Key Findings** — 2-4 bullet points highlighting notable values, patterns, or trends.\n"
+    "**Data Quality** — one line on nulls, outliers, or anything unusual (skip if nothing noteworthy).\n"
+    "**Follow-up Ideas** — 1-2 suggested queries or angles worth exploring.\n"
+    "Be specific about actual values from the data. Use plain language. Keep it tight — no padding."
+)
+
+
+def _format_rows_as_text(columns: list[str], rows: list[dict], max_rows: int) -> str:
+    sample = rows[:max_rows]
+    header = " | ".join(columns)
+    separator = "-+-".join("-" * len(c) for c in columns)
+    lines = [header, separator]
+    for row in sample:
+        lines.append(" | ".join(str(row.get(c, "")) for c in columns))
+    if len(rows) > max_rows:
+        lines.append(f"... ({len(rows) - max_rows} more rows not shown)")
+    return "\n".join(lines)
+
+
+def _call_anthropic(system: str, user_content: str, max_tokens: int):
+    """Shared Anthropic call with unified error handling."""
     try:
-        response = get_client().messages.create(
+        return get_client().messages.create(
             model=MODEL,
-            max_tokens=MAX_TOKENS,
-            system=SYSTEM_PROMPT,
-            messages=[{"role": "user", "content": user_prompt}],
+            max_tokens=max_tokens,
+            system=system,
+            messages=[{"role": "user", "content": user_content}],
         )
     except anthropic.AuthenticationError as e:
         logger.error("Anthropic authentication failed: %s", e)
@@ -113,11 +159,35 @@ def generate_query(req: AiQueryRequest, db: Session = Depends(get_db)):
             detail=f"AI service error: {getattr(e, 'message', None) or str(e)}",
         )
 
-    sql = _strip_code_fences(_extract_text(response))
 
-    if not sql:
-        logger.error("AI returned empty SQL for db_id=%s", req.db_id)
+@router.post("/analyze-results")
+def analyze_results(req: AiInsightRequest, db: Session = Depends(get_db)):
+    logger.info(
+        "AI result analysis requested for db_id=%s, %d rows, %d cols",
+        req.db_id,
+        len(req.rows),
+        len(req.columns),
+    )
+    conn = get_connection(req.db_id, db)
+    try:
+        schema_summary = _build_schema_summary(conn)
+    finally:
+        conn.close()
+
+    table_text = _format_rows_as_text(req.columns, req.rows, INSIGHT_MAX_ROWS)
+    user_content = (
+        f"Database schema:\n{schema_summary}\n\n"
+        f"SQL query:\n{req.sql}\n\n"
+        f"Result ({len(req.rows)} row{'s' if len(req.rows) != 1 else ''}, "
+        f"{len(req.columns)} column{'s' if len(req.columns) != 1 else ''}):\n{table_text}"
+    )
+
+    response = _call_anthropic(INSIGHT_SYSTEM_PROMPT, user_content, INSIGHT_MAX_TOKENS)
+    insight = _extract_text(response).strip()
+
+    if not insight:
+        logger.error("AI returned empty insight for db_id=%s", req.db_id)
         raise HTTPException(status_code=502, detail="AI returned an empty response")
 
-    logger.info("AI generated query for db_id=%s: %.100s", req.db_id, sql)
-    return {"sql": sql}
+    logger.info("AI insight generated for db_id=%s", req.db_id)
+    return {"insight": insight}

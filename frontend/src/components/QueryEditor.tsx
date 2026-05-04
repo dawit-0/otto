@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { api, type QueryResponse, type QueryHistoryEntry, type SavedQueryEntry } from '../api';
 import DataTable from './DataTable';
+import InsightPanel from './InsightPanel';
 import QueryInsights from './QueryInsights';
 import { type ChartType } from './charts/ChartRenderer';
 
@@ -21,6 +22,8 @@ export default function QueryEditor({ dbId, dbName, onVisualize }: Props) {
   const [aiPrompt, setAiPrompt] = useState('');
   const [aiLoading, setAiLoading] = useState(false);
   const [aiError, setAiError] = useState<string | null>(null);
+
+  const [insightKey, setInsightKey] = useState(0);
 
   // Saved queries state
   const [showSaved, setShowSaved] = useState(false);
@@ -112,6 +115,7 @@ export default function QueryEditor({ dbId, dbName, onVisualize }: Props) {
     if (!sql.trim()) return;
     setLoading(true);
     setError(null);
+    setInsightKey((k) => k + 1);
     try {
       const res = await api.executeQuery(dbId, sql);
       setResult(res);
@@ -386,6 +390,13 @@ export default function QueryEditor({ dbId, dbName, onVisualize }: Props) {
 
       {result && result.columns.length > 0 && (
         <>
+          <InsightPanel
+            key={insightKey}
+            dbId={dbId}
+            sql={sql}
+            columns={result.columns}
+            rows={result.rows}
+          />
           <QueryInsights
             columns={result.columns}
             rows={result.rows}

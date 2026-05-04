@@ -1391,3 +1391,124 @@ body {
   font-size: 12px;
   margin-top: 6px;
 }
+
+/* ─── AI Result Insights ─── */
+
+.btn-insight-trigger {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin: 10px 14px 0;
+  padding: 6px 14px;
+  font-size: 12px;
+  font-weight: 500;
+  background: transparent;
+  border: 1px solid rgba(99, 102, 241, 0.35);
+  border-radius: var(--radius-sm);
+  color: var(--accent-hover);
+  cursor: pointer;
+  transition: all 0.15s ease;
+  font-family: inherit;
+}
+.btn-insight-trigger:hover {
+  background: var(--accent-subtle);
+  border-color: var(--accent);
+  box-shadow: 0 0 10px rgba(99, 102, 241, 0.18);
+}
+
+.insight-panel {
+  margin: 10px 14px 0;
+  background: linear-gradient(135deg, rgba(99, 102, 241, 0.06) 0%, rgba(139, 92, 246, 0.04) 100%);
+  border: 1px solid rgba(99, 102, 241, 0.22);
+  border-radius: var(--radius);
+  overflow: hidden;
+  flex-shrink: 0;
+}
+
+.insight-panel-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 12px;
+  border-bottom: 1px solid rgba(99, 102, 241, 0.15);
+  background: rgba(99, 102, 241, 0.05);
+}
+.insight-panel-title {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--accent-hover);
+  letter-spacing: 0.01em;
+}
+.insight-panel-title svg {
+  color: var(--accent-hover);
+  flex-shrink: 0;
+}
+.insight-panel-actions {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+}
+
+.insight-loading {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 14px 16px;
+  color: var(--text-muted);
+  font-size: 13px;
+}
+.insight-loading-label {
+  font-size: 12px;
+  color: var(--text-muted);
+}
+.insight-loading-dot {
+  display: inline-block;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--accent);
+  animation: insight-pulse 1.2s ease-in-out infinite;
+}
+.insight-loading-dot:nth-child(2) { animation-delay: 0.2s; }
+.insight-loading-dot:nth-child(3) { animation-delay: 0.4s; }
+@keyframes insight-pulse {
+  0%, 80%, 100% { opacity: 0.25; transform: scale(0.85); }
+  40% { opacity: 1; transform: scale(1); }
+}
+
+.insight-body {
+  padding: 12px 16px 14px;
+  font-size: 13px;
+  color: var(--text-secondary);
+  line-height: 1.65;
+}
+.insight-line {
+  margin: 0;
+}
+.insight-line strong {
+  color: var(--text-primary);
+  font-weight: 600;
+}
+.insight-spacer {
+  height: 8px;
+}
+.insight-list-item {
+  margin-left: 18px;
+  list-style: disc;
+  color: var(--text-secondary);
+}
+.insight-list-item strong {
+  color: var(--text-primary);
+}
+
+.insight-error {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 12px 16px;
+  font-size: 12px;
+  color: var(--danger);
+}
