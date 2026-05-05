@@ -1391,3 +1391,130 @@ body {
   font-size: 12px;
   margin-top: 6px;
 }
+
+/* ─── Inline Row Editing ─── */
+
+/* Edit toggle button active state */
+.btn-edit-active {
+  background: var(--accent-subtle);
+  border-color: rgba(99, 102, 241, 0.35);
+  color: var(--accent-hover);
+}
+.btn-edit-active:hover {
+  background: rgba(99, 102, 241, 0.18);
+}
+
+/* Error banner */
+.edit-error-banner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 8px 14px;
+  background: rgba(239, 68, 68, 0.1);
+  border-bottom: 1px solid rgba(239, 68, 68, 0.25);
+  font-size: 12px;
+  color: var(--danger);
+  flex-shrink: 0;
+}
+.edit-error-dismiss {
+  color: var(--danger);
+  flex-shrink: 0;
+}
+
+/* Action column (delete button) */
+.edit-action-col {
+  width: 32px;
+  min-width: 32px;
+  padding: 0 4px !important;
+  text-align: center;
+}
+
+/* Delete button per row */
+.edit-delete-btn {
+  opacity: 0;
+  color: var(--text-muted);
+  transition: opacity 0.12s ease, color 0.12s ease;
+}
+.editable-row:hover .edit-delete-btn {
+  opacity: 1;
+}
+.edit-delete-btn:hover {
+  color: var(--danger) !important;
+}
+
+/* Editable cells */
+.editable-cell {
+  cursor: default;
+  transition: background 0.1s ease;
+}
+.editable-cell:hover {
+  background: var(--bg-tertiary) !important;
+  outline: 1px solid var(--border-strong);
+  outline-offset: -1px;
+}
+
+/* Active inline input */
+.editing-cell {
+  padding: 0 !important;
+  background: var(--bg-primary) !important;
+  outline: 2px solid var(--accent) !important;
+  outline-offset: -2px;
+}
+.cell-input {
+  width: 100%;
+  height: 100%;
+  min-height: 30px;
+  padding: 6px 12px;
+  background: transparent;
+  border: none;
+  outline: none;
+  color: var(--text-primary);
+  font-family: var(--font-mono);
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+/* New row being added */
+.new-row td {
+  background: rgba(99, 102, 241, 0.05) !important;
+}
+.new-row .editing-cell {
+  outline-color: rgba(99, 102, 241, 0.5) !important;
+}
+
+/* Add row bar */
+.edit-add-row-bar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 14px;
+  border-top: 1px solid var(--border);
+  background: var(--bg-secondary);
+}
+.edit-add-btn {
+  color: var(--text-muted);
+  border-style: dashed;
+}
+.edit-add-btn:hover {
+  color: var(--accent-hover);
+  border-color: rgba(99, 102, 241, 0.4);
+  background: var(--accent-subtle);
+}
+
+/* PK column header badge */
+.col-pk {
+  position: relative;
+}
+.col-pk-badge {
+  margin-left: 5px;
+  font-size: 9px;
+  font-weight: 700;
+  color: var(--warning);
+  background: rgba(245, 158, 11, 0.12);
+  border-radius: 3px;
+  padding: 1px 4px;
+  vertical-align: middle;
+  letter-spacing: 0.02em;
+}
+

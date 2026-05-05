@@ -3,6 +3,7 @@ import shutil
 import sqlite3
 import tempfile
 from pathlib import Path
+from typing import Any
 
 from fastapi import APIRouter, Depends, File, HTTPException, UploadFile
 from pydantic import BaseModel
@@ -20,6 +21,14 @@ router = APIRouter(prefix="/api/databases", tags=["databases"])
 
 class ConnectRequest(BaseModel):
     path: str
+
+
+class UpdateRowRequest(BaseModel):
+    fields: dict[str, Any]
+
+
+class InsertRowRequest(BaseModel):
+    fields: dict[str, Any]
 
 
 def _resolve_path(db_id: str, db: Session) -> str:
@@ -195,11 +204,19 @@ def get_table_data(db_id: str, table_name: str, limit: int = 100, offset: int = 
             raise HTTPException(status_code=404, detail=f"Unknown table: {table_name}")
 
         quoted = quote_identifier(table_name)
-        cursor = conn.execute(
-            f"SELECT * FROM {quoted} LIMIT ? OFFSET ?",
-            (limit, offset),
-        )
-        columns = [desc[0] for desc in cursor.description]
+        try:
+            cursor = conn.execute(
+                f"SELECT rowid AS __rowid__, * FROM {quoted} LIMIT ? OFFSET ?",
+                (limit, offset),
+            )
+        except Exception:
+            # WITHOUT ROWID tables don't expose the rowid pseudo-column
+            cursor = conn.execute(
+                f"SELECT * FROM {quoted} LIMIT ? OFFSET ?",
+                (limit, offset),
+            )
+        all_cols = [desc[0] for desc in cursor.description]
+        columns = [c for c in all_cols if c != "__rowid__"]
         rows = [dict(row) for row in cursor.fetchall()]
         count = conn.execute(f"SELECT COUNT(*) FROM {quoted}").fetchone()[0]
         return {"columns": columns, "rows": rows, "total": count, "limit": limit, "offset": offset}
@@ -207,6 +224,97 @@ def get_table_data(db_id: str, table_name: str, limit: int = 100, offset: int = 
         raise
     except Exception as e:
         logger.error("Error reading table '%s' from db_id=%s: %s", table_name, db_id, e)
+        raise HTTPException(status_code=400, detail=str(e))
+    finally:
+        conn.close()
+
+
+@router.put("/{db_id}/tables/{table_name}/rows/{rowid}")
+def update_row(db_id: str, table_name: str, rowid: int, req: UpdateRowRequest, db: Session = Depends(get_db)):
+    conn = get_connection(db_id, db)
+    try:
+        try:
+            assert_valid_table(conn, table_name)
+        except ValueError:
+            raise HTTPException(status_code=404, detail=f"Unknown table: {table_name}")
+
+        if not req.fields:
+            raise HTTPException(status_code=400, detail="No fields provided")
+
+        quoted_table = quote_identifier(table_name)
+        set_parts = [f"{quote_identifier(col)} = ?" for col in req.fields]
+        values: list[Any] = [None if v == "" else v for v in req.fields.values()]
+        values.append(rowid)
+
+        conn.execute(
+            f"UPDATE {quoted_table} SET {', '.join(set_parts)} WHERE rowid = ?",
+            values,
+        )
+        conn.commit()
+        logger.info("Updated row rowid=%d in '%s' on db_id=%s", rowid, table_name, db_id)
+        return {"ok": True}
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error("Error updating row rowid=%d in '%s' on db_id=%s: %s", rowid, table_name, db_id, e)
+        raise HTTPException(status_code=400, detail=str(e))
+    finally:
+        conn.close()
+
+
+@router.delete("/{db_id}/tables/{table_name}/rows/{rowid}")
+def delete_row(db_id: str, table_name: str, rowid: int, db: Session = Depends(get_db)):
+    conn = get_connection(db_id, db)
+    try:
+        try:
+            assert_valid_table(conn, table_name)
+        except ValueError:
+            raise HTTPException(status_code=404, detail=f"Unknown table: {table_name}")
+
+        quoted_table = quote_identifier(table_name)
+        conn.execute(f"DELETE FROM {quoted_table} WHERE rowid = ?", (rowid,))
+        conn.commit()
+        logger.info("Deleted row rowid=%d from '%s' on db_id=%s", rowid, table_name, db_id)
+        return {"ok": True}
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error("Error deleting row rowid=%d from '%s' on db_id=%s: %s", rowid, table_name, db_id, e)
+        raise HTTPException(status_code=400, detail=str(e))
+    finally:
+        conn.close()
+
+
+@router.post("/{db_id}/tables/{table_name}/rows")
+def insert_row(db_id: str, table_name: str, req: InsertRowRequest, db: Session = Depends(get_db)):
+    conn = get_connection(db_id, db)
+    try:
+        try:
+            assert_valid_table(conn, table_name)
+        except ValueError:
+            raise HTTPException(status_code=404, detail=f"Unknown table: {table_name}")
+
+        quoted_table = quote_identifier(table_name)
+        non_empty = {k: v for k, v in req.fields.items() if v != ""}
+
+        if non_empty:
+            cols = ", ".join(quote_identifier(c) for c in non_empty)
+            placeholders = ", ".join("?" for _ in non_empty)
+            conn.execute(
+                f"INSERT INTO {quoted_table} ({cols}) VALUES ({placeholders})",
+                list(non_empty.values()),
+            )
+        else:
+            conn.execute(f"INSERT INTO {quoted_table} DEFAULT VALUES")
+
+        conn.commit()
+        new_rowid = conn.execute("SELECT last_insert_rowid()").fetchone()[0]
+        logger.info("Inserted row rowid=%d into '%s' on db_id=%s", new_rowid, table_name, db_id)
+        return {"ok": True, "rowid": new_rowid}
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error("Error inserting row into '%s' on db_id=%s: %s", table_name, db_id, e)
         raise HTTPException(status_code=400, detail=str(e))
     finally:
         conn.close()
