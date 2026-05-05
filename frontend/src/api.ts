@@ -151,7 +151,24 @@ export const api = {
   getSchema: (id: string) => request<SchemaResponse>(`/databases/${id}/schema`),
 
   getTableData: (id: string, table: string, limit = 100, offset = 0) =>
-    request<TableDataResponse>(`/databases/${id}/tables/${table}/data?limit=${limit}&offset=${offset}`),
+    request<TableDataResponse>(`/databases/${id}/tables/${encodeURIComponent(table)}/data?limit=${limit}&offset=${offset}`),
+
+  updateRow: (dbId: string, table: string, rowid: number, fields: Record<string, unknown>) =>
+    request<{ ok: boolean }>(`/databases/${dbId}/tables/${encodeURIComponent(table)}/rows/${rowid}`, {
+      method: 'PUT',
+      body: JSON.stringify({ fields }),
+    }),
+
+  deleteRow: (dbId: string, table: string, rowid: number) =>
+    request<{ ok: boolean }>(`/databases/${dbId}/tables/${encodeURIComponent(table)}/rows/${rowid}`, {
+      method: 'DELETE',
+    }),
+
+  insertRow: (dbId: string, table: string, fields: Record<string, unknown>) =>
+    request<{ ok: boolean; rowid: number }>(`/databases/${dbId}/tables/${encodeURIComponent(table)}/rows`, {
+      method: 'POST',
+      body: JSON.stringify({ fields }),
+    }),
 
   executeQuery: (dbId: string, sql: string) =>
     request<QueryResponse>('/query', {

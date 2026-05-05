@@ -182,6 +182,10 @@ export default function App() {
                   offset={dataOffset}
                   onPageChange={handlePageChange}
                   exportFilename={selectedTable}
+                  dbId={activeDb.id}
+                  tableName={selectedTable}
+                  columnDefs={tables.find((t) => t.name === selectedTable)?.columns}
+                  onDataChange={() => loadTableData(selectedTable, dataOffset)}
                 />
               </>
             )}
