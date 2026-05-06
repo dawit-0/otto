@@ -44,6 +44,29 @@ export interface TableDataResponse {
   offset: number;
 }
 
+export interface ColumnTopValue {
+  value: string;
+  count: number;
+}
+
+export interface ColumnProfile {
+  name: string;
+  type: string;
+  category: 'numeric' | 'text';
+  null_count: number;
+  unique_count: number;
+  min: number | null;
+  max: number | null;
+  avg: number | null;
+  top_values: ColumnTopValue[];
+}
+
+export interface TableProfileResponse {
+  table: string;
+  row_count: number;
+  columns: ColumnProfile[];
+}
+
 export interface QueryResponse {
   columns: string[];
   rows: Record<string, unknown>[];
@@ -152,6 +175,9 @@ export const api = {
 
   getTableData: (id: string, table: string, limit = 100, offset = 0) =>
     request<TableDataResponse>(`/databases/${id}/tables/${table}/data?limit=${limit}&offset=${offset}`),
+
+  profileTable: (id: string, table: string) =>
+    request<TableProfileResponse>(`/databases/${id}/tables/${table}/profile`),
 
   executeQuery: (dbId: string, sql: string) =>
     request<QueryResponse>('/query', {

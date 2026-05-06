@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback } from 'react';
 import { api, type Database, type TableInfo } from './api';
 import SchemaGraph from './components/SchemaGraph';
 import DataTable from './components/DataTable';
+import TableProfiler from './components/TableProfiler';
 import QueryEditor from './components/QueryEditor';
 import ConnectModal from './components/ConnectModal';
 import VisualizationDashboard from './components/VisualizationDashboard';
@@ -24,6 +25,9 @@ export default function App() {
   const [tableData, setTableData] = useState<{ columns: string[]; rows: Record<string, unknown>[]; total: number } | null>(null);
   const [dataOffset, setDataOffset] = useState(0);
   const DATA_LIMIT = 100;
+
+  // Data sub-view: rows or profile
+  const [dataSubView, setDataSubView] = useState<'rows' | 'profile'>('rows');
 
   useEffect(() => {
     api.listDatabases().then((dbs) => {
@@ -86,6 +90,7 @@ export default function App() {
   const handleSelectTable = useCallback((name: string) => {
     setSelectedTable(name);
     setView('data');
+    setDataSubView('rows');
     loadTableData(name, 0);
   }, [loadTableData]);
 
@@ -173,16 +178,34 @@ export default function App() {
                 <div className="table-browser-header">
                   <span className="table-browser-title">{selectedTable}</span>
                   <span className="table-browser-info">{tableData.total.toLocaleString()} rows</span>
+                  <div className="data-subview-toggle">
+                    <button
+                      className={`data-subview-btn${dataSubView === 'rows' ? ' active' : ''}`}
+                      onClick={() => setDataSubView('rows')}
+                    >
+                      Rows
+                    </button>
+                    <button
+                      className={`data-subview-btn${dataSubView === 'profile' ? ' active' : ''}`}
+                      onClick={() => setDataSubView('profile')}
+                    >
+                      Profile
+                    </button>
+                  </div>
                 </div>
-                <DataTable
-                  columns={tableData.columns}
-                  rows={tableData.rows}
-                  total={tableData.total}
-                  limit={DATA_LIMIT}
-                  offset={dataOffset}
-                  onPageChange={handlePageChange}
-                  exportFilename={selectedTable}
-                />
+                {dataSubView === 'rows' ? (
+                  <DataTable
+                    columns={tableData.columns}
+                    rows={tableData.rows}
+                    total={tableData.total}
+                    limit={DATA_LIMIT}
+                    offset={dataOffset}
+                    onPageChange={handlePageChange}
+                    exportFilename={selectedTable}
+                  />
+                ) : (
+                  <TableProfiler dbId={activeDb.id} tableName={selectedTable} />
+                )}
               </>
             )}
 

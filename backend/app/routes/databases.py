@@ -184,6 +184,77 @@ def get_schema(db_id: str, db: Session = Depends(get_db)):
         conn.close()
 
 
+_NUMERIC_AFFINITY = {"INT", "INTEGER", "TINYINT", "SMALLINT", "MEDIUMINT", "BIGINT",
+                     "REAL", "DOUBLE", "FLOAT", "NUMERIC", "DECIMAL", "NUMBER"}
+
+
+def _is_numeric(declared_type: str) -> bool:
+    base = declared_type.upper().split("(")[0].strip()
+    return base in _NUMERIC_AFFINITY
+
+
+@router.get("/{db_id}/tables/{table_name}/profile")
+def profile_table(db_id: str, table_name: str, db: Session = Depends(get_db)):
+    conn = get_connection(db_id, db)
+    try:
+        try:
+            assert_valid_table(conn, table_name)
+        except ValueError:
+            raise HTTPException(status_code=404, detail=f"Unknown table: {table_name}")
+
+        quoted = quote_identifier(table_name)
+        total_rows = conn.execute(f"SELECT COUNT(*) FROM {quoted}").fetchone()[0]
+
+        pragma = conn.execute(f"PRAGMA table_info({quoted})").fetchall()
+        columns = []
+        for col in pragma:
+            col_name = col["name"]
+            col_type = col["type"] or ""
+            qcol = quote_identifier(col_name)
+
+            null_count = conn.execute(
+                f"SELECT COUNT(*) FROM {quoted} WHERE {qcol} IS NULL"
+            ).fetchone()[0]
+            unique_count = conn.execute(
+                f"SELECT COUNT(DISTINCT {qcol}) FROM {quoted}"
+            ).fetchone()[0]
+
+            numeric = _is_numeric(col_type)
+            min_val = max_val = avg_val = None
+            if numeric and total_rows > 0:
+                row = conn.execute(
+                    f"SELECT MIN(CAST({qcol} AS REAL)), MAX(CAST({qcol} AS REAL)), AVG(CAST({qcol} AS REAL)) FROM {quoted}"
+                ).fetchone()
+                min_val, max_val, avg_val = row[0], row[1], row[2]
+
+            top_rows = conn.execute(
+                f"SELECT {qcol} as val, COUNT(*) as cnt FROM {quoted} "
+                f"WHERE {qcol} IS NOT NULL GROUP BY {qcol} ORDER BY cnt DESC LIMIT 5"
+            ).fetchall()
+            top_values = [{"value": str(r[0]), "count": r[1]} for r in top_rows]
+
+            columns.append({
+                "name": col_name,
+                "type": col_type,
+                "category": "numeric" if numeric else "text",
+                "null_count": null_count,
+                "unique_count": unique_count,
+                "min": min_val,
+                "max": max_val,
+                "avg": avg_val,
+                "top_values": top_values,
+            })
+
+        return {"table": table_name, "row_count": total_rows, "columns": columns}
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error("Error profiling table '%s' on db_id=%s: %s", table_name, db_id, e)
+        raise HTTPException(status_code=400, detail=str(e))
+    finally:
+        conn.close()
+
+
 @router.get("/{db_id}/tables/{table_name}/data")
 def get_table_data(db_id: str, table_name: str, limit: int = 100, offset: int = 0, db: Session = Depends(get_db)):
     conn = get_connection(db_id, db)
