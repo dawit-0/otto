@@ -8,6 +8,10 @@ interface Props {
   offset?: number;
   onPageChange?: (offset: number) => void;
   exportFilename?: string;
+  sortable?: boolean;
+  sortColumn?: string | null;
+  sortOrder?: 'asc' | 'desc';
+  onSortChange?: (column: string) => void;
 }
 
 function toCSV(columns: string[], rows: Record<string, unknown>[]): string {
@@ -45,7 +49,7 @@ function downloadFile(filename: string, content: string, mimeType: string) {
   URL.revokeObjectURL(url);
 }
 
-export default function DataTable({ columns, rows, total, limit = 100, offset = 0, onPageChange, exportFilename = 'export' }: Props) {
+export default function DataTable({ columns, rows, total, limit = 100, offset = 0, onPageChange, exportFilename = 'export', sortable = false, sortColumn, sortOrder, onSortChange }: Props) {
   const [copyState, setCopyState] = useState<null | 'csv' | 'json'>(null);
   const copyTimeout = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -86,9 +90,25 @@ export default function DataTable({ columns, rows, total, limit = 100, offset = 
         <table className="data-table">
           <thead>
             <tr>
-              {columns.map((col) => (
-                <th key={col}>{col}</th>
-              ))}
+              {columns.map((col) => {
+                const isActive = sortable && sortColumn === col;
+                return (
+                  <th
+                    key={col}
+                    className={sortable ? `sortable${isActive ? ' sort-active' : ''}` : ''}
+                    onClick={sortable ? () => onSortChange?.(col) : undefined}
+                  >
+                    <span className="th-inner">
+                      {col}
+                      {sortable && (
+                        <span className={`sort-icon${isActive ? ' active' : ''}`}>
+                          {isActive ? (sortOrder === 'asc' ? '↑' : '↓') : '⇅'}
+                        </span>
+                      )}
+                    </span>
+                  </th>
+                );
+              })}
             </tr>
           </thead>
           <tbody>

@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { api, type Database, type TableInfo } from './api';
 import SchemaGraph from './components/SchemaGraph';
 import DataTable from './components/DataTable';
@@ -24,6 +24,13 @@ export default function App() {
   const [tableData, setTableData] = useState<{ columns: string[]; rows: Record<string, unknown>[]; total: number } | null>(null);
   const [dataOffset, setDataOffset] = useState(0);
   const DATA_LIMIT = 100;
+
+  // Sort & filter state for the table browser
+  const [sortColumn, setSortColumn] = useState<string | null>(null);
+  const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('asc');
+  const [searchTerm, setSearchTerm] = useState('');
+  const searchTermRef = useRef('');
+  const searchDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
     api.listDatabases().then((dbs) => {
@@ -72,10 +79,19 @@ export default function App() {
     }
   };
 
-  const loadTableData = useCallback(async (tableName: string, offset = 0) => {
+  const loadTableData = useCallback(async (
+    tableName: string,
+    offset: number,
+    sortCol: string | null,
+    sortOrd: 'asc' | 'desc',
+    search: string,
+  ) => {
     if (!activeDb) return;
     try {
-      const data = await api.getTableData(activeDb.id, tableName, DATA_LIMIT, offset);
+      const data = await api.getTableData(
+        activeDb.id, tableName, DATA_LIMIT, offset,
+        sortCol ?? undefined, sortOrd, search || undefined,
+      );
       setTableData({ columns: data.columns, rows: data.rows, total: data.total });
       setDataOffset(offset);
     } catch (e) {
@@ -85,12 +101,39 @@ export default function App() {
 
   const handleSelectTable = useCallback((name: string) => {
     setSelectedTable(name);
+    setSortColumn(null);
+    setSortOrder('asc');
+    setSearchTerm('');
+    searchTermRef.current = '';
     setView('data');
-    loadTableData(name, 0);
+    loadTableData(name, 0, null, 'asc', '');
   }, [loadTableData]);
 
   const handlePageChange = (offset: number) => {
-    if (selectedTable) loadTableData(selectedTable, offset);
+    if (selectedTable) loadTableData(selectedTable, offset, sortColumn, sortOrder, searchTerm);
+  };
+
+  const handleSortChange = (col: string) => {
+    const newOrder = col === sortColumn ? (sortOrder === 'asc' ? 'desc' : 'asc') : 'asc';
+    setSortColumn(col);
+    setSortOrder(newOrder);
+    if (selectedTable) loadTableData(selectedTable, 0, col, newOrder, searchTerm);
+  };
+
+  const handleSearchChange = (value: string) => {
+    setSearchTerm(value);
+    searchTermRef.current = value;
+    if (searchDebounceRef.current) clearTimeout(searchDebounceRef.current);
+    searchDebounceRef.current = setTimeout(() => {
+      if (selectedTable) loadTableData(selectedTable, 0, sortColumn, sortOrder, searchTermRef.current);
+    }, 300);
+  };
+
+  const handleClearSearch = () => {
+    setSearchTerm('');
+    searchTermRef.current = '';
+    if (searchDebounceRef.current) clearTimeout(searchDebounceRef.current);
+    if (selectedTable) loadTableData(selectedTable, 0, sortColumn, sortOrder, '');
   };
 
   const handleVisualizeQuery = (sql: string, chartType: ChartType, xColumn: string, yColumns: string[]) => {
@@ -171,8 +214,28 @@ export default function App() {
             {view === 'data' && selectedTable && tableData && (
               <>
                 <div className="table-browser-header">
-                  <span className="table-browser-title">{selectedTable}</span>
-                  <span className="table-browser-info">{tableData.total.toLocaleString()} rows</span>
+                  <div className="table-browser-left">
+                    <span className="table-browser-title">{selectedTable}</span>
+                    <span className="table-browser-info">
+                      {tableData.total.toLocaleString()} {searchTerm ? 'matching rows' : 'rows'}
+                    </span>
+                  </div>
+                  <div className={`table-browser-search${searchTerm ? ' has-value' : ''}`}>
+                    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ color: 'var(--text-muted)', flexShrink: 0 }}>
+                      <circle cx="11" cy="11" r="8" /><path d="m21 21-4.35-4.35" />
+                    </svg>
+                    <input
+                      className="table-search-input"
+                      placeholder="Search rows…"
+                      value={searchTerm}
+                      onChange={(e) => handleSearchChange(e.target.value)}
+                    />
+                    {searchTerm && (
+                      <button className="table-search-clear" onClick={handleClearSearch} title="Clear search">
+                        &#x2715;
+                      </button>
+                    )}
+                  </div>
                 </div>
                 <DataTable
                   columns={tableData.columns}
@@ -182,6 +245,10 @@ export default function App() {
                   offset={dataOffset}
                   onPageChange={handlePageChange}
                   exportFilename={selectedTable}
+                  sortable
+                  sortColumn={sortColumn}
+                  sortOrder={sortOrder}
+                  onSortChange={handleSortChange}
                 />
               </>
             )}

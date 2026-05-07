@@ -150,8 +150,21 @@ export const api = {
 
   getSchema: (id: string) => request<SchemaResponse>(`/databases/${id}/schema`),
 
-  getTableData: (id: string, table: string, limit = 100, offset = 0) =>
-    request<TableDataResponse>(`/databases/${id}/tables/${table}/data?limit=${limit}&offset=${offset}`),
+  getTableData: (
+    id: string,
+    table: string,
+    limit = 100,
+    offset = 0,
+    sortColumn?: string,
+    sortOrder?: 'asc' | 'desc',
+    search?: string,
+  ) => {
+    const params = new URLSearchParams({ limit: String(limit), offset: String(offset) });
+    if (sortColumn) params.set('sort_column', sortColumn);
+    if (sortOrder) params.set('sort_order', sortOrder);
+    if (search) params.set('search', search);
+    return request<TableDataResponse>(`/databases/${id}/tables/${table}/data?${params}`);
+  },
 
   executeQuery: (dbId: string, sql: string) =>
     request<QueryResponse>('/query', {

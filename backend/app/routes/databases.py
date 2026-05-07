@@ -3,8 +3,9 @@ import shutil
 import sqlite3
 import tempfile
 from pathlib import Path
+from typing import Optional
 
-from fastapi import APIRouter, Depends, File, HTTPException, UploadFile
+from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
@@ -185,7 +186,16 @@ def get_schema(db_id: str, db: Session = Depends(get_db)):
 
 
 @router.get("/{db_id}/tables/{table_name}/data")
-def get_table_data(db_id: str, table_name: str, limit: int = 100, offset: int = 0, db: Session = Depends(get_db)):
+def get_table_data(
+    db_id: str,
+    table_name: str,
+    limit: int = 100,
+    offset: int = 0,
+    sort_column: Optional[str] = Query(default=None),
+    sort_order: str = Query(default="asc"),
+    search: Optional[str] = Query(default=None),
+    db: Session = Depends(get_db),
+):
     conn = get_connection(db_id, db)
     try:
         try:
@@ -195,13 +205,38 @@ def get_table_data(db_id: str, table_name: str, limit: int = 100, offset: int = 
             raise HTTPException(status_code=404, detail=f"Unknown table: {table_name}")
 
         quoted = quote_identifier(table_name)
+
+        # Fetch all column names for search construction and sort validation
+        cols_cursor = conn.execute(f"PRAGMA table_info({quoted})")
+        all_columns = [col["name"] for col in cols_cursor.fetchall()]
+
+        # Build WHERE clause — parameterized LIKE across every column (safe)
+        search_params: list = []
+        where_clause = ""
+        if search and search.strip():
+            like_conditions = " OR ".join(
+                f"CAST({quote_identifier(col)} AS TEXT) LIKE ?" for col in all_columns
+            )
+            where_clause = f"WHERE ({like_conditions})"
+            search_params = [f"%{search}%"] * len(all_columns)
+
+        # Build ORDER BY — sort_column validated against real schema (safe)
+        order_clause = ""
+        if sort_column and sort_column in all_columns:
+            direction = "DESC" if sort_order.lower() == "desc" else "ASC"
+            order_clause = f"ORDER BY {quote_identifier(sort_column)} {direction}"
+
+        count = conn.execute(
+            f"SELECT COUNT(*) FROM {quoted} {where_clause}",
+            search_params,
+        ).fetchone()[0]
+
         cursor = conn.execute(
-            f"SELECT * FROM {quoted} LIMIT ? OFFSET ?",
-            (limit, offset),
+            f"SELECT * FROM {quoted} {where_clause} {order_clause} LIMIT ? OFFSET ?",
+            search_params + [limit, offset],
         )
         columns = [desc[0] for desc in cursor.description]
         rows = [dict(row) for row in cursor.fetchall()]
-        count = conn.execute(f"SELECT COUNT(*) FROM {quoted}").fetchone()[0]
         return {"columns": columns, "rows": rows, "total": count, "limit": limit, "offset": offset}
     except HTTPException:
         raise
