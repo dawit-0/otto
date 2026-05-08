@@ -5,6 +5,7 @@ import DataTable from './components/DataTable';
 import QueryEditor from './components/QueryEditor';
 import ConnectModal from './components/ConnectModal';
 import VisualizationDashboard from './components/VisualizationDashboard';
+import CommandPalette from './components/CommandPalette';
 import { type ChartType } from './components/charts/ChartRenderer';
 
 type View = 'schema' | 'data' | 'query' | 'visualize';
@@ -16,6 +17,8 @@ export default function App() {
   const [selectedTable, setSelectedTable] = useState<string | null>(null);
   const [view, setView] = useState<View>('schema');
   const [showConnect, setShowConnect] = useState(false);
+  const [showPalette, setShowPalette] = useState(false);
+  const [pendingQuerySql, setPendingQuerySql] = useState<string | null>(null);
   const [pendingVisualization, setPendingVisualization] = useState<{
     sql: string; chartType: ChartType; xColumn: string; yColumns: string[];
   } | null>(null);
@@ -24,6 +27,17 @@ export default function App() {
   const [tableData, setTableData] = useState<{ columns: string[]; rows: Record<string, unknown>[]; total: number } | null>(null);
   const [dataOffset, setDataOffset] = useState(0);
   const DATA_LIMIT = 100;
+
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if ((e.metaKey || e.ctrlKey) && e.key === 'k') {
+        e.preventDefault();
+        setShowPalette(p => !p);
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, []);
 
   useEffect(() => {
     api.listDatabases().then((dbs) => {
@@ -106,6 +120,13 @@ export default function App() {
           <div className="sidebar-logo">
             <span>&#9672;</span> Otto
           </div>
+          <button
+            className="btn-icon cmd-sidebar-trigger"
+            onClick={() => setShowPalette(true)}
+            title="Command palette (⌘K)"
+          >
+            <kbd>⌘K</kbd>
+          </button>
         </div>
 
         <div className="sidebar-section">
@@ -201,6 +222,8 @@ export default function App() {
                 dbId={activeDb.id}
                 dbName={activeDb.name}
                 onVisualize={handleVisualizeQuery}
+                initialSql={pendingQuerySql}
+                onInitialSqlConsumed={() => setPendingQuerySql(null)}
               />
             )}
 
@@ -228,6 +251,23 @@ export default function App() {
       </div>
 
       {showConnect && <ConnectModal onConnect={handleConnect} onClose={() => setShowConnect(false)} />}
+
+      <CommandPalette
+        open={showPalette}
+        onClose={() => setShowPalette(false)}
+        tables={tables}
+        dbId={activeDb?.id ?? null}
+        onSelectTable={(name) => {
+          handleSelectTable(name);
+          setShowPalette(false);
+        }}
+        onSelectQuery={(sql) => {
+          setPendingQuerySql(sql);
+          setView('query');
+        }}
+        onNavigate={(v) => setView(v)}
+        onConnect={() => setShowConnect(true)}
+      />
     </div>
   );
 }
