@@ -1,10 +1,11 @@
-import { useState, useEffect, useCallback } from 'react';
-import { api, type Database, type TableInfo } from './api';
+import { useState, useEffect, useCallback, useRef } from 'react';
+import { api, type Database, type TableInfo, type SavedQueryEntry } from './api';
 import SchemaGraph from './components/SchemaGraph';
 import DataTable from './components/DataTable';
 import QueryEditor from './components/QueryEditor';
 import ConnectModal from './components/ConnectModal';
 import VisualizationDashboard from './components/VisualizationDashboard';
+import CommandPalette from './components/CommandPalette';
 import { type ChartType } from './components/charts/ChartRenderer';
 
 type View = 'schema' | 'data' | 'query' | 'visualize';
@@ -19,6 +20,10 @@ export default function App() {
   const [pendingVisualization, setPendingVisualization] = useState<{
     sql: string; chartType: ChartType; xColumn: string; yColumns: string[];
   } | null>(null);
+  const [showCommandPalette, setShowCommandPalette] = useState(false);
+  const [savedQueries, setSavedQueries] = useState<SavedQueryEntry[]>([]);
+  const [pendingQuerySql, setPendingQuerySql] = useState<string | null>(null);
+  const queryEditorKey = useRef(0);
 
   // Table data state
   const [tableData, setTableData] = useState<{ columns: string[]; rows: Record<string, unknown>[]; total: number } | null>(null);
@@ -34,6 +39,24 @@ export default function App() {
       }
     }).catch(() => {});
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Refresh saved queries whenever the active DB changes
+  useEffect(() => {
+    if (!activeDb) return;
+    api.listSavedQueries(activeDb.id).then(setSavedQueries).catch(() => {});
+  }, [activeDb]);
+
+  // Global ⌘K / Ctrl+K listener
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      if ((e.metaKey || e.ctrlKey) && e.key === 'k') {
+        e.preventDefault();
+        setShowCommandPalette((v) => !v);
+      }
+    };
+    window.addEventListener('keydown', handler);
+    return () => window.removeEventListener('keydown', handler);
+  }, []);
 
   const loadSchema = useCallback(async (db: Database) => {
     try {
@@ -98,6 +121,12 @@ export default function App() {
     setView('visualize');
   };
 
+  const handlePaletteLoadQuery = (sql: string) => {
+    setPendingQuerySql(sql);
+    queryEditorKey.current += 1;
+    setView('query');
+  };
+
   return (
     <div className="app-layout">
       {/* Sidebar */}
@@ -158,6 +187,12 @@ export default function App() {
               <button className={`header-tab${view === 'visualize' ? ' active' : ''}`} onClick={() => setView('visualize')}>
                 Visualize
               </button>
+              <div style={{ flex: 1 }} />
+              <button className="cmd-trigger" onClick={() => setShowCommandPalette(true)} title="Open command palette">
+                <span className="cmd-trigger-icon">⌕</span>
+                <span className="cmd-trigger-text">Search…</span>
+                <kbd className="cmd-trigger-kbd">{navigator.platform.includes('Mac') ? '⌘K' : 'Ctrl+K'}</kbd>
+              </button>
             </div>
 
             {view === 'schema' && (
@@ -198,8 +233,10 @@ export default function App() {
 
             {view === 'query' && (
               <QueryEditor
+                key={queryEditorKey.current}
                 dbId={activeDb.id}
                 dbName={activeDb.name}
+                initialSql={pendingQuerySql ?? undefined}
                 onVisualize={handleVisualizeQuery}
               />
             )}
@@ -228,6 +265,20 @@ export default function App() {
       </div>
 
       {showConnect && <ConnectModal onConnect={handleConnect} onClose={() => setShowConnect(false)} />}
+
+      {showCommandPalette && (
+        <CommandPalette
+          databases={databases}
+          activeDb={activeDb}
+          tables={tables}
+          savedQueries={savedQueries}
+          onSelectDb={selectDb}
+          onSelectTable={handleSelectTable}
+          onSelectView={setView}
+          onLoadQuery={handlePaletteLoadQuery}
+          onClose={() => setShowCommandPalette(false)}
+        />
+      )}
     </div>
   );
 }
