@@ -1,8 +1,10 @@
+import json
 import os
 import shutil
 import sqlite3
 import tempfile
 from pathlib import Path
+from typing import Optional
 
 from fastapi import APIRouter, Depends, File, HTTPException, UploadFile
 from pydantic import BaseModel
@@ -184,8 +186,65 @@ def get_schema(db_id: str, db: Session = Depends(get_db)):
         conn.close()
 
 
+_ALLOWED_OPS = {"contains", "equals", "not_equals", "starts_with", "gt", "lt", "gte", "lte", "is_null", "is_not_null"}
+
+
+def _build_where(filters: list[dict], valid_columns: set[str]) -> tuple[str, list]:
+    """Return (WHERE clause SQL, param list) from a validated filter list."""
+    clauses = []
+    params = []
+    for f in filters:
+        col = f.get("col", "")
+        op = f.get("op", "")
+        val = f.get("val", "")
+        if col not in valid_columns:
+            raise ValueError(f"Unknown column: {col!r}")
+        if op not in _ALLOWED_OPS:
+            raise ValueError(f"Unknown operator: {op!r}")
+        qcol = quote_identifier(col)
+        if op == "contains":
+            clauses.append(f"CAST({qcol} AS TEXT) LIKE ?")
+            params.append(f"%{val}%")
+        elif op == "starts_with":
+            clauses.append(f"CAST({qcol} AS TEXT) LIKE ?")
+            params.append(f"{val}%")
+        elif op == "equals":
+            clauses.append(f"{qcol} = ?")
+            params.append(val)
+        elif op == "not_equals":
+            clauses.append(f"{qcol} != ?")
+            params.append(val)
+        elif op == "gt":
+            clauses.append(f"{qcol} > ?")
+            params.append(val)
+        elif op == "lt":
+            clauses.append(f"{qcol} < ?")
+            params.append(val)
+        elif op == "gte":
+            clauses.append(f"{qcol} >= ?")
+            params.append(val)
+        elif op == "lte":
+            clauses.append(f"{qcol} <= ?")
+            params.append(val)
+        elif op == "is_null":
+            clauses.append(f"{qcol} IS NULL")
+        elif op == "is_not_null":
+            clauses.append(f"{qcol} IS NOT NULL")
+    where = ("WHERE " + " AND ".join(clauses)) if clauses else ""
+    return where, params
+
+
 @router.get("/{db_id}/tables/{table_name}/data")
-def get_table_data(db_id: str, table_name: str, limit: int = 100, offset: int = 0, db: Session = Depends(get_db)):
+def get_table_data(
+    db_id: str,
+    table_name: str,
+    limit: int = 100,
+    offset: int = 0,
+    sort_column: Optional[str] = None,
+    sort_direction: str = "asc",
+    filters: Optional[str] = None,
+    db: Session = Depends(get_db),
+):
     conn = get_connection(db_id, db)
     try:
         try:
@@ -195,13 +254,34 @@ def get_table_data(db_id: str, table_name: str, limit: int = 100, offset: int = 
             raise HTTPException(status_code=404, detail=f"Unknown table: {table_name}")
 
         quoted = quote_identifier(table_name)
-        cursor = conn.execute(
-            f"SELECT * FROM {quoted} LIMIT ? OFFSET ?",
-            (limit, offset),
-        )
+        cols_cursor = conn.execute(f"PRAGMA table_info({quoted})")
+        valid_columns = {row["name"] for row in cols_cursor.fetchall()}
+
+        # Build WHERE clause
+        filter_list: list[dict] = []
+        if filters:
+            try:
+                filter_list = json.loads(filters)
+            except json.JSONDecodeError:
+                raise HTTPException(status_code=400, detail="Invalid filters JSON")
+        try:
+            where_sql, where_params = _build_where(filter_list, valid_columns)
+        except ValueError as e:
+            raise HTTPException(status_code=400, detail=str(e))
+
+        # Build ORDER BY clause
+        order_sql = ""
+        if sort_column:
+            if sort_column not in valid_columns:
+                raise HTTPException(status_code=400, detail=f"Unknown column: {sort_column!r}")
+            direction = "DESC" if sort_direction.lower() == "desc" else "ASC"
+            order_sql = f"ORDER BY {quote_identifier(sort_column)} {direction}"
+
+        data_sql = f"SELECT * FROM {quoted} {where_sql} {order_sql} LIMIT ? OFFSET ?"
+        cursor = conn.execute(data_sql, (*where_params, limit, offset))
         columns = [desc[0] for desc in cursor.description]
         rows = [dict(row) for row in cursor.fetchall()]
-        count = conn.execute(f"SELECT COUNT(*) FROM {quoted}").fetchone()[0]
+        count = conn.execute(f"SELECT COUNT(*) FROM {quoted} {where_sql}", where_params).fetchone()[0]
         return {"columns": columns, "rows": rows, "total": count, "limit": limit, "offset": offset}
     except HTTPException:
         raise

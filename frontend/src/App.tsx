@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { api, type Database, type TableInfo } from './api';
 import SchemaGraph from './components/SchemaGraph';
-import DataTable from './components/DataTable';
+import TableBrowser from './components/TableBrowser';
 import QueryEditor from './components/QueryEditor';
 import ConnectModal from './components/ConnectModal';
 import VisualizationDashboard from './components/VisualizationDashboard';
@@ -20,11 +20,6 @@ export default function App() {
     sql: string; chartType: ChartType; xColumn: string; yColumns: string[];
   } | null>(null);
 
-  // Table data state
-  const [tableData, setTableData] = useState<{ columns: string[]; rows: Record<string, unknown>[]; total: number } | null>(null);
-  const [dataOffset, setDataOffset] = useState(0);
-  const DATA_LIMIT = 100;
-
   useEffect(() => {
     api.listDatabases().then((dbs) => {
       if (dbs.length > 0) {
@@ -40,7 +35,6 @@ export default function App() {
       const schema = await api.getSchema(db.id);
       setTables(schema.tables);
       setSelectedTable(null);
-      setTableData(null);
     } catch (e) {
       console.error('Failed to load schema:', e);
     }
@@ -68,30 +62,13 @@ export default function App() {
       setActiveDb(null);
       setTables([]);
       setSelectedTable(null);
-      setTableData(null);
     }
   };
-
-  const loadTableData = useCallback(async (tableName: string, offset = 0) => {
-    if (!activeDb) return;
-    try {
-      const data = await api.getTableData(activeDb.id, tableName, DATA_LIMIT, offset);
-      setTableData({ columns: data.columns, rows: data.rows, total: data.total });
-      setDataOffset(offset);
-    } catch (e) {
-      console.error('Failed to load table data:', e);
-    }
-  }, [activeDb]);
 
   const handleSelectTable = useCallback((name: string) => {
     setSelectedTable(name);
     setView('data');
-    loadTableData(name, 0);
-  }, [loadTableData]);
-
-  const handlePageChange = (offset: number) => {
-    if (selectedTable) loadTableData(selectedTable, offset);
-  };
+  }, []);
 
   const handleVisualizeQuery = (sql: string, chartType: ChartType, xColumn: string, yColumns: string[]) => {
     setPendingVisualization({ sql, chartType, xColumn, yColumns });
@@ -168,20 +145,16 @@ export default function App() {
               />
             )}
 
-            {view === 'data' && selectedTable && tableData && (
+            {view === 'data' && selectedTable && (
               <>
                 <div className="table-browser-header">
                   <span className="table-browser-title">{selectedTable}</span>
-                  <span className="table-browser-info">{tableData.total.toLocaleString()} rows</span>
                 </div>
-                <DataTable
-                  columns={tableData.columns}
-                  rows={tableData.rows}
-                  total={tableData.total}
-                  limit={DATA_LIMIT}
-                  offset={dataOffset}
-                  onPageChange={handlePageChange}
-                  exportFilename={selectedTable}
+                <TableBrowser
+                  key={`${activeDb.id}/${selectedTable}`}
+                  dbId={activeDb.id}
+                  tableName={selectedTable}
+                  columnDefs={tables.find((t) => t.name === selectedTable)?.columns ?? []}
                 />
               </>
             )}
