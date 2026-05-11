@@ -3,8 +3,9 @@ import shutil
 import sqlite3
 import tempfile
 from pathlib import Path
+from typing import Annotated
 
-from fastapi import APIRouter, Depends, File, HTTPException, UploadFile
+from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
@@ -184,8 +185,22 @@ def get_schema(db_id: str, db: Session = Depends(get_db)):
         conn.close()
 
 
+_VALID_FILTER_OPS = {"eq", "neq", "contains", "startswith", "endswith", "gt", "lt", "gte", "lte", "isnull", "notnull"}
+_NO_VALUE_OPS = {"isnull", "notnull"}
+
+
 @router.get("/{db_id}/tables/{table_name}/data")
-def get_table_data(db_id: str, table_name: str, limit: int = 100, offset: int = 0, db: Session = Depends(get_db)):
+def get_table_data(
+    db_id: str,
+    table_name: str,
+    limit: int = 100,
+    offset: int = 0,
+    search: str = "",
+    filter_col: Annotated[list[str], Query()] = [],
+    filter_op: Annotated[list[str], Query()] = [],
+    filter_val: Annotated[list[str], Query()] = [],
+    db: Session = Depends(get_db),
+):
     conn = get_connection(db_id, db)
     try:
         try:
@@ -195,13 +210,54 @@ def get_table_data(db_id: str, table_name: str, limit: int = 100, offset: int = 
             raise HTTPException(status_code=404, detail=f"Unknown table: {table_name}")
 
         quoted = quote_identifier(table_name)
-        cursor = conn.execute(
-            f"SELECT * FROM {quoted} LIMIT ? OFFSET ?",
-            (limit, offset),
-        )
+
+        cols_cursor = conn.execute(f"PRAGMA table_info({quoted})")
+        col_info = cols_cursor.fetchall()
+        all_col_names = {row["name"] for row in col_info}
+
+        conditions: list[str] = []
+        params: list = []
+
+        if search:
+            search_conds = [f"CAST({quote_identifier(row['name'])} AS TEXT) LIKE ?" for row in col_info]
+            if search_conds:
+                conditions.append("(" + " OR ".join(search_conds) + ")")
+                params.extend([f"%{search}%"] * len(col_info))
+
+        for col, op, val in zip(filter_col, filter_op, filter_val):
+            if col not in all_col_names or op not in _VALID_FILTER_OPS:
+                continue
+            qc = quote_identifier(col)
+            if op == "eq":
+                conditions.append(f"{qc} = ?"); params.append(val)
+            elif op == "neq":
+                conditions.append(f"{qc} != ?"); params.append(val)
+            elif op == "contains":
+                conditions.append(f"CAST({qc} AS TEXT) LIKE ?"); params.append(f"%{val}%")
+            elif op == "startswith":
+                conditions.append(f"CAST({qc} AS TEXT) LIKE ?"); params.append(f"{val}%")
+            elif op == "endswith":
+                conditions.append(f"CAST({qc} AS TEXT) LIKE ?"); params.append(f"%{val}")
+            elif op == "gt":
+                conditions.append(f"{qc} > ?"); params.append(val)
+            elif op == "lt":
+                conditions.append(f"{qc} < ?"); params.append(val)
+            elif op == "gte":
+                conditions.append(f"{qc} >= ?"); params.append(val)
+            elif op == "lte":
+                conditions.append(f"{qc} <= ?"); params.append(val)
+            elif op == "isnull":
+                conditions.append(f"{qc} IS NULL")
+            elif op == "notnull":
+                conditions.append(f"{qc} IS NOT NULL")
+
+        where = ("WHERE " + " AND ".join(conditions)) if conditions else ""
+
+        count = conn.execute(f"SELECT COUNT(*) FROM {quoted} {where}", params).fetchone()[0]
+        cursor = conn.execute(f"SELECT * FROM {quoted} {where} LIMIT ? OFFSET ?", [*params, limit, offset])
         columns = [desc[0] for desc in cursor.description]
         rows = [dict(row) for row in cursor.fetchall()]
-        count = conn.execute(f"SELECT COUNT(*) FROM {quoted}").fetchone()[0]
+
         return {"columns": columns, "rows": rows, "total": count, "limit": limit, "offset": offset}
     except HTTPException:
         raise

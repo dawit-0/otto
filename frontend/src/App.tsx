@@ -1,7 +1,8 @@
-import { useState, useEffect, useCallback } from 'react';
-import { api, type Database, type TableInfo } from './api';
+import { useState, useEffect, useCallback, useRef } from 'react';
+import { api, type Database, type TableInfo, type ColumnFilter } from './api';
 import SchemaGraph from './components/SchemaGraph';
 import DataTable from './components/DataTable';
+import FilterBar from './components/FilterBar';
 import QueryEditor from './components/QueryEditor';
 import ConnectModal from './components/ConnectModal';
 import VisualizationDashboard from './components/VisualizationDashboard';
@@ -23,6 +24,11 @@ export default function App() {
   // Table data state
   const [tableData, setTableData] = useState<{ columns: string[]; rows: Record<string, unknown>[]; total: number } | null>(null);
   const [dataOffset, setDataOffset] = useState(0);
+  const [dataSearch, setDataSearch] = useState('');
+  const [dataFilters, setDataFilters] = useState<ColumnFilter[]>([]);
+  const dataFiltersRef = useRef<ColumnFilter[]>([]);
+  dataFiltersRef.current = dataFilters;
+  const searchTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const DATA_LIMIT = 100;
 
   useEffect(() => {
@@ -41,6 +47,8 @@ export default function App() {
       setTables(schema.tables);
       setSelectedTable(null);
       setTableData(null);
+      setDataSearch('');
+      setDataFilters([]);
     } catch (e) {
       console.error('Failed to load schema:', e);
     }
@@ -72,10 +80,10 @@ export default function App() {
     }
   };
 
-  const loadTableData = useCallback(async (tableName: string, offset = 0) => {
+  const loadTableData = useCallback(async (tableName: string, offset = 0, search = '', filters: ColumnFilter[] = []) => {
     if (!activeDb) return;
     try {
-      const data = await api.getTableData(activeDb.id, tableName, DATA_LIMIT, offset);
+      const data = await api.getTableData(activeDb.id, tableName, DATA_LIMIT, offset, search, filters);
       setTableData({ columns: data.columns, rows: data.rows, total: data.total });
       setDataOffset(offset);
     } catch (e) {
@@ -84,13 +92,47 @@ export default function App() {
   }, [activeDb]);
 
   const handleSelectTable = useCallback((name: string) => {
+    if (searchTimerRef.current) clearTimeout(searchTimerRef.current);
     setSelectedTable(name);
     setView('data');
-    loadTableData(name, 0);
+    setDataSearch('');
+    setDataFilters([]);
+    setDataOffset(0);
+    loadTableData(name, 0, '', []);
   }, [loadTableData]);
 
   const handlePageChange = (offset: number) => {
-    if (selectedTable) loadTableData(selectedTable, offset);
+    if (selectedTable) loadTableData(selectedTable, offset, dataSearch, dataFilters);
+  };
+
+  const handleSearchChange = (search: string) => {
+    setDataSearch(search);
+    if (searchTimerRef.current) clearTimeout(searchTimerRef.current);
+    searchTimerRef.current = setTimeout(() => {
+      if (selectedTable) loadTableData(selectedTable, 0, search, dataFiltersRef.current);
+    }, 280);
+  };
+
+  const handleAddFilter = (filter: ColumnFilter) => {
+    const next = [...dataFilters, filter];
+    setDataFilters(next);
+    setDataOffset(0);
+    if (selectedTable) loadTableData(selectedTable, 0, dataSearch, next);
+  };
+
+  const handleRemoveFilter = (index: number) => {
+    const next = dataFilters.filter((_, i) => i !== index);
+    setDataFilters(next);
+    setDataOffset(0);
+    if (selectedTable) loadTableData(selectedTable, 0, dataSearch, next);
+  };
+
+  const handleClearFilters = () => {
+    if (searchTimerRef.current) clearTimeout(searchTimerRef.current);
+    setDataSearch('');
+    setDataFilters([]);
+    setDataOffset(0);
+    if (selectedTable) loadTableData(selectedTable, 0, '', []);
   };
 
   const handleVisualizeQuery = (sql: string, chartType: ChartType, xColumn: string, yColumns: string[]) => {
@@ -172,8 +214,19 @@ export default function App() {
               <>
                 <div className="table-browser-header">
                   <span className="table-browser-title">{selectedTable}</span>
-                  <span className="table-browser-info">{tableData.total.toLocaleString()} rows</span>
+                  <span className="table-browser-info">
+                    {tableData.total.toLocaleString()} {(dataSearch || dataFilters.length > 0) ? 'matching rows' : 'rows'}
+                  </span>
                 </div>
+                <FilterBar
+                  columns={tableData.columns}
+                  search={dataSearch}
+                  filters={dataFilters}
+                  onSearchChange={handleSearchChange}
+                  onAddFilter={handleAddFilter}
+                  onRemoveFilter={handleRemoveFilter}
+                  onClearAll={handleClearFilters}
+                />
                 <DataTable
                   columns={tableData.columns}
                   rows={tableData.rows}

@@ -44,6 +44,12 @@ export interface TableDataResponse {
   offset: number;
 }
 
+export interface ColumnFilter {
+  col: string;
+  op: string;
+  val: string;
+}
+
 export interface QueryResponse {
   columns: string[];
   rows: Record<string, unknown>[];
@@ -150,8 +156,16 @@ export const api = {
 
   getSchema: (id: string) => request<SchemaResponse>(`/databases/${id}/schema`),
 
-  getTableData: (id: string, table: string, limit = 100, offset = 0) =>
-    request<TableDataResponse>(`/databases/${id}/tables/${table}/data?limit=${limit}&offset=${offset}`),
+  getTableData: (id: string, table: string, limit = 100, offset = 0, search = '', filters: ColumnFilter[] = []) => {
+    const params = new URLSearchParams({ limit: String(limit), offset: String(offset) });
+    if (search) params.set('search', search);
+    for (const f of filters) {
+      params.append('filter_col', f.col);
+      params.append('filter_op', f.op);
+      params.append('filter_val', f.val);
+    }
+    return request<TableDataResponse>(`/databases/${id}/tables/${table}/data?${params}`);
+  },
 
   executeQuery: (dbId: string, sql: string) =>
     request<QueryResponse>('/query', {
