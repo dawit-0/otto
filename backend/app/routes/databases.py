@@ -184,6 +184,79 @@ def get_schema(db_id: str, db: Session = Depends(get_db)):
         conn.close()
 
 
+@router.get("/{db_id}/tables/{table_name}/columns/{column_name}/profile")
+def get_column_profile(db_id: str, table_name: str, column_name: str, db: Session = Depends(get_db)):
+    conn = get_connection(db_id, db)
+    try:
+        try:
+            assert_valid_table(conn, table_name)
+        except ValueError:
+            raise HTTPException(status_code=404, detail=f"Unknown table: {table_name}")
+
+        quoted_table = quote_identifier(table_name)
+
+        col_cursor = conn.execute(f"PRAGMA table_info({quoted_table})")
+        col_map = {row["name"]: row["type"] for row in col_cursor.fetchall()}
+        if column_name not in col_map:
+            raise HTTPException(status_code=404, detail=f"Unknown column: {column_name}")
+
+        col_type = (col_map[column_name] or "").upper()
+        quoted_col = quote_identifier(column_name)
+
+        total = conn.execute(f"SELECT COUNT(*) FROM {quoted_table}").fetchone()[0]
+        null_count = conn.execute(
+            f"SELECT COUNT(*) FROM {quoted_table} WHERE {quoted_col} IS NULL"
+        ).fetchone()[0]
+        non_null = total - null_count
+        distinct_count = conn.execute(
+            f"SELECT COUNT(DISTINCT {quoted_col}) FROM {quoted_table}"
+        ).fetchone()[0]
+
+        result: dict = {
+            "column": column_name,
+            "type": col_map[column_name],
+            "total_count": total,
+            "null_count": null_count,
+            "non_null_count": non_null,
+            "distinct_count": distinct_count,
+            "min": None,
+            "max": None,
+            "avg": None,
+            "top_values": [],
+        }
+
+        if non_null == 0:
+            return result
+
+        numeric_keywords = ["INT", "REAL", "FLOAT", "DOUBLE", "NUMERIC", "DECIMAL", "NUMBER"]
+        is_numeric = any(kw in col_type for kw in numeric_keywords)
+
+        if is_numeric:
+            row = conn.execute(
+                f"SELECT MIN(CAST({quoted_col} AS REAL)), MAX(CAST({quoted_col} AS REAL)), AVG(CAST({quoted_col} AS REAL)) "
+                f"FROM {quoted_table} WHERE {quoted_col} IS NOT NULL"
+            ).fetchone()
+            result["min"] = row[0]
+            result["max"] = row[1]
+            result["avg"] = round(row[2], 6) if row[2] is not None else None
+
+        top_rows = conn.execute(
+            f"SELECT {quoted_col}, COUNT(*) as cnt FROM {quoted_table} "
+            f"WHERE {quoted_col} IS NOT NULL "
+            f"GROUP BY {quoted_col} ORDER BY cnt DESC LIMIT 10"
+        ).fetchall()
+        result["top_values"] = [{"value": str(r[0]), "count": r[1]} for r in top_rows]
+
+        return result
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error("Column profile error for %s.%s on db_id=%s: %s", table_name, column_name, db_id, e)
+        raise HTTPException(status_code=400, detail=str(e))
+    finally:
+        conn.close()
+
+
 @router.get("/{db_id}/tables/{table_name}/data")
 def get_table_data(db_id: str, table_name: str, limit: int = 100, offset: int = 0, db: Session = Depends(get_db)):
     conn = get_connection(db_id, db)

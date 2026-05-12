@@ -5,6 +5,7 @@ import DataTable from './components/DataTable';
 import QueryEditor from './components/QueryEditor';
 import ConnectModal from './components/ConnectModal';
 import VisualizationDashboard from './components/VisualizationDashboard';
+import ColumnProfilePanel from './components/ColumnProfilePanel';
 import { type ChartType } from './components/charts/ChartRenderer';
 
 type View = 'schema' | 'data' | 'query' | 'visualize';
@@ -19,6 +20,7 @@ export default function App() {
   const [pendingVisualization, setPendingVisualization] = useState<{
     sql: string; chartType: ChartType; xColumn: string; yColumns: string[];
   } | null>(null);
+  const [selectedColumn, setSelectedColumn] = useState<{ table: string; column: string; type: string } | null>(null);
 
   // Table data state
   const [tableData, setTableData] = useState<{ columns: string[]; rows: Record<string, unknown>[]; total: number } | null>(null);
@@ -41,6 +43,7 @@ export default function App() {
       setTables(schema.tables);
       setSelectedTable(null);
       setTableData(null);
+      setSelectedColumn(null);
     } catch (e) {
       console.error('Failed to load schema:', e);
     }
@@ -161,11 +164,26 @@ export default function App() {
             </div>
 
             {view === 'schema' && (
-              <SchemaGraph
-                tables={tables}
-                onSelectTable={handleSelectTable}
-                selectedTable={selectedTable}
-              />
+              <div className="schema-view">
+                <SchemaGraph
+                  tables={tables}
+                  onSelectTable={handleSelectTable}
+                  selectedTable={selectedTable}
+                  onSelectColumn={(tableName, columnName, columnType) =>
+                    setSelectedColumn({ table: tableName, column: columnName, type: columnType })
+                  }
+                  selectedColumn={selectedColumn}
+                />
+                {selectedColumn && activeDb && (
+                  <ColumnProfilePanel
+                    dbId={activeDb.id}
+                    tableName={selectedColumn.table}
+                    columnName={selectedColumn.column}
+                    columnType={selectedColumn.type}
+                    onClose={() => setSelectedColumn(null)}
+                  />
+                )}
+              </div>
             )}
 
             {view === 'data' && selectedTable && tableData && (

@@ -111,6 +111,19 @@ export interface SavedQueryEntry {
   updated_at: string;
 }
 
+export interface ColumnProfile {
+  column: string;
+  type: string;
+  total_count: number;
+  null_count: number;
+  non_null_count: number;
+  distinct_count: number;
+  min: number | null;
+  max: number | null;
+  avg: number | null;
+  top_values: { value: string; count: number }[];
+}
+
 const BASE = '/api';
 
 async function request<T>(url: string, options?: RequestInit): Promise<T> {
@@ -152,6 +165,9 @@ export const api = {
 
   getTableData: (id: string, table: string, limit = 100, offset = 0) =>
     request<TableDataResponse>(`/databases/${id}/tables/${table}/data?limit=${limit}&offset=${offset}`),
+
+  getColumnProfile: (dbId: string, table: string, column: string) =>
+    request<ColumnProfile>(`/databases/${dbId}/tables/${table}/columns/${encodeURIComponent(column)}/profile`),
 
   executeQuery: (dbId: string, sql: string) =>
     request<QueryResponse>('/query', {

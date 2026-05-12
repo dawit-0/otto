@@ -20,10 +20,20 @@ interface Props {
   tables: TableInfo[];
   onSelectTable: (name: string) => void;
   selectedTable: string | null;
+  onSelectColumn?: (tableName: string, columnName: string, columnType: string) => void;
+  selectedColumn?: { table: string; column: string } | null;
 }
 
-function TableNode({ data }: { data: { table: TableInfo; selected: boolean; onSelect: () => void } }) {
-  const { table, selected, onSelect } = data;
+interface NodeData {
+  table: TableInfo;
+  selected: boolean;
+  onSelect: () => void;
+  onSelectColumn?: (columnName: string, columnType: string) => void;
+  selectedColumnName?: string | null;
+}
+
+function TableNode({ data }: { data: NodeData }) {
+  const { table, selected, onSelect, onSelectColumn, selectedColumnName } = data;
   return (
     <div className={`table-node${selected ? ' selected' : ''}`} onClick={onSelect}>
       <Handle type="target" position={Position.Top} style={{ background: '#6366f1', width: 8, height: 8 }} />
@@ -35,13 +45,20 @@ function TableNode({ data }: { data: { table: TableInfo; selected: boolean; onSe
         {table.columns.map((col) => {
           const isPk = col.pk;
           const isFk = table.foreign_keys.some((fk) => fk.from_column === col.name);
+          const isSelectedCol = selectedColumnName === col.name;
           return (
-            <div key={col.name} className="table-node-column">
+            <div
+              key={col.name}
+              className={`table-node-column${isSelectedCol ? ' col-profiled' : ''}${onSelectColumn ? ' col-clickable' : ''}`}
+              onClick={onSelectColumn ? (e) => { e.stopPropagation(); onSelectColumn(col.name, col.type); } : undefined}
+              title={onSelectColumn ? `Profile ${col.name}` : undefined}
+            >
               <span className={`col-icon${isPk ? ' pk' : isFk ? ' fk' : ''}`}>
                 {isPk ? '🔑' : isFk ? '→' : '·'}
               </span>
               <span className="col-name">{col.name}</span>
               <span className="col-type">{col.type || 'any'}</span>
+              {onSelectColumn && <span className="col-profile-hint">&#9432;</span>}
             </div>
           );
         })}
@@ -53,7 +70,13 @@ function TableNode({ data }: { data: { table: TableInfo; selected: boolean; onSe
 
 const nodeTypes = { tableNode: TableNode };
 
-function layoutGraph(tables: TableInfo[], onSelectTable: (name: string) => void, selectedTable: string | null) {
+function layoutGraph(
+  tables: TableInfo[],
+  onSelectTable: (name: string) => void,
+  selectedTable: string | null,
+  onSelectColumn?: (tableName: string, columnName: string, columnType: string) => void,
+  selectedColumn?: { table: string; column: string } | null,
+) {
   const g = new dagre.graphlib.Graph();
   g.setDefaultEdgeLabel(() => ({}));
   g.setGraph({ rankdir: 'TB', nodesep: 80, ranksep: 100, marginx: 40, marginy: 40 });
@@ -94,6 +117,10 @@ function layoutGraph(tables: TableInfo[], onSelectTable: (name: string) => void,
         table,
         selected: selectedTable === table.name,
         onSelect: () => onSelectTable(table.name),
+        onSelectColumn: onSelectColumn
+          ? (colName: string, colType: string) => onSelectColumn(table.name, colName, colType)
+          : undefined,
+        selectedColumnName: selectedColumn?.table === table.name ? selectedColumn.column : null,
       },
     };
   });
@@ -101,10 +128,10 @@ function layoutGraph(tables: TableInfo[], onSelectTable: (name: string) => void,
   return { nodes, edges };
 }
 
-export default function SchemaGraph({ tables, onSelectTable, selectedTable }: Props) {
+export default function SchemaGraph({ tables, onSelectTable, selectedTable, onSelectColumn, selectedColumn }: Props) {
   const { nodes: layoutNodes, edges: layoutEdges } = useMemo(
-    () => layoutGraph(tables, onSelectTable, selectedTable),
-    [tables, onSelectTable, selectedTable]
+    () => layoutGraph(tables, onSelectTable, selectedTable, onSelectColumn, selectedColumn),
+    [tables, onSelectTable, selectedTable, onSelectColumn, selectedColumn]
   );
 
   const [nodes, setNodes, onNodesChange] = useNodesState(layoutNodes);
