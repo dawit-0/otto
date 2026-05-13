@@ -196,7 +196,7 @@ def get_table_data(db_id: str, table_name: str, limit: int = 100, offset: int = 
 
         quoted = quote_identifier(table_name)
         cursor = conn.execute(
-            f"SELECT * FROM {quoted} LIMIT ? OFFSET ?",
+            f"SELECT * FROM {quoted} ORDER BY rowid DESC LIMIT ? OFFSET ?",
             (limit, offset),
         )
         columns = [desc[0] for desc in cursor.description]
