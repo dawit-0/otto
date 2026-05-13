@@ -7,7 +7,7 @@ from sqlalchemy.orm import Session
 
 from app.database import get_db
 from app.logging import get_logger
-from app.routes.databases import get_driver_for_db, get_db_type
+from app.routes.databases import get_connection, get_driver_for_db, get_db_type
 
 logger = get_logger("ai")
 
@@ -149,22 +149,27 @@ def _parse_ask_response(text: str) -> tuple[str, str]:
 @router.post("/ask")
 def ask_otto(req: AskRequest, db: Session = Depends(get_db)):
     logger.info("Ask Otto requested for db_id=%s: %.100s", req.db_id, req.question)
-    conn = get_connection(req.db_id, db)
+    driver = get_driver_for_db(req.db_id, db)
+    conn = driver.connect()
     try:
-        schema_summary = _build_schema_summary(conn)
+        tables = driver.get_table_info(conn)
+        schema_summary = _build_schema_summary(tables)
     except Exception:
-        conn.close()
+        driver.close(conn)
         raise
 
+    db_type = get_db_type(req.db_id, db)
+    dialect = "PostgreSQL" if db_type == "postgres" else "SQLite"
+
     system_prompt = (
-        "You are Otto, a friendly SQLite database assistant. "
-        "Given a database schema and a user question, respond in EXACTLY this format:\n\n"
+        f"You are Otto, a friendly {dialect} database assistant. "
+        f"Given a database schema and a user question, respond in EXACTLY this format:\n\n"
         "SQL:\n"
         "<the complete SQL query>\n\n"
         "EXPLANATION:\n"
         "<1-2 sentences in plain English explaining what was found>\n\n"
         "Do not include any other text, markdown, or formatting. "
-        "Only generate SELECT queries — never INSERT, UPDATE, DELETE, or DDL."
+        f"Only generate SELECT queries — never INSERT, UPDATE, DELETE, or DDL."
     )
 
     user_prompt = (
@@ -195,10 +200,10 @@ def ask_otto(req: AskRequest, db: Session = Depends(get_db)):
         logger.info("Ask Otto generated SQL for db_id=%s: %.100s", req.db_id, sql)
 
     except subprocess.TimeoutExpired:
-        conn.close()
+        driver.close(conn)
         raise HTTPException(status_code=504, detail="Ask Otto timed out — try a simpler question")
     except FileNotFoundError:
-        conn.close()
+        driver.close(conn)
         raise HTTPException(
             status_code=500,
             detail="Claude CLI not found. Please install and configure the Claude CLI.",
@@ -224,4 +229,4 @@ def ask_otto(req: AskRequest, db: Session = Depends(get_db)):
         logger.error("Ask Otto query failed: %s", e)
         raise HTTPException(status_code=400, detail=f"Query error: {e}")
     finally:
-        conn.close()
+        driver.close(conn)
