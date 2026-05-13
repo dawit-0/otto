@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { api, type Database, type TableInfo } from './api';
 import SchemaGraph from './components/SchemaGraph';
-import DataTable from './components/DataTable';
+import DataView from './components/DataView';
 import QueryEditor from './components/QueryEditor';
 import ConnectModal from './components/ConnectModal';
 import VisualizationDashboard from './components/VisualizationDashboard';
@@ -89,6 +89,12 @@ export default function App() {
     loadTableData(name, 0);
   }, [loadTableData]);
 
+  const handleClearTable = useCallback(() => {
+    setSelectedTable(null);
+    setTableData(null);
+    setDataOffset(0);
+  }, []);
+
   const handlePageChange = (offset: number) => {
     if (selectedTable) loadTableData(selectedTable, offset);
   };
@@ -150,7 +156,7 @@ export default function App() {
                 Schema
               </button>
               <button className={`header-tab${view === 'data' ? ' active' : ''}`} onClick={() => setView('data')}>
-                Data {selectedTable && `— ${selectedTable}`}
+                Data
               </button>
               <button className={`header-tab${view === 'query' ? ' active' : ''}`} onClick={() => setView('query')}>
                 Query
@@ -168,32 +174,17 @@ export default function App() {
               />
             )}
 
-            {view === 'data' && selectedTable && tableData && (
-              <>
-                <div className="table-browser-header">
-                  <span className="table-browser-title">{selectedTable}</span>
-                  <span className="table-browser-info">{tableData.total.toLocaleString()} rows</span>
-                </div>
-                <DataTable
-                  columns={tableData.columns}
-                  rows={tableData.rows}
-                  total={tableData.total}
-                  limit={DATA_LIMIT}
-                  offset={dataOffset}
-                  onPageChange={handlePageChange}
-                  exportFilename={selectedTable}
-                />
-              </>
-            )}
-
-            {view === 'data' && !selectedTable && (
-              <div className="empty-state">
-                <div className="empty-state-icon">&#9783;</div>
-                <div className="empty-state-title">Select a table</div>
-                <div className="empty-state-text">
-                  Click a table in the Schema view or sidebar to browse its data.
-                </div>
-              </div>
+            {view === 'data' && (
+              <DataView
+                tables={tables}
+                selectedTable={selectedTable}
+                tableData={tableData}
+                dataOffset={dataOffset}
+                limit={DATA_LIMIT}
+                onSelectTable={handleSelectTable}
+                onClearTable={handleClearTable}
+                onPageChange={handlePageChange}
+              />
             )}
 
             {view === 'query' && (
