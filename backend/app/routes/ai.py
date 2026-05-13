@@ -1,4 +1,3 @@
-import json
 import subprocess
 
 from fastapi import APIRouter, Depends, HTTPException
@@ -7,7 +6,7 @@ from sqlalchemy.orm import Session
 
 from app.database import get_db
 from app.logging import get_logger
-from app.routes.databases import get_connection, get_table_info
+from app.routes.databases import get_driver_for_db, get_db_type
 
 logger = get_logger("ai")
 
@@ -19,9 +18,7 @@ class AiQueryRequest(BaseModel):
     prompt: str
 
 
-def _build_schema_summary(conn) -> str:
-    """Build a concise schema description for the LLM prompt."""
-    tables = get_table_info(conn)
+def _build_schema_summary(tables: list[dict]) -> str:
     lines = []
     for t in tables:
         cols = ", ".join(
@@ -41,16 +38,21 @@ def _build_schema_summary(conn) -> str:
 @router.post("/generate-query")
 def generate_query(req: AiQueryRequest, db: Session = Depends(get_db)):
     logger.info("AI query generation requested for db_id=%s: %.100s", req.db_id, req.prompt)
-    conn = get_connection(req.db_id, db)
+    driver = get_driver_for_db(req.db_id, db)
+    conn = driver.connect()
     try:
-        schema_summary = _build_schema_summary(conn)
+        tables = driver.get_table_info(conn)
+        schema_summary = _build_schema_summary(tables)
     finally:
-        conn.close()
+        driver.close(conn)
+
+    db_type = get_db_type(req.db_id, db)
+    dialect = "PostgreSQL" if db_type == "postgres" else "SQLite"
 
     system_prompt = (
-        "You are a SQL query generator for SQLite databases. "
-        "Given a database schema and a user request in plain English, "
-        "return ONLY a valid SQLite SQL query. "
+        f"You are a SQL query generator for {dialect} databases. "
+        f"Given a database schema and a user request in plain English, "
+        f"return ONLY a valid {dialect} SQL query. "
         "Do NOT include any explanation, markdown, code fences, or extra text. "
         "Return ONLY the raw SQL query text, nothing else."
     )
@@ -83,10 +85,8 @@ def generate_query(req: AiQueryRequest, db: Session = Depends(get_db)):
 
         sql = result.stdout.strip()
 
-        # Strip markdown code fences if the model included them despite instructions
         if sql.startswith("```"):
             lines = sql.split("\n")
-            # Remove first line (```sql or ```) and last line (```)
             lines = [l for l in lines if not l.strip().startswith("```")]
             sql = "\n".join(lines).strip()
 

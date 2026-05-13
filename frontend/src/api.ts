@@ -2,6 +2,7 @@ export interface Database {
   id: string;
   name: string;
   path: string;
+  db_type: 'sqlite' | 'postgres';
 }
 
 export interface Column {
@@ -126,10 +127,10 @@ async function request<T>(url: string, options?: RequestInit): Promise<T> {
 }
 
 export const api = {
-  connectDatabase: (path: string) =>
+  connectDatabase: (params: { db_type?: string; path?: string; host?: string; port?: number; database?: string; username?: string; password?: string }) =>
     request<Database>('/databases/connect', {
       method: 'POST',
-      body: JSON.stringify({ path }),
+      body: JSON.stringify(params),
     }),
 
   uploadDatabase: async (file: File): Promise<Database> => {
