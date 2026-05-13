@@ -8,6 +8,8 @@ from app.drivers.base import DatabaseDriver
 
 class SQLiteDriver(DatabaseDriver):
 
+    placeholder = "?"
+
     def __init__(self, path: str):
         self._path = path
 
@@ -89,18 +91,34 @@ class SQLiteDriver(DatabaseDriver):
             })
         return tables
 
+    def get_column_names(self, conn: Any, table: str) -> list[str]:
+        quoted = self.quote_identifier(table)
+        cursor = conn.execute(f"PRAGMA table_info({quoted})")
+        return [row["name"] for row in cursor.fetchall()]
+
     def get_table_data(
         self, conn: Any, table: str, limit: int, offset: int,
+        sort_column: str | None = None,
+        sort_direction: str = "asc",
+        filters: list[dict] | None = None,
     ) -> dict:
         self.assert_valid_table(conn, table)
         quoted = self.quote_identifier(table)
-        cursor = conn.execute(
-            f"SELECT * FROM {quoted} ORDER BY rowid DESC LIMIT ? OFFSET ?",
-            (limit, offset),
-        )
+        valid_columns = set(self.get_column_names(conn, table))
+
+        where_sql, where_params = self.build_filter_clause(filters or [], valid_columns)
+        order_sql = self.build_order_by(sort_column, sort_direction, valid_columns)
+        if not order_sql:
+            order_sql = "ORDER BY rowid DESC"
+
+        data_sql = f"SELECT * FROM {quoted} {where_sql} {order_sql} LIMIT ? OFFSET ?"
+        cursor = conn.execute(data_sql, (*where_params, limit, offset))
         columns = [desc[0] for desc in cursor.description]
         rows = [dict(row) for row in cursor.fetchall()]
-        count = conn.execute(f"SELECT COUNT(*) FROM {quoted}").fetchone()[0]
+
+        count_sql = f"SELECT COUNT(*) FROM {quoted} {where_sql}"
+        count = conn.execute(count_sql, where_params).fetchone()[0]
+
         return {
             "columns": columns,
             "rows": rows,

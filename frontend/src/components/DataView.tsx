@@ -1,22 +1,12 @@
 import { type TableInfo } from '../api';
-import DataTable from './DataTable';
-
-// ── Types ────────────────────────────────────────────────────────────────────
-
-export interface DataViewOptions {
-  // Extensible: add sort, filters, column visibility, etc. here
-}
+import TableBrowser from './TableBrowser';
 
 interface DataViewProps {
+  dbId: string;
   tables: TableInfo[];
   selectedTable: string | null;
-  tableData: { columns: string[]; rows: Record<string, unknown>[]; total: number } | null;
-  dataOffset: number;
-  limit: number;
-  options?: DataViewOptions;
   onSelectTable: (name: string) => void;
   onClearTable: () => void;
-  onPageChange: (offset: number) => void;
 }
 
 // ── TablePicker ───────────────────────────────────────────────────────────────
@@ -63,11 +53,10 @@ function TablePicker({ tables, onSelect }: TablePickerProps) {
 
 interface DataViewHeaderProps {
   tableName: string;
-  total: number;
   onBack: () => void;
 }
 
-function DataViewHeader({ tableName, total, onBack }: DataViewHeaderProps) {
+function DataViewHeader({ tableName, onBack }: DataViewHeaderProps) {
   return (
     <div className="data-view-header">
       <div className="data-view-header-left">
@@ -80,7 +69,6 @@ function DataViewHeader({ tableName, total, onBack }: DataViewHeaderProps) {
         <span className="data-view-header-sep">/</span>
         <span className="data-view-header-table">{tableName}</span>
       </div>
-      <span className="data-view-header-info">{total.toLocaleString()} rows</span>
     </div>
   );
 }
@@ -88,42 +76,26 @@ function DataViewHeader({ tableName, total, onBack }: DataViewHeaderProps) {
 // ── DataView ──────────────────────────────────────────────────────────────────
 
 export default function DataView({
+  dbId,
   tables,
   selectedTable,
-  tableData,
-  dataOffset,
-  limit,
   onSelectTable,
   onClearTable,
-  onPageChange,
 }: DataViewProps) {
   if (!selectedTable) {
     return <TablePicker tables={tables} onSelect={onSelectTable} />;
   }
 
-  if (!tableData) {
-    return (
-      <div className="empty-state">
-        <div className="empty-state-text">Loading…</div>
-      </div>
-    );
-  }
+  const columnDefs = tables.find((t) => t.name === selectedTable)?.columns ?? [];
 
   return (
     <div className="data-view">
-      <DataViewHeader
+      <DataViewHeader tableName={selectedTable} onBack={onClearTable} />
+      <TableBrowser
+        key={`${dbId}/${selectedTable}`}
+        dbId={dbId}
         tableName={selectedTable}
-        total={tableData.total}
-        onBack={onClearTable}
-      />
-      <DataTable
-        columns={tableData.columns}
-        rows={tableData.rows}
-        total={tableData.total}
-        limit={limit}
-        offset={dataOffset}
-        onPageChange={onPageChange}
-        exportFilename={selectedTable}
+        columnDefs={columnDefs}
       />
     </div>
   );

@@ -10,6 +10,8 @@ from app.drivers.base import DatabaseDriver
 
 class PostgresDriver(DatabaseDriver):
 
+    placeholder = "%s"
+
     def __init__(self, connection_string: str):
         self._dsn = connection_string
 
@@ -66,26 +68,37 @@ class PostgresDriver(DatabaseDriver):
             })
         return tables
 
+    def get_column_names(self, conn: Any, table: str) -> list[str]:
+        return [c["name"] for c in self._get_columns(conn, table)]
+
     def get_table_data(
         self, conn: Any, table: str, limit: int, offset: int,
+        sort_column: str | None = None,
+        sort_direction: str = "asc",
+        filters: list[dict] | None = None,
     ) -> dict:
         self.assert_valid_table(conn, table)
         quoted = self.quote_identifier(table)
+        valid_columns = set(self.get_column_names(conn, table))
 
-        pk_cols = self._get_pk_columns(conn, table)
-        if pk_cols:
-            order = "ORDER BY " + ", ".join(
-                self.quote_identifier(c) + " DESC" for c in pk_cols
-            )
-        else:
-            order = ""
+        where_sql, where_params = self.build_filter_clause(filters or [], valid_columns)
+        order_sql = self.build_order_by(sort_column, sort_direction, valid_columns)
+        if not order_sql:
+            pk_cols = self._get_pk_columns(conn, table)
+            if pk_cols:
+                order_sql = "ORDER BY " + ", ".join(
+                    self.quote_identifier(c) + " DESC" for c in pk_cols
+                )
 
         cur = conn.cursor()
-        cur.execute(f"SELECT * FROM {quoted} {order} LIMIT %s OFFSET %s", (limit, offset))
+        cur.execute(
+            f"SELECT * FROM {quoted} {where_sql} {order_sql} LIMIT %s OFFSET %s",
+            (*where_params, limit, offset),
+        )
         columns = [desc[0] for desc in cur.description]
         rows = [dict(zip(columns, row)) for row in cur.fetchall()]
 
-        cur.execute(f"SELECT COUNT(*) FROM {quoted}")
+        cur.execute(f"SELECT COUNT(*) FROM {quoted} {where_sql}", where_params)
         total = cur.fetchone()[0]
         cur.close()
 

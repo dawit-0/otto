@@ -4,7 +4,17 @@ from abc import ABC, abstractmethod
 from typing import Any
 
 
+ALLOWED_FILTER_OPS = {
+    "contains", "equals", "not_equals", "starts_with",
+    "gt", "lt", "gte", "lte",
+    "is_null", "is_not_null",
+}
+
+
 class DatabaseDriver(ABC):
+
+    # Subclasses override with their parameter placeholder ("?" or "%s")
+    placeholder: str = "?"
 
     @abstractmethod
     def connect(self) -> Any:
@@ -36,8 +46,16 @@ class DatabaseDriver(ABC):
     @abstractmethod
     def get_table_data(
         self, conn: Any, table: str, limit: int, offset: int,
+        sort_column: str | None = None,
+        sort_direction: str = "asc",
+        filters: list[dict] | None = None,
     ) -> dict:
         """Return {columns, rows, total, limit, offset}."""
+        ...
+
+    @abstractmethod
+    def get_column_names(self, conn: Any, table: str) -> list[str]:
+        """Return the ordered list of column names for a table."""
         ...
 
     @abstractmethod
@@ -58,3 +76,72 @@ class DatabaseDriver(ABC):
         if table_name not in self.list_table_names(conn):
             raise ValueError(f"Unknown table: {table_name}")
         return table_name
+
+    def build_filter_clause(
+        self,
+        filters: list[dict],
+        valid_columns: set[str],
+    ) -> tuple[str, list]:
+        """Build a safe parameterized WHERE clause from a filter list.
+
+        Each filter is a dict with keys: col, op, val. Column names are
+        validated against ``valid_columns``; operators against ALLOWED_FILTER_OPS.
+        Values are returned as a parallel param list so the caller binds them
+        with the driver's parameter API.
+        """
+        if not filters:
+            return "", []
+        ph = self.placeholder
+        clauses: list[str] = []
+        params: list = []
+        for f in filters:
+            col = f.get("col", "")
+            op = f.get("op", "")
+            val = f.get("val", "")
+            if col not in valid_columns:
+                raise ValueError(f"Unknown column: {col!r}")
+            if op not in ALLOWED_FILTER_OPS:
+                raise ValueError(f"Unknown operator: {op!r}")
+            qcol = self.quote_identifier(col)
+            if op == "contains":
+                clauses.append(f"CAST({qcol} AS TEXT) LIKE {ph}")
+                params.append(f"%{val}%")
+            elif op == "starts_with":
+                clauses.append(f"CAST({qcol} AS TEXT) LIKE {ph}")
+                params.append(f"{val}%")
+            elif op == "equals":
+                clauses.append(f"{qcol} = {ph}")
+                params.append(val)
+            elif op == "not_equals":
+                clauses.append(f"{qcol} != {ph}")
+                params.append(val)
+            elif op == "gt":
+                clauses.append(f"{qcol} > {ph}")
+                params.append(val)
+            elif op == "lt":
+                clauses.append(f"{qcol} < {ph}")
+                params.append(val)
+            elif op == "gte":
+                clauses.append(f"{qcol} >= {ph}")
+                params.append(val)
+            elif op == "lte":
+                clauses.append(f"{qcol} <= {ph}")
+                params.append(val)
+            elif op == "is_null":
+                clauses.append(f"{qcol} IS NULL")
+            elif op == "is_not_null":
+                clauses.append(f"{qcol} IS NOT NULL")
+        return "WHERE " + " AND ".join(clauses), params
+
+    def build_order_by(
+        self,
+        sort_column: str | None,
+        sort_direction: str,
+        valid_columns: set[str],
+    ) -> str:
+        if not sort_column:
+            return ""
+        if sort_column not in valid_columns:
+            raise ValueError(f"Unknown column: {sort_column!r}")
+        direction = "DESC" if (sort_direction or "asc").lower() == "desc" else "ASC"
+        return f"ORDER BY {self.quote_identifier(sort_column)} {direction}"

@@ -1,10 +1,11 @@
+import json
 import os
 import shutil
 import sqlite3
 import tempfile
 from hashlib import sha256
 from pathlib import Path
-from typing import Any
+from typing import Any, Optional
 
 from fastapi import APIRouter, Depends, File, HTTPException, UploadFile
 from pydantic import BaseModel
@@ -266,14 +267,36 @@ def get_overview(db_id: str, db: Session = Depends(get_db)):
 
 
 @router.get("/{db_id}/tables/{table_name}/data")
-def get_table_data(db_id: str, table_name: str, limit: int = 100, offset: int = 0, db: Session = Depends(get_db)):
+def get_table_data(
+    db_id: str,
+    table_name: str,
+    limit: int = 100,
+    offset: int = 0,
+    sort_column: Optional[str] = None,
+    sort_direction: str = "asc",
+    filters: Optional[str] = None,
+    db: Session = Depends(get_db),
+):
+    parsed_filters: list[dict] = []
+    if filters:
+        try:
+            parsed_filters = json.loads(filters)
+        except json.JSONDecodeError:
+            raise HTTPException(status_code=400, detail="Invalid filters JSON")
+
     driver = get_driver_for_db(db_id, db)
     conn = driver.connect()
     try:
-        return driver.get_table_data(conn, table_name, limit, offset)
+        return driver.get_table_data(
+            conn, table_name, limit, offset,
+            sort_column=sort_column,
+            sort_direction=sort_direction,
+            filters=parsed_filters,
+        )
     except ValueError as e:
         logger.warning("Rejected table data request: %s", e)
-        raise HTTPException(status_code=404, detail=str(e))
+        status = 404 if str(e).lower().startswith("unknown table") else 400
+        raise HTTPException(status_code=status, detail=str(e))
     except Exception as e:
         logger.error("Error reading table '%s' from db_id=%s: %s", table_name, db_id, e)
         raise HTTPException(status_code=400, detail=str(e))

@@ -45,6 +45,18 @@ export interface TableDataResponse {
   offset: number;
 }
 
+export type FilterOp =
+  | 'contains' | 'equals' | 'not_equals' | 'starts_with'
+  | 'gt' | 'lt' | 'gte' | 'lte'
+  | 'is_null' | 'is_not_null';
+
+export interface FilterRule {
+  id: string;
+  column: string;
+  op: FilterOp;
+  value: string;
+}
+
 export interface QueryResponse {
   columns: string[];
   rows: Record<string, unknown>[];
@@ -181,8 +193,23 @@ export const api = {
 
   getOverview: (id: string) => request<OverviewResponse>(`/databases/${id}/overview`),
 
-  getTableData: (id: string, table: string, limit = 100, offset = 0) =>
-    request<TableDataResponse>(`/databases/${id}/tables/${table}/data?limit=${limit}&offset=${offset}`),
+  getTableData: (
+    id: string,
+    table: string,
+    limit = 100,
+    offset = 0,
+    sortColumn?: string,
+    sortDirection?: 'asc' | 'desc',
+    filters?: FilterRule[],
+  ) => {
+    const params = new URLSearchParams({ limit: String(limit), offset: String(offset) });
+    if (sortColumn) params.set('sort_column', sortColumn);
+    if (sortDirection) params.set('sort_direction', sortDirection);
+    if (filters?.length) {
+      params.set('filters', JSON.stringify(filters.map(({ column, op, value }) => ({ col: column, op, val: value }))));
+    }
+    return request<TableDataResponse>(`/databases/${id}/tables/${table}/data?${params}`);
+  },
 
   executeQuery: (dbId: string, sql: string) =>
     request<QueryResponse>('/query', {

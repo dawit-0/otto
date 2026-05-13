@@ -24,11 +24,6 @@ export default function App() {
   const [askSeedSql, setAskSeedSql] = useState<string | null>(null);
   const [queryKey, setQueryKey] = useState(0);
 
-  // Table data state
-  const [tableData, setTableData] = useState<{ columns: string[]; rows: Record<string, unknown>[]; total: number } | null>(null);
-  const [dataOffset, setDataOffset] = useState(0);
-  const DATA_LIMIT = 100;
-
   useEffect(() => {
     api.listDatabases().then((dbs) => {
       if (dbs.length > 0) {
@@ -44,7 +39,6 @@ export default function App() {
       const schema = await api.getSchema(db.id);
       setTables(schema.tables);
       setSelectedTable(null);
-      setTableData(null);
     } catch (e) {
       console.error('Failed to load schema:', e);
     }
@@ -73,36 +67,17 @@ export default function App() {
       setActiveDb(null);
       setTables([]);
       setSelectedTable(null);
-      setTableData(null);
     }
   };
-
-  const loadTableData = useCallback(async (tableName: string, offset = 0) => {
-    if (!activeDb) return;
-    try {
-      const data = await api.getTableData(activeDb.id, tableName, DATA_LIMIT, offset);
-      setTableData({ columns: data.columns, rows: data.rows, total: data.total });
-      setDataOffset(offset);
-    } catch (e) {
-      console.error('Failed to load table data:', e);
-    }
-  }, [activeDb]);
 
   const handleSelectTable = useCallback((name: string) => {
     setSelectedTable(name);
     setView('data');
-    loadTableData(name, 0);
-  }, [loadTableData]);
+  }, []);
 
   const handleClearTable = useCallback(() => {
     setSelectedTable(null);
-    setTableData(null);
-    setDataOffset(0);
   }, []);
-
-  const handlePageChange = (offset: number) => {
-    if (selectedTable) loadTableData(selectedTable, offset);
-  };
 
   const handleVisualizeQuery = (sql: string, chartType: ChartType, xColumn: string, yColumns: string[]) => {
     setPendingVisualization({ sql, chartType, xColumn, yColumns });
@@ -196,14 +171,11 @@ export default function App() {
 
             {view === 'data' && (
               <DataView
+                dbId={activeDb.id}
                 tables={tables}
                 selectedTable={selectedTable}
-                tableData={tableData}
-                dataOffset={dataOffset}
-                limit={DATA_LIMIT}
                 onSelectTable={handleSelectTable}
                 onClearTable={handleClearTable}
-                onPageChange={handlePageChange}
               />
             )}
 

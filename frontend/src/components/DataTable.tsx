@@ -8,6 +8,9 @@ interface Props {
   offset?: number;
   onPageChange?: (offset: number) => void;
   exportFilename?: string;
+  sortColumn?: string;
+  sortDirection?: 'asc' | 'desc';
+  onSort?: (column: string) => void;
 }
 
 function toCSV(columns: string[], rows: Record<string, unknown>[]): string {
@@ -45,7 +48,7 @@ function downloadFile(filename: string, content: string, mimeType: string) {
   URL.revokeObjectURL(url);
 }
 
-export default function DataTable({ columns, rows, total, limit = 100, offset = 0, onPageChange, exportFilename = 'export' }: Props) {
+export default function DataTable({ columns, rows, total, limit = 100, offset = 0, onPageChange, exportFilename = 'export', sortColumn, sortDirection, onSort }: Props) {
   const [copyState, setCopyState] = useState<null | 'csv' | 'json'>(null);
   const copyTimeout = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -87,7 +90,18 @@ export default function DataTable({ columns, rows, total, limit = 100, offset = 
           <thead>
             <tr>
               {columns.map((col) => (
-                <th key={col}>{col}</th>
+                <th
+                  key={col}
+                  className={onSort ? 'sortable-th' : ''}
+                  onClick={onSort ? () => onSort(col) : undefined}
+                >
+                  {col}
+                  {onSort && (
+                    <span className="sort-arrow">
+                      {sortColumn === col ? (sortDirection === 'asc' ? '↑' : '↓') : '⇅'}
+                    </span>
+                  )}
+                </th>
               ))}
             </tr>
           </thead>
