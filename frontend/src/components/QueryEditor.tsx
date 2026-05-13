@@ -8,11 +8,13 @@ import { type ChartType } from './charts/ChartRenderer';
 interface Props {
   dbId: string;
   dbName: string;
+  dbType?: 'sqlite' | 'postgres';
+  initialSql?: string;
   onVisualize?: (sql: string, chartType: ChartType, xColumn: string, yColumns: string[]) => void;
 }
 
-export default function QueryEditor({ dbId, dbName, onVisualize }: Props) {
-  const [sql, setSql] = useState('');
+export default function QueryEditor({ dbId, dbName, dbType, initialSql, onVisualize }: Props) {
+  const [sql, setSql] = useState(initialSql ?? '');
   const [schema, setSchema] = useState<Record<string, string[]>>({});
   const [result, setResult] = useState<QueryResponse | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -196,6 +198,7 @@ export default function QueryEditor({ dbId, dbName, onVisualize }: Props) {
           onChange={setSql}
           onExecute={run}
           schema={schema}
+          dialect={dbType}
           placeholder="SELECT * FROM table_name LIMIT 100;"
         />
         <div className="query-editor-actions">

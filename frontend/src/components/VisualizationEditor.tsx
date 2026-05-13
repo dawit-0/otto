@@ -7,6 +7,7 @@ import SQLEditor from './SQLEditor';
 interface Props {
   dbId: string;
   dbName?: string;
+  dbType?: 'sqlite' | 'postgres';
   onPin: (data: {
     title: string; sql: string; chart_type: string;
     config: Record<string, unknown>; columns: string[]; rows: Record<string, unknown>[];
@@ -20,7 +21,7 @@ interface Props {
   };
 }
 
-export default function VisualizationEditor({ dbId, onPin, onClose, initial }: Props) {
+export default function VisualizationEditor({ dbId, dbType, onPin, onClose, initial }: Props) {
   const [sql, setSql] = useState(initial?.sql || '');
   const [schema, setSchema] = useState<Record<string, string[]>>({});
   const [title, setTitle] = useState(initial?.title || '');
@@ -161,6 +162,7 @@ export default function VisualizationEditor({ dbId, onPin, onClose, initial }: P
                 onChange={setSql}
                 onExecute={run}
                 schema={schema}
+                dialect={dbType}
                 placeholder="SELECT category, SUM(amount) as total FROM transactions GROUP BY category;"
               />
               <button

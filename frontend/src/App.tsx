@@ -1,24 +1,28 @@
 import { useState, useEffect, useCallback } from 'react';
 import { api, type Database, type TableInfo } from './api';
 import SchemaGraph from './components/SchemaGraph';
-import DataTable from './components/DataTable';
+import DataView from './components/DataView';
 import QueryEditor from './components/QueryEditor';
 import ConnectModal from './components/ConnectModal';
 import VisualizationDashboard from './components/VisualizationDashboard';
+import AskOtto from './components/AskOtto';
+import OverviewTab from './components/OverviewTab';
 import { type ChartType } from './components/charts/ChartRenderer';
 
-type View = 'schema' | 'data' | 'query' | 'visualize';
+type View = 'overview' | 'schema' | 'data' | 'query' | 'visualize' | 'ask';
 
 export default function App() {
   const [databases, setDatabases] = useState<Database[]>([]);
   const [activeDb, setActiveDb] = useState<Database | null>(null);
   const [tables, setTables] = useState<TableInfo[]>([]);
   const [selectedTable, setSelectedTable] = useState<string | null>(null);
-  const [view, setView] = useState<View>('schema');
+  const [view, setView] = useState<View>('overview');
   const [showConnect, setShowConnect] = useState(false);
   const [pendingVisualization, setPendingVisualization] = useState<{
     sql: string; chartType: ChartType; xColumn: string; yColumns: string[];
   } | null>(null);
+  const [askSeedSql, setAskSeedSql] = useState<string | null>(null);
+  const [queryKey, setQueryKey] = useState(0);
 
   // Table data state
   const [tableData, setTableData] = useState<{ columns: string[]; rows: Record<string, unknown>[]; total: number } | null>(null);
@@ -49,6 +53,7 @@ export default function App() {
   const selectDb = useCallback((db: Database) => {
     setActiveDb(db);
     loadSchema(db);
+    setView('overview');
   }, [loadSchema]);
 
   const handleConnect = (db: Database) => {
@@ -89,6 +94,12 @@ export default function App() {
     loadTableData(name, 0);
   }, [loadTableData]);
 
+  const handleClearTable = useCallback(() => {
+    setSelectedTable(null);
+    setTableData(null);
+    setDataOffset(0);
+  }, []);
+
   const handlePageChange = (offset: number) => {
     if (selectedTable) loadTableData(selectedTable, offset);
   };
@@ -116,7 +127,9 @@ export default function App() {
               className={`sidebar-item${activeDb?.id === db.id ? ' active' : ''}`}
               onClick={() => selectDb(db)}
             >
-              <span style={{ fontSize: 14 }}>&#9632;</span>
+              <span className={`db-type-badge ${db.db_type === 'postgres' ? 'pg' : 'sl'}`}>
+                {db.db_type === 'postgres' ? 'PG' : 'SL'}
+              </span>
               <span className="sidebar-item-name">{db.name}</span>
               <button
                 className="btn-icon sidebar-item-remove"
@@ -146,11 +159,14 @@ export default function App() {
         {activeDb ? (
           <>
             <div className="header">
+              <button className={`header-tab${view === 'overview' ? ' active' : ''}`} onClick={() => setView('overview')}>
+                Overview
+              </button>
               <button className={`header-tab${view === 'schema' ? ' active' : ''}`} onClick={() => setView('schema')}>
                 Schema
               </button>
               <button className={`header-tab${view === 'data' ? ' active' : ''}`} onClick={() => setView('data')}>
-                Data {selectedTable && `— ${selectedTable}`}
+                Data
               </button>
               <button className={`header-tab${view === 'query' ? ' active' : ''}`} onClick={() => setView('query')}>
                 Query
@@ -158,7 +174,17 @@ export default function App() {
               <button className={`header-tab${view === 'visualize' ? ' active' : ''}`} onClick={() => setView('visualize')}>
                 Visualize
               </button>
+              <button className={`header-tab header-tab-ask${view === 'ask' ? ' active' : ''}`} onClick={() => setView('ask')}>
+                ◆ Ask Otto
+              </button>
             </div>
+
+            {view === 'overview' && (
+              <OverviewTab
+                dbId={activeDb.id}
+                onSelectTable={handleSelectTable}
+              />
+            )}
 
             {view === 'schema' && (
               <SchemaGraph
@@ -168,38 +194,26 @@ export default function App() {
               />
             )}
 
-            {view === 'data' && selectedTable && tableData && (
-              <>
-                <div className="table-browser-header">
-                  <span className="table-browser-title">{selectedTable}</span>
-                  <span className="table-browser-info">{tableData.total.toLocaleString()} rows</span>
-                </div>
-                <DataTable
-                  columns={tableData.columns}
-                  rows={tableData.rows}
-                  total={tableData.total}
-                  limit={DATA_LIMIT}
-                  offset={dataOffset}
-                  onPageChange={handlePageChange}
-                  exportFilename={selectedTable}
-                />
-              </>
-            )}
-
-            {view === 'data' && !selectedTable && (
-              <div className="empty-state">
-                <div className="empty-state-icon">&#9783;</div>
-                <div className="empty-state-title">Select a table</div>
-                <div className="empty-state-text">
-                  Click a table in the Schema view or sidebar to browse its data.
-                </div>
-              </div>
+            {view === 'data' && (
+              <DataView
+                tables={tables}
+                selectedTable={selectedTable}
+                tableData={tableData}
+                dataOffset={dataOffset}
+                limit={DATA_LIMIT}
+                onSelectTable={handleSelectTable}
+                onClearTable={handleClearTable}
+                onPageChange={handlePageChange}
+              />
             )}
 
             {view === 'query' && (
               <QueryEditor
+                key={`${activeDb.id}-${queryKey}`}
                 dbId={activeDb.id}
                 dbName={activeDb.name}
+                dbType={activeDb.db_type}
+                initialSql={askSeedSql ?? undefined}
                 onVisualize={handleVisualizeQuery}
               />
             )}
@@ -208,8 +222,22 @@ export default function App() {
               <VisualizationDashboard
                 dbId={activeDb.id}
                 dbName={activeDb.name}
+                dbType={activeDb.db_type}
                 initialQuery={pendingVisualization}
                 onInitialQueryConsumed={() => setPendingVisualization(null)}
+              />
+            )}
+
+            {view === 'ask' && (
+              <AskOtto
+                key={activeDb.id}
+                dbId={activeDb.id}
+                dbName={activeDb.name}
+                onUseSql={(sql) => {
+                  setAskSeedSql(sql);
+                  setQueryKey((k) => k + 1);
+                  setView('query');
+                }}
               />
             )}
           </>
@@ -218,7 +246,7 @@ export default function App() {
             <div className="empty-state-icon">&#9672;</div>
             <div className="empty-state-title">Welcome to Otto</div>
             <div className="empty-state-text">
-              Connect a SQLite database to get started. You can explore schemas, browse table data, and run SQL queries.
+              Connect a database to get started. You can explore schemas, browse table data, and run SQL queries.
             </div>
             <button className="btn btn-primary" onClick={() => setShowConnect(true)}>
               + Connect Database

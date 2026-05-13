@@ -2,7 +2,7 @@ import { useEffect, useRef } from 'react';
 import { EditorView, keymap, placeholder as cmPlaceholder } from '@codemirror/view';
 import { EditorState, Compartment } from '@codemirror/state';
 import { basicSetup } from 'codemirror';
-import { sql, SQLite } from '@codemirror/lang-sql';
+import { sql, SQLite, PostgreSQL, type SQLDialect } from '@codemirror/lang-sql';
 import { oneDark } from '@codemirror/theme-one-dark';
 
 interface Props {
@@ -11,7 +11,11 @@ interface Props {
   onExecute: () => void;
   schema?: Record<string, string[]>;
   placeholder?: string;
+  dialect?: 'sqlite' | 'postgres';
 }
+
+const dialectFor = (d?: 'sqlite' | 'postgres'): SQLDialect =>
+  d === 'postgres' ? PostgreSQL : SQLite;
 
 // Otto-branded overrides applied on top of oneDark
 const ottoOverrides = EditorView.theme(
@@ -59,7 +63,7 @@ const ottoOverrides = EditorView.theme(
   { dark: true },
 );
 
-export default function SQLEditor({ value, onChange, onExecute, schema = {}, placeholder }: Props) {
+export default function SQLEditor({ value, onChange, onExecute, schema = {}, placeholder, dialect }: Props) {
   const containerRef = useRef<HTMLDivElement>(null);
   const viewRef = useRef<EditorView | null>(null);
   const onChangeRef = useRef(onChange);
@@ -88,7 +92,7 @@ export default function SQLEditor({ value, onChange, onExecute, schema = {}, pla
       ottoOverrides,
       executeKeymap,
       updateListener,
-      sqlCompartment.current.of(sql({ dialect: SQLite, schema, upperCaseKeywords: false })),
+      sqlCompartment.current.of(sql({ dialect: dialectFor(dialect), schema, upperCaseKeywords: false })),
       EditorView.lineWrapping,
       ...(placeholder ? [cmPlaceholder(placeholder)] : []),
     ];
@@ -105,14 +109,14 @@ export default function SQLEditor({ value, onChange, onExecute, schema = {}, pla
     };
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Reconfigure SQL dialect + schema when schema changes
+  // Reconfigure SQL dialect + schema when either changes
   useEffect(() => {
     viewRef.current?.dispatch({
       effects: sqlCompartment.current.reconfigure(
-        sql({ dialect: SQLite, schema, upperCaseKeywords: false }),
+        sql({ dialect: dialectFor(dialect), schema, upperCaseKeywords: false }),
       ),
     });
-  }, [schema]);
+  }, [schema, dialect]);
 
   // Sync controlled value (e.g. loading from history)
   useEffect(() => {

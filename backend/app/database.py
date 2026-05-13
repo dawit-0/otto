@@ -1,7 +1,7 @@
 import os
 from pathlib import Path
 
-from sqlalchemy import create_engine
+from sqlalchemy import create_engine, text
 from sqlalchemy.orm import sessionmaker, Session
 
 from app.models.base import Base
@@ -18,6 +18,21 @@ SessionLocal = sessionmaker(bind=engine)
 def init_db() -> None:
     """Create all tables that don't exist yet."""
     Base.metadata.create_all(bind=engine)
+    _migrate_add_columns()
+
+
+def _migrate_add_columns() -> None:
+    """Add columns introduced after initial schema creation."""
+    with engine.connect() as conn:
+        for stmt in [
+            "ALTER TABLE connected_databases ADD COLUMN db_type TEXT DEFAULT 'sqlite'",
+            "ALTER TABLE connected_databases ADD COLUMN connection_string TEXT",
+        ]:
+            try:
+                conn.execute(text(stmt))
+            except Exception:
+                pass
+        conn.commit()
 
 
 def get_db() -> Session:

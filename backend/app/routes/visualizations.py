@@ -8,7 +8,7 @@ from sqlalchemy.orm import Session
 from app.database import get_db
 from app.logging import get_logger
 from app.models.visualization import SavedVisualization, VisualizationHistory
-from app.routes.databases import get_connection, get_db_name
+from app.routes.databases import get_driver_for_db, get_db_name
 
 logger = get_logger("visualizations")
 
@@ -113,16 +113,18 @@ def _history_to_response(e: VisualizationHistory) -> VisualizationHistoryRespons
 
 @router.post("/run")
 def run_visualization(req: RunVisualizationRequest, db: Session = Depends(get_db)):
-    conn = get_connection(req.db_id, db)
+    driver = get_driver_for_db(req.db_id, db)
     db_name = get_db_name(req.db_id, db)
     logger.info(
         "Running visualization '%s' (type=%s) on '%s'",
         req.title or "untitled", req.chart_type, db_name,
     )
 
+    conn = driver.connect()
     start = time.perf_counter()
     try:
-        cursor = conn.execute(req.sql)
+        cursor = conn.cursor()
+        cursor.execute(req.sql)
         duration_ms = (time.perf_counter() - start) * 1000
 
         if cursor.description:
@@ -172,7 +174,7 @@ def run_visualization(req: RunVisualizationRequest, db: Session = Depends(get_db
         db.commit()
         raise HTTPException(status_code=400, detail=str(e))
     finally:
-        conn.close()
+        driver.close(conn)
 
 
 # ── CRUD for saved (pinned) panels ──
