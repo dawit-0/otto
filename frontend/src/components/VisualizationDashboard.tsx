@@ -39,8 +39,7 @@ export default function VisualizationDashboard({ dbId, dbName, initialQuery, onI
   const [showHistory, setShowHistory] = useState(false);
   const [history, setHistory] = useState<VisualizationHistoryEntry[]>([]);
   const [loadingPanels, setLoadingPanels] = useState(true);
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const [containerRef, containerWidth] = useContainerWidth() as any as [(el: HTMLDivElement | null) => void, number];
+  const { containerRef, width: containerWidth } = useContainerWidth();
 
   const [historyInitial, setHistoryInitial] = useState<{
     title?: string; sql?: string; chart_type?: string;
