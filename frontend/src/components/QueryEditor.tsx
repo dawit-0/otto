@@ -2,17 +2,20 @@ import { useState, useEffect, useCallback } from 'react';
 import { api, type QueryResponse, type QueryHistoryEntry, type SavedQueryEntry } from '../api';
 import DataTable from './DataTable';
 import QueryInsights from './QueryInsights';
+import SQLEditor from './SQLEditor';
 import { type ChartType } from './charts/ChartRenderer';
 
 interface Props {
   dbId: string;
   dbName: string;
+  dbType?: 'sqlite' | 'postgres';
   initialSql?: string;
   onVisualize?: (sql: string, chartType: ChartType, xColumn: string, yColumns: string[]) => void;
 }
 
-export default function QueryEditor({ dbId, dbName, initialSql, onVisualize }: Props) {
+export default function QueryEditor({ dbId, dbName, dbType, initialSql, onVisualize }: Props) {
   const [sql, setSql] = useState(initialSql ?? '');
+  const [schema, setSchema] = useState<Record<string, string[]>>({});
   const [result, setResult] = useState<QueryResponse | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
@@ -30,6 +33,15 @@ export default function QueryEditor({ dbId, dbName, initialSql, onVisualize }: P
   const [saveName, setSaveName] = useState('');
   const [saveDescription, setSaveDescription] = useState('');
   const [editingQuery, setEditingQuery] = useState<SavedQueryEntry | null>(null);
+
+  // Fetch schema for autocomplete whenever the active database changes
+  useEffect(() => {
+    api.getSchema(dbId).then((res) => {
+      const s: Record<string, string[]> = {};
+      for (const table of res.tables) s[table.name] = table.columns.map((c) => c.name);
+      setSchema(s);
+    }).catch(() => {});
+  }, [dbId]);
 
   const fetchHistory = useCallback(async () => {
     try {
@@ -125,13 +137,6 @@ export default function QueryEditor({ dbId, dbName, initialSql, onVisualize }: P
     }
   };
 
-  const handleKeyDown = (e: React.KeyboardEvent) => {
-    if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') {
-      e.preventDefault();
-      run();
-    }
-  };
-
   const loadFromHistory = (entry: QueryHistoryEntry) => {
     setSql(entry.sql);
     setShowHistory(false);
@@ -188,12 +193,13 @@ export default function QueryEditor({ dbId, dbName, initialSql, onVisualize }: P
   return (
     <div className="query-panel">
       <div className="query-editor">
-        <textarea
+        <SQLEditor
           value={sql}
-          onChange={(e) => setSql(e.target.value)}
-          onKeyDown={handleKeyDown}
+          onChange={setSql}
+          onExecute={run}
+          schema={schema}
+          dialect={dbType}
           placeholder="SELECT * FROM table_name LIMIT 100;"
-          spellCheck={false}
         />
         <div className="query-editor-actions">
           <button className="btn btn-primary" onClick={run} disabled={loading || !sql.trim()}>

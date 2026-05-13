@@ -20,6 +20,7 @@ interface InitialQuery {
 interface Props {
   dbId: string;
   dbName: string;
+  dbType?: 'sqlite' | 'postgres';
   initialQuery?: InitialQuery | null;
   onInitialQueryConsumed?: () => void;
 }
@@ -32,7 +33,7 @@ interface PanelData {
   error: string | null;
 }
 
-export default function VisualizationDashboard({ dbId, dbName, initialQuery, onInitialQueryConsumed }: Props) {
+export default function VisualizationDashboard({ dbId, dbName, dbType, initialQuery, onInitialQueryConsumed }: Props) {
   const [panels, setPanels] = useState<PanelData[]>([]);
   const [showEditor, setShowEditor] = useState(false);
   const [editingPanel, setEditingPanel] = useState<SavedVisualization | null>(null);
@@ -406,6 +407,7 @@ export default function VisualizationDashboard({ dbId, dbName, initialQuery, onI
           key={editingPanel?.id || historyInitial?.sql || 'new'}
           dbId={dbId}
           dbName={dbName}
+          dbType={dbType}
           onPin={editingPanel ? handleUpdatePin : handlePin}
           onClose={() => { setShowEditor(false); setEditingPanel(null); setHistoryInitial(undefined); }}
           initial={editingPanel ? {

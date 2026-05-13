@@ -212,6 +212,7 @@ export default function App() {
                 key={`${activeDb.id}-${queryKey}`}
                 dbId={activeDb.id}
                 dbName={activeDb.name}
+                dbType={activeDb.db_type}
                 initialSql={askSeedSql ?? undefined}
                 onVisualize={handleVisualizeQuery}
               />
@@ -221,6 +222,7 @@ export default function App() {
               <VisualizationDashboard
                 dbId={activeDb.id}
                 dbName={activeDb.name}
+                dbType={activeDb.db_type}
                 initialQuery={pendingVisualization}
                 onInitialQueryConsumed={() => setPendingVisualization(null)}
               />
