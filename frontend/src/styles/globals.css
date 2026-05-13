@@ -608,6 +608,95 @@ body {
   font-style: italic;
 }
 
+/* ─── Column Filters ─── */
+.filter-row th {
+  background: var(--bg-primary);
+  padding: 4px 6px;
+  border-bottom: 1px solid var(--border-strong);
+}
+.filter-cell {
+  vertical-align: middle;
+}
+.filter-input-wrap {
+  position: relative;
+  display: flex;
+  align-items: center;
+}
+.filter-icon {
+  position: absolute;
+  left: 7px;
+  color: var(--text-muted);
+  pointer-events: none;
+  flex-shrink: 0;
+}
+.filter-input {
+  width: 100%;
+  min-width: 60px;
+  padding: 4px 22px 4px 22px;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  color: var(--text-primary);
+  font-family: var(--font-mono);
+  font-size: 11px;
+  outline: none;
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+}
+.filter-input::placeholder {
+  color: var(--text-muted);
+  font-style: italic;
+}
+.filter-input:focus {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 2px var(--ring-color);
+}
+.filter-input-active {
+  border-color: rgba(99, 102, 241, 0.4);
+  background: var(--accent-subtle);
+}
+.filter-clear-btn {
+  position: absolute;
+  right: 5px;
+  background: none;
+  border: none;
+  color: var(--text-muted);
+  cursor: pointer;
+  font-size: 14px;
+  line-height: 1;
+  padding: 0 2px;
+  border-radius: 3px;
+  transition: color 0.1s ease;
+}
+.filter-clear-btn:hover {
+  color: var(--text-primary);
+}
+.filter-no-results {
+  text-align: center;
+  padding: 32px 14px;
+  color: var(--text-muted);
+  font-size: 13px;
+  font-style: italic;
+}
+.btn-clear-filters {
+  color: var(--accent-hover);
+  border-color: rgba(99, 102, 241, 0.3);
+  background: var(--accent-subtle);
+}
+.btn-clear-filters:hover {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #fff;
+}
+.filter-active-badge {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--accent-hover);
+  background: var(--accent-subtle);
+  border: 1px solid rgba(99, 102, 241, 0.25);
+  padding: 2px 8px;
+  border-radius: 9999px;
+}
+
 /* ─── Empty State ─── */
 .empty-state {
   display: flex;

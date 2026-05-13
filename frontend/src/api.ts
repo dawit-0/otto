@@ -150,8 +150,16 @@ export const api = {
 
   getSchema: (id: string) => request<SchemaResponse>(`/databases/${id}/schema`),
 
-  getTableData: (id: string, table: string, limit = 100, offset = 0) =>
-    request<TableDataResponse>(`/databases/${id}/tables/${table}/data?limit=${limit}&offset=${offset}`),
+  getTableData: (id: string, table: string, limit = 100, offset = 0, filters?: Record<string, string>) => {
+    const params = new URLSearchParams({ limit: String(limit), offset: String(offset) });
+    if (filters) {
+      const active = Object.entries(filters).filter(([, v]) => v.trim() !== '');
+      if (active.length > 0) {
+        params.set('filters', JSON.stringify(active.map(([column, value]) => ({ column, value }))));
+      }
+    }
+    return request<TableDataResponse>(`/databases/${id}/tables/${table}/data?${params}`);
+  },
 
   executeQuery: (dbId: string, sql: string) =>
     request<QueryResponse>('/query', {

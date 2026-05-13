@@ -1,4 +1,4 @@
-import { useState, useRef } from 'react';
+import { useState, useRef, useEffect } from 'react';
 
 interface Props {
   columns: string[];
@@ -8,6 +8,8 @@ interface Props {
   offset?: number;
   onPageChange?: (offset: number) => void;
   exportFilename?: string;
+  filters?: Record<string, string>;
+  onFiltersChange?: (filters: Record<string, string>) => void;
 }
 
 function toCSV(columns: string[], rows: Record<string, unknown>[]): string {
@@ -45,9 +47,47 @@ function downloadFile(filename: string, content: string, mimeType: string) {
   URL.revokeObjectURL(url);
 }
 
-export default function DataTable({ columns, rows, total, limit = 100, offset = 0, onPageChange, exportFilename = 'export' }: Props) {
+export default function DataTable({
+  columns,
+  rows,
+  total,
+  limit = 100,
+  offset = 0,
+  onPageChange,
+  exportFilename = 'export',
+  filters,
+  onFiltersChange,
+}: Props) {
   const [copyState, setCopyState] = useState<null | 'csv' | 'json'>(null);
   const copyTimeout = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // Local input state for instant UI feedback; debounced before firing onFiltersChange
+  const [inputValues, setInputValues] = useState<Record<string, string>>(filters ?? {});
+  const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // Sync input values when external filters are cleared (e.g. table switch)
+  useEffect(() => {
+    setInputValues(filters ?? {});
+  }, [filters]);
+
+  const handleFilterInput = (col: string, val: string) => {
+    const next = { ...inputValues, [col]: val };
+    setInputValues(next);
+    if (debounceRef.current) clearTimeout(debounceRef.current);
+    debounceRef.current = setTimeout(() => {
+      onFiltersChange?.(next);
+    }, 300);
+  };
+
+  const handleClearFilters = () => {
+    const cleared: Record<string, string> = {};
+    setInputValues(cleared);
+    if (debounceRef.current) clearTimeout(debounceRef.current);
+    onFiltersChange?.(cleared);
+  };
+
+  const activeFilterCount = Object.values(inputValues).filter(v => v.trim() !== '').length;
+  const showFilterRow = Boolean(onFiltersChange);
 
   if (columns.length === 0) {
     return (
@@ -90,21 +130,62 @@ export default function DataTable({ columns, rows, total, limit = 100, offset = 
                 <th key={col}>{col}</th>
               ))}
             </tr>
-          </thead>
-          <tbody>
-            {rows.map((row, i) => (
-              <tr key={i}>
+            {showFilterRow && (
+              <tr className="filter-row">
                 {columns.map((col) => {
-                  const val = row[col];
-                  const isNull = val === null || val === undefined;
+                  const val = inputValues[col] ?? '';
                   return (
-                    <td key={col} className={isNull ? 'null-value' : ''}>
-                      {isNull ? 'NULL' : String(val)}
-                    </td>
+                    <th key={col} className="filter-cell">
+                      <div className="filter-input-wrap">
+                        <svg className="filter-icon" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                          <circle cx="11" cy="11" r="8" /><line x1="21" y1="21" x2="16.65" y2="16.65" />
+                        </svg>
+                        <input
+                          className={`filter-input${val ? ' filter-input-active' : ''}`}
+                          type="text"
+                          value={val}
+                          placeholder="Filter…"
+                          onChange={e => handleFilterInput(col, e.target.value)}
+                          spellCheck={false}
+                        />
+                        {val && (
+                          <button
+                            className="filter-clear-btn"
+                            onClick={() => handleFilterInput(col, '')}
+                            title="Clear filter"
+                          >
+                            ×
+                          </button>
+                        )}
+                      </div>
+                    </th>
                   );
                 })}
               </tr>
-            ))}
+            )}
+          </thead>
+          <tbody>
+            {rows.length === 0 ? (
+              <tr>
+                <td colSpan={columns.length} className="filter-no-results">
+                  No rows match the current filters.
+                </td>
+              </tr>
+            ) : (
+              rows.map((row, i) => (
+                <tr key={i}>
+                  {columns.map((col) => {
+                    const val = row[col];
+                    const isNull = val === null || val === undefined;
+                    return (
+                      <td key={col} className={isNull ? 'null-value' : ''}>
+                        {isNull ? 'NULL' : String(val)}
+                      </td>
+                    );
+                  })}
+                </tr>
+              ))
+            )}
           </tbody>
         </table>
       </div>
@@ -139,6 +220,11 @@ export default function DataTable({ columns, rows, total, limit = 100, offset = 
               {rows.length} row{rows.length !== 1 ? 's' : ''}
               {total !== undefined && total > rows.length && ` of ${total.toLocaleString()} total`}
             </span>
+          )}
+          {showFilterRow && activeFilterCount > 0 && (
+            <button className="btn btn-sm btn-clear-filters" onClick={handleClearFilters}>
+              Clear {activeFilterCount} filter{activeFilterCount !== 1 ? 's' : ''}
+            </button>
           )}
         </div>
 

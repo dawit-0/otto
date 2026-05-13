@@ -23,6 +23,7 @@ export default function App() {
   // Table data state
   const [tableData, setTableData] = useState<{ columns: string[]; rows: Record<string, unknown>[]; total: number } | null>(null);
   const [dataOffset, setDataOffset] = useState(0);
+  const [columnFilters, setColumnFilters] = useState<Record<string, string>>({});
   const DATA_LIMIT = 100;
 
   useEffect(() => {
@@ -72,10 +73,10 @@ export default function App() {
     }
   };
 
-  const loadTableData = useCallback(async (tableName: string, offset = 0) => {
+  const loadTableData = useCallback(async (tableName: string, offset = 0, filters: Record<string, string> = {}) => {
     if (!activeDb) return;
     try {
-      const data = await api.getTableData(activeDb.id, tableName, DATA_LIMIT, offset);
+      const data = await api.getTableData(activeDb.id, tableName, DATA_LIMIT, offset, filters);
       setTableData({ columns: data.columns, rows: data.rows, total: data.total });
       setDataOffset(offset);
     } catch (e) {
@@ -85,13 +86,19 @@ export default function App() {
 
   const handleSelectTable = useCallback((name: string) => {
     setSelectedTable(name);
+    setColumnFilters({});
     setView('data');
-    loadTableData(name, 0);
+    loadTableData(name, 0, {});
   }, [loadTableData]);
 
   const handlePageChange = (offset: number) => {
-    if (selectedTable) loadTableData(selectedTable, offset);
+    if (selectedTable) loadTableData(selectedTable, offset, columnFilters);
   };
+
+  const handleFiltersChange = useCallback((filters: Record<string, string>) => {
+    setColumnFilters(filters);
+    if (selectedTable) loadTableData(selectedTable, 0, filters);
+  }, [selectedTable, loadTableData]);
 
   const handleVisualizeQuery = (sql: string, chartType: ChartType, xColumn: string, yColumns: string[]) => {
     setPendingVisualization({ sql, chartType, xColumn, yColumns });
@@ -172,7 +179,14 @@ export default function App() {
               <>
                 <div className="table-browser-header">
                   <span className="table-browser-title">{selectedTable}</span>
-                  <span className="table-browser-info">{tableData.total.toLocaleString()} rows</span>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                    {Object.values(columnFilters).some(v => v.trim() !== '') && (
+                      <span className="filter-active-badge">
+                        {Object.values(columnFilters).filter(v => v.trim() !== '').length} filter{Object.values(columnFilters).filter(v => v.trim() !== '').length !== 1 ? 's' : ''} active
+                      </span>
+                    )}
+                    <span className="table-browser-info">{tableData.total.toLocaleString()} rows</span>
+                  </div>
                 </div>
                 <DataTable
                   columns={tableData.columns}
@@ -182,6 +196,8 @@ export default function App() {
                   offset={dataOffset}
                   onPageChange={handlePageChange}
                   exportFilename={selectedTable}
+                  filters={columnFilters}
+                  onFiltersChange={handleFiltersChange}
                 />
               </>
             )}

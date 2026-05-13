@@ -1,10 +1,11 @@
+import json
 import os
 import shutil
 import sqlite3
 import tempfile
 from pathlib import Path
 
-from fastapi import APIRouter, Depends, File, HTTPException, UploadFile
+from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
@@ -185,7 +186,14 @@ def get_schema(db_id: str, db: Session = Depends(get_db)):
 
 
 @router.get("/{db_id}/tables/{table_name}/data")
-def get_table_data(db_id: str, table_name: str, limit: int = 100, offset: int = 0, db: Session = Depends(get_db)):
+def get_table_data(
+    db_id: str,
+    table_name: str,
+    limit: int = 100,
+    offset: int = 0,
+    filters: str = Query(default=""),
+    db: Session = Depends(get_db),
+):
     conn = get_connection(db_id, db)
     try:
         try:
@@ -195,13 +203,37 @@ def get_table_data(db_id: str, table_name: str, limit: int = 100, offset: int = 
             raise HTTPException(status_code=404, detail=f"Unknown table: {table_name}")
 
         quoted = quote_identifier(table_name)
+
+        # Parse and validate filters
+        where_sql = ""
+        filter_params: list = []
+        if filters:
+            try:
+                filter_list = json.loads(filters)
+            except (json.JSONDecodeError, ValueError):
+                filter_list = []
+
+            col_info = conn.execute(f"PRAGMA table_info({quoted})").fetchall()
+            valid_columns = {row["name"] for row in col_info}
+
+            clauses = []
+            for f in filter_list:
+                col = f.get("column", "")
+                val = f.get("value", "")
+                if col in valid_columns and isinstance(val, str) and val:
+                    clauses.append(f"{quote_identifier(col)} LIKE ?")
+                    filter_params.append(f"%{val}%")
+
+            if clauses:
+                where_sql = " WHERE " + " AND ".join(clauses)
+
         cursor = conn.execute(
-            f"SELECT * FROM {quoted} LIMIT ? OFFSET ?",
-            (limit, offset),
+            f"SELECT * FROM {quoted}{where_sql} LIMIT ? OFFSET ?",
+            (*filter_params, limit, offset),
         )
         columns = [desc[0] for desc in cursor.description]
         rows = [dict(row) for row in cursor.fetchall()]
-        count = conn.execute(f"SELECT COUNT(*) FROM {quoted}").fetchone()[0]
+        count = conn.execute(f"SELECT COUNT(*) FROM {quoted}{where_sql}", filter_params).fetchone()[0]
         return {"columns": columns, "rows": rows, "total": count, "limit": limit, "offset": offset}
     except HTTPException:
         raise
