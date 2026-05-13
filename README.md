@@ -56,26 +56,6 @@ Generates `sample.db` with four related tables (users, projects, tasks, comments
 | `Cmd/Ctrl+Enter` | Execute query |
 | `Escape` | Close modal / dismiss AI input |
 
-## Project Structure
-
-```
-otto/
-├── backend/
-│   ├── main.py              # FastAPI app entry point
-│   ├── requirements.txt
-│   └── app/
-│       ├── database.py      # Connection management
-│       └── routes/          # databases, query, history, visualizations, ai, saved_queries
-├── frontend/
-│   └── src/
-│       ├── App.tsx
-│       ├── api.ts
-│       └── components/      # SchemaGraph, DataView, QueryEditor, QueryInsights,
-│                            # VisualizationDashboard, VisualizationEditor, charts/
-└── scripts/
-    └── create_sample_db.py
-```
-
 ## Running Tests
 
 ```bash
