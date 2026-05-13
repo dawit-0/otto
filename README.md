@@ -56,52 +56,6 @@ Generates `sample.db` with four related tables (users, projects, tasks, comments
 | `Cmd/Ctrl+Enter` | Execute query |
 | `Escape` | Close modal / dismiss AI input |
 
-## API Reference
-
-### Databases
-
-| Method | Endpoint | Description |
-|--------|----------|-------------|
-| `POST` | `/api/databases/connect` | Connect by file path or connection string |
-| `POST` | `/api/databases/upload` | Upload a SQLite file |
-| `GET` | `/api/databases` | List connected databases |
-| `DELETE` | `/api/databases/{id}` | Disconnect a database |
-| `GET` | `/api/databases/{id}/schema` | Tables, columns, row counts, foreign keys, indexes |
-| `GET` | `/api/databases/{id}/tables/{table}/data` | Paginated row data (`limit`, `offset`) |
-
-### Query
-
-| Method | Endpoint | Description |
-|--------|----------|-------------|
-| `POST` | `/api/query` | Execute SQL; returns columns, rows, duration |
-| `GET` | `/api/history` | Query history (`db_id`, `limit`, `offset`) |
-| `DELETE` | `/api/history` | Clear history |
-| `DELETE` | `/api/history/{id}` | Delete one history entry |
-| `GET` | `/api/saved-queries` | List saved queries |
-| `POST` | `/api/saved-queries` | Save a query (name, sql, description) |
-| `PUT` | `/api/saved-queries/{id}` | Update a saved query |
-| `DELETE` | `/api/saved-queries/{id}` | Delete a saved query |
-
-### Visualizations
-
-| Method | Endpoint | Description |
-|--------|----------|-------------|
-| `POST` | `/api/visualizations/run` | Execute a visualization query |
-| `GET` | `/api/visualizations` | List saved dashboard panels |
-| `POST` | `/api/visualizations` | Save a panel (title, sql, chart_type, config, grid position) |
-| `PUT` | `/api/visualizations/{id}` | Update a panel |
-| `PUT` | `/api/visualizations/layout/batch` | Update grid positions for multiple panels |
-| `DELETE` | `/api/visualizations/{id}` | Delete a panel |
-| `GET` | `/api/visualizations/history` | Visualization execution history |
-| `DELETE` | `/api/visualizations/history` | Clear visualization history |
-| `DELETE` | `/api/visualizations/history/{id}` | Delete one visualization history entry |
-
-### AI
-
-| Method | Endpoint | Description |
-|--------|----------|-------------|
-| `POST` | `/api/ai/generate-query` | Generate SQL from a natural language prompt |
-
 ## Project Structure
 
 ```
