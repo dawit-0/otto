@@ -7,7 +7,7 @@ from sqlalchemy.orm import Session
 from app.database import get_db
 from app.logging import get_logger
 from app.models.history import QueryHistory
-from app.routes.databases import get_connection, get_db_name
+from app.routes.databases import get_driver_for_db, get_db_name
 
 logger = get_logger("query")
 
@@ -21,13 +21,15 @@ class QueryRequest(BaseModel):
 
 @router.post("/query")
 def execute_query(req: QueryRequest, db: Session = Depends(get_db)):
-    conn = get_connection(req.db_id, db)
+    driver = get_driver_for_db(req.db_id, db)
     db_name = get_db_name(req.db_id, db)
     logger.info("Executing query on '%s': %.100s", db_name, req.sql)
 
+    conn = driver.connect()
     start = time.perf_counter()
     try:
-        cursor = conn.execute(req.sql)
+        cursor = conn.cursor()
+        cursor.execute(req.sql)
         duration_ms = (time.perf_counter() - start) * 1000
 
         if cursor.description:
@@ -48,7 +50,6 @@ def execute_query(req: QueryRequest, db: Session = Depends(get_db)):
             db_name, result["row_count"], duration_ms,
         )
 
-        # Record successful query
         db.add(QueryHistory(
             db_id=req.db_id,
             db_name=db_name,
@@ -65,7 +66,6 @@ def execute_query(req: QueryRequest, db: Session = Depends(get_db)):
         logger.error(
             "Query failed on '%s' after %.1fms: %s", db_name, duration_ms, e,
         )
-        # Record failed query
         db.add(QueryHistory(
             db_id=req.db_id,
             db_name=db_name,
@@ -77,4 +77,4 @@ def execute_query(req: QueryRequest, db: Session = Depends(get_db)):
         db.commit()
         raise HTTPException(status_code=400, detail=str(e))
     finally:
-        conn.close()
+        driver.close(conn)
