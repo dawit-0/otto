@@ -122,7 +122,9 @@ export default function App() {
               className={`sidebar-item${activeDb?.id === db.id ? ' active' : ''}`}
               onClick={() => selectDb(db)}
             >
-              <span style={{ fontSize: 14 }}>&#9632;</span>
+              <span className={`db-type-badge ${db.db_type === 'postgres' ? 'pg' : 'sl'}`}>
+                {db.db_type === 'postgres' ? 'PG' : 'SL'}
+              </span>
               <span className="sidebar-item-name">{db.name}</span>
               <button
                 className="btn-icon sidebar-item-remove"
@@ -209,7 +211,7 @@ export default function App() {
             <div className="empty-state-icon">&#9672;</div>
             <div className="empty-state-title">Welcome to Otto</div>
             <div className="empty-state-text">
-              Connect a SQLite database to get started. You can explore schemas, browse table data, and run SQL queries.
+              Connect a database to get started. You can explore schemas, browse table data, and run SQL queries.
             </div>
             <button className="btn btn-primary" onClick={() => setShowConnect(true)}>
               + Connect Database

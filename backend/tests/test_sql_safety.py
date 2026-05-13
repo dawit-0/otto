@@ -1,14 +1,11 @@
-"""Unit tests for the SQL identifier safety helpers."""
+"""Unit tests for the SQL identifier safety helpers and driver validation."""
 
 import sqlite3
 
 import pytest
 
-from app.utils.sql_safety import (
-    assert_valid_table,
-    list_table_names,
-    quote_identifier,
-)
+from app.utils.sql_safety import quote_identifier
+from app.drivers.sqlite import SQLiteDriver
 
 
 # ── quote_identifier ──
@@ -66,11 +63,11 @@ def test_quoted_identifier_neutralises_injection_attempt():
     assert inner.count('"') % 2 == 0
 
 
-# ── list_table_names / assert_valid_table ──
+# ── list_table_names / assert_valid_table (via SQLiteDriver) ──
 
 
 @pytest.fixture()
-def conn(tmp_path):
+def driver_and_conn(tmp_path):
     path = tmp_path / "safety.db"
     c = sqlite3.connect(path)
     c.executescript(
@@ -80,33 +77,41 @@ def conn(tmp_path):
         INSERT INTO users VALUES (1, 'a'), (2, 'b');
         """
     )
+    c.close()
+    driver = SQLiteDriver(str(path))
+    conn = driver.connect()
     try:
-        yield c
+        yield driver, conn
     finally:
-        c.close()
+        driver.close(conn)
 
 
-def test_list_table_names_returns_all_user_tables(conn):
-    names = list_table_names(conn)
+def test_list_table_names_returns_all_user_tables(driver_and_conn):
+    driver, conn = driver_and_conn
+    names = driver.list_table_names(conn)
     assert {"users", "orders"}.issubset(names)
 
 
-def test_assert_valid_table_accepts_known(conn):
-    assert assert_valid_table(conn, "users") == "users"
+def test_assert_valid_table_accepts_known(driver_and_conn):
+    driver, conn = driver_and_conn
+    assert driver.assert_valid_table(conn, "users") == "users"
 
 
-def test_assert_valid_table_rejects_unknown(conn):
+def test_assert_valid_table_rejects_unknown(driver_and_conn):
+    driver, conn = driver_and_conn
     with pytest.raises(ValueError):
-        assert_valid_table(conn, "no_such_table")
+        driver.assert_valid_table(conn, "no_such_table")
 
 
-def test_assert_valid_table_rejects_injection_payload(conn):
+def test_assert_valid_table_rejects_injection_payload(driver_and_conn):
+    driver, conn = driver_and_conn
     with pytest.raises(ValueError):
-        assert_valid_table(conn, 'users"; DROP TABLE users; --')
+        driver.assert_valid_table(conn, 'users"; DROP TABLE users; --')
     # The real table is still present afterwards.
-    assert "users" in list_table_names(conn)
+    assert "users" in driver.list_table_names(conn)
 
 
-def test_assert_valid_table_rejects_empty(conn):
+def test_assert_valid_table_rejects_empty(driver_and_conn):
+    driver, conn = driver_and_conn
     with pytest.raises(ValueError):
-        assert_valid_table(conn, "")
+        driver.assert_valid_table(conn, "")

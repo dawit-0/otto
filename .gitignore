@@ -3,6 +3,7 @@ dist/
 venv/
 worktrees/
 .venv/
+.test-venv/
 __pycache__/
 *.pyc
 .env

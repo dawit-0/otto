@@ -1,4 +1,5 @@
 from datetime import datetime, timezone
+from typing import Optional
 
 from sqlalchemy import Integer, String, DateTime
 from sqlalchemy.orm import Mapped, mapped_column
@@ -12,7 +13,9 @@ class ConnectedDatabase(Base):
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
     db_id: Mapped[str] = mapped_column(String, unique=True, index=True)
     name: Mapped[str] = mapped_column(String)
-    path: Mapped[str] = mapped_column(String)
+    path: Mapped[str] = mapped_column(String, default="")
+    db_type: Mapped[str] = mapped_column(String, default="sqlite")
+    connection_string: Mapped[Optional[str]] = mapped_column(String, nullable=True)
     connected_at: Mapped[datetime] = mapped_column(
         DateTime, default=lambda: datetime.now(timezone.utc)
     )
