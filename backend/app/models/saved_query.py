@@ -15,6 +15,7 @@ class SavedQuery(Base):
     name: Mapped[str] = mapped_column(String)
     sql: Mapped[str] = mapped_column(Text)
     description: Mapped[str | None] = mapped_column(Text, nullable=True)
+    parameters: Mapped[str | None] = mapped_column(Text, nullable=True)  # JSON: [{name, label, type, default_value}]
     created_at: Mapped[datetime] = mapped_column(
         DateTime, default=lambda: datetime.now(timezone.utc)
     )

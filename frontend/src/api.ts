@@ -113,6 +113,13 @@ export interface VisualizationRunResponse {
   row_count: number;
 }
 
+export interface QueryParam {
+  name: string;
+  label: string;
+  type: 'text' | 'number' | 'date';
+  default_value: string;
+}
+
 export interface SavedQueryEntry {
   id: number;
   db_id: string;
@@ -120,6 +127,7 @@ export interface SavedQueryEntry {
   name: string;
   sql: string;
   description: string | null;
+  parameters: QueryParam[];
   created_at: string;
   updated_at: string;
 }
@@ -292,13 +300,13 @@ export const api = {
     return request<SavedQueryEntry[]>(`/saved-queries${params}`);
   },
 
-  saveQuery: (data: { db_id: string; db_name: string; name: string; sql: string; description?: string }) =>
+  saveQuery: (data: { db_id: string; db_name: string; name: string; sql: string; description?: string; parameters?: QueryParam[] }) =>
     request<SavedQueryEntry>('/saved-queries', {
       method: 'POST',
       body: JSON.stringify(data),
     }),
 
-  updateSavedQuery: (id: number, data: { name?: string; sql?: string; description?: string }) =>
+  updateSavedQuery: (id: number, data: { name?: string; sql?: string; description?: string; parameters?: QueryParam[] }) =>
     request<SavedQueryEntry>(`/saved-queries/${id}`, {
       method: 'PUT',
       body: JSON.stringify(data),
@@ -306,6 +314,12 @@ export const api = {
 
   deleteSavedQuery: (id: number) =>
     request<{ deleted: number }>(`/saved-queries/${id}`, { method: 'DELETE' }),
+
+  runSavedQuery: (id: number, dbId: string, parameters: Record<string, string>) =>
+    request<QueryResponse>(`/saved-queries/${id}/run`, {
+      method: 'POST',
+      body: JSON.stringify({ db_id: dbId, parameters }),
+    }),
 
   // ── AI ──
 

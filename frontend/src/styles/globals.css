@@ -2457,3 +2457,170 @@ body {
   color: var(--text-muted);
   text-align: center;
 }
+
+/* ─── Parameterized Query Templates ─── */
+
+/* Inline badge strip below the SQL editor */
+.param-badges {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+  padding: 4px 2px 0;
+}
+.param-badges-label {
+  font-size: 11px;
+  color: var(--text-muted);
+  font-weight: 500;
+}
+.param-badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px 8px;
+  background: rgba(99, 102, 241, 0.12);
+  border: 1px solid rgba(99, 102, 241, 0.25);
+  border-radius: 9999px;
+  font-size: 11px;
+  font-family: var(--font-mono);
+  color: var(--accent-hover);
+}
+
+/* Badge on saved query name showing param count */
+.saved-query-param-count {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 16px;
+  height: 16px;
+  padding: 0 4px;
+  margin-left: 6px;
+  background: var(--accent);
+  color: #fff;
+  border-radius: 9999px;
+  font-size: 9px;
+  font-weight: 700;
+  line-height: 1;
+  vertical-align: middle;
+}
+
+/* Play / run icon button on saved queries */
+.btn-icon-run {
+  color: var(--accent-hover) !important;
+}
+.btn-icon-run:hover {
+  background: var(--accent-subtle) !important;
+  color: var(--accent) !important;
+}
+
+/* Wider save modal for the parameters section */
+.modal-wide {
+  width: 560px;
+  max-width: 95vw;
+  max-height: 90vh;
+  overflow-y: auto;
+}
+
+/* Parameters section inside save modal */
+.modal-params-section {
+  margin-bottom: 16px;
+  background: var(--bg-primary);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 12px 14px;
+}
+.modal-params-header {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-secondary);
+  margin-bottom: 6px;
+}
+.modal-params-hint {
+  font-size: 11px;
+  color: var(--text-muted);
+  margin-bottom: 12px;
+  line-height: 1.5;
+}
+.modal-params-hint code {
+  font-family: var(--font-mono);
+  background: var(--bg-tertiary);
+  border-radius: 3px;
+  padding: 0 4px;
+  font-size: 11px;
+  color: var(--accent-hover);
+}
+.modal-params-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.modal-param-row {
+  display: grid;
+  grid-template-columns: 120px 1fr 80px 100px;
+  gap: 8px;
+  align-items: center;
+}
+.modal-param-name {
+  font-size: 11px;
+  font-family: var(--font-mono);
+  color: var(--accent-hover);
+  background: rgba(99, 102, 241, 0.1);
+  border-radius: 4px;
+  padding: 4px 6px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.modal-param-label-input,
+.modal-param-default-input {
+  padding: 5px 8px;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  color: var(--text-primary);
+  font-size: 12px;
+  font-family: inherit;
+  outline: none;
+  transition: border-color 0.15s;
+}
+.modal-param-label-input:focus,
+.modal-param-default-input:focus {
+  border-color: var(--accent);
+}
+.modal-param-type-select {
+  padding: 5px 6px;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  color: var(--text-primary);
+  font-size: 12px;
+  font-family: inherit;
+  outline: none;
+  cursor: pointer;
+  transition: border-color 0.15s;
+}
+.modal-param-type-select:focus {
+  border-color: var(--accent);
+}
+
+/* Run-with-params modal */
+.run-params-list {
+  margin-bottom: 16px;
+}
+.run-params-list .modal-field input {
+  font-family: inherit;
+}
+.run-params-sql-preview {
+  margin-bottom: 16px;
+}
+.run-params-sql-label {
+  display: block;
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--text-muted);
+  margin-bottom: 6px;
+}

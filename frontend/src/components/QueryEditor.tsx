@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
-import { api, type QueryResponse, type QueryHistoryEntry, type SavedQueryEntry } from '../api';
+import { api, type QueryResponse, type QueryHistoryEntry, type SavedQueryEntry, type QueryParam } from '../api';
 import DataTable from './DataTable';
 import QueryInsights from './QueryInsights';
 import SQLEditor from './SQLEditor';
@@ -11,6 +11,16 @@ interface Props {
   dbType?: 'sqlite' | 'postgres';
   initialSql?: string;
   onVisualize?: (sql: string, chartType: ChartType, xColumn: string, yColumns: string[]) => void;
+}
+
+function detectParams(sql: string): string[] {
+  const matches = [...sql.matchAll(/\{\{(\w+)\}\}/g)];
+  const seen = new Set<string>();
+  const unique: string[] = [];
+  for (const m of matches) {
+    if (!seen.has(m[1])) { seen.add(m[1]); unique.push(m[1]); }
+  }
+  return unique;
 }
 
 export default function QueryEditor({ dbId, dbName, dbType, initialSql, onVisualize }: Props) {
@@ -32,9 +42,15 @@ export default function QueryEditor({ dbId, dbName, dbType, initialSql, onVisual
   const [showSaveModal, setShowSaveModal] = useState(false);
   const [saveName, setSaveName] = useState('');
   const [saveDescription, setSaveDescription] = useState('');
+  const [saveParams, setSaveParams] = useState<QueryParam[]>([]);
   const [editingQuery, setEditingQuery] = useState<SavedQueryEntry | null>(null);
 
-  // Fetch schema for autocomplete whenever the active database changes
+  // Parameter run modal state
+  const [runTarget, setRunTarget] = useState<SavedQueryEntry | null>(null);
+  const [runValues, setRunValues] = useState<Record<string, string>>({});
+  const [runLoading, setRunLoading] = useState(false);
+  const [runError, setRunError] = useState<string | null>(null);
+
   useEffect(() => {
     api.getSchema(dbId).then((res) => {
       const s: Record<string, string[]> = {};
@@ -47,9 +63,7 @@ export default function QueryEditor({ dbId, dbName, dbType, initialSql, onVisual
     try {
       const entries = await api.getQueryHistory(dbId);
       setHistory(entries);
-    } catch {
-      // silently fail — history is non-critical
-    }
+    } catch { /* non-critical */ }
   }, [dbId]);
 
   useEffect(() => {
@@ -60,14 +74,34 @@ export default function QueryEditor({ dbId, dbName, dbType, initialSql, onVisual
     try {
       const entries = await api.listSavedQueries(dbId);
       setSavedQueries(entries);
-    } catch {
-      // non-critical
-    }
+    } catch { /* non-critical */ }
   }, [dbId]);
 
   useEffect(() => {
     if (showSaved) fetchSavedQueries();
   }, [showSaved, fetchSavedQueries]);
+
+  const openSaveModal = (existing?: SavedQueryEntry) => {
+    if (existing) {
+      setEditingQuery(existing);
+      setSaveName(existing.name);
+      setSaveDescription(existing.description || '');
+      setSaveParams(existing.parameters ?? []);
+    } else {
+      setEditingQuery(null);
+      setSaveName('');
+      setSaveDescription('');
+      // Auto-detect parameters from current SQL
+      const detected = detectParams(sql);
+      setSaveParams(detected.map((name) => ({
+        name,
+        label: name.replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase()),
+        type: 'text' as const,
+        default_value: '',
+      })));
+    }
+    setShowSaveModal(true);
+  };
 
   const handleSaveQuery = async () => {
     if (!saveName.trim() || !sql.trim()) return;
@@ -77,6 +111,7 @@ export default function QueryEditor({ dbId, dbName, dbType, initialSql, onVisual
           name: saveName,
           sql,
           description: saveDescription || undefined,
+          parameters: saveParams,
         });
         setSavedQueries((prev) => prev.map((q) => q.id === updated.id ? updated : q));
       } else {
@@ -86,16 +121,16 @@ export default function QueryEditor({ dbId, dbName, dbType, initialSql, onVisual
           name: saveName,
           sql,
           description: saveDescription || undefined,
+          parameters: saveParams,
         });
         setSavedQueries((prev) => [saved, ...prev]);
       }
       setShowSaveModal(false);
       setSaveName('');
       setSaveDescription('');
+      setSaveParams([]);
       setEditingQuery(null);
-    } catch {
-      // keep modal open on error
-    }
+    } catch { /* keep modal open on error */ }
   };
 
   const handleDeleteSavedQuery = async (id: number) => {
@@ -108,17 +143,29 @@ export default function QueryEditor({ dbId, dbName, dbType, initialSql, onVisual
     setShowSaved(false);
   };
 
-  const openSaveModal = (existing?: SavedQueryEntry) => {
-    if (existing) {
-      setEditingQuery(existing);
-      setSaveName(existing.name);
-      setSaveDescription(existing.description || '');
-    } else {
-      setEditingQuery(null);
-      setSaveName('');
-      setSaveDescription('');
+  const openRunModal = (entry: SavedQueryEntry) => {
+    setRunTarget(entry);
+    const defaults: Record<string, string> = {};
+    for (const p of entry.parameters) defaults[p.name] = p.default_value;
+    setRunValues(defaults);
+    setRunError(null);
+  };
+
+  const handleRunWithParams = async () => {
+    if (!runTarget) return;
+    setRunLoading(true);
+    setRunError(null);
+    try {
+      const res = await api.runSavedQuery(runTarget.id, dbId, runValues);
+      setResult(res);
+      setError(null);
+      setRunTarget(null);
+      setShowSaved(false);
+    } catch (e: any) {
+      setRunError(e.message);
+    } finally {
+      setRunLoading(false);
     }
-    setShowSaveModal(true);
   };
 
   const run = async () => {
@@ -159,13 +206,8 @@ export default function QueryEditor({ dbId, dbName, dbType, initialSql, onVisual
   };
 
   const handleAiKeyDown = (e: React.KeyboardEvent) => {
-    if (e.key === 'Enter' && !e.shiftKey) {
-      e.preventDefault();
-      generateWithAi();
-    }
-    if (e.key === 'Escape') {
-      setShowAiInput(false);
-    }
+    if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); generateWithAi(); }
+    if (e.key === 'Escape') setShowAiInput(false);
   };
 
   const handleClearHistory = async () => {
@@ -175,12 +217,7 @@ export default function QueryEditor({ dbId, dbName, dbType, initialSql, onVisual
 
   const formatTime = (iso: string) => {
     const d = new Date(iso);
-    return d.toLocaleString(undefined, {
-      month: 'short',
-      day: 'numeric',
-      hour: '2-digit',
-      minute: '2-digit',
-    });
+    return d.toLocaleString(undefined, { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
   };
 
   const formatDuration = (ms: number | null) => {
@@ -190,17 +227,49 @@ export default function QueryEditor({ dbId, dbName, dbType, initialSql, onVisual
     return `${(ms / 1000).toFixed(2)}s`;
   };
 
+  const updateSaveParam = (index: number, field: keyof QueryParam, value: string) => {
+    setSaveParams((prev) => prev.map((p, i) => i === index ? { ...p, [field]: value } : p));
+  };
+
+  // Sync save params when SQL changes in edit mode (detect new/removed params)
+  const handleSqlChange = (newSql: string) => {
+    setSql(newSql);
+    if (showSaveModal && !editingQuery) {
+      const detected = detectParams(newSql);
+      setSaveParams((prev) => {
+        const existing = new Map(prev.map((p) => [p.name, p]));
+        return detected.map((name) => existing.get(name) ?? {
+          name,
+          label: name.replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase()),
+          type: 'text' as const,
+          default_value: '',
+        });
+      });
+    }
+  };
+
+  const detectedParamNames = detectParams(sql);
+  const hasTemplateParams = detectedParamNames.length > 0;
+
   return (
     <div className="query-panel">
       <div className="query-editor">
         <SQLEditor
           value={sql}
-          onChange={setSql}
+          onChange={handleSqlChange}
           onExecute={run}
           schema={schema}
           dialect={dbType}
           placeholder="SELECT * FROM table_name LIMIT 100;"
         />
+        {hasTemplateParams && (
+          <div className="param-badges">
+            <span className="param-badges-label">Parameters:</span>
+            {detectedParamNames.map((name) => (
+              <span key={name} className="param-badge">{`{{${name}}}`}</span>
+            ))}
+          </div>
+        )}
         <div className="query-editor-actions">
           <button className="btn btn-primary" onClick={run} disabled={loading || !sql.trim()}>
             {loading ? 'Running...' : 'Run Query'}
@@ -282,19 +351,11 @@ export default function QueryEditor({ dbId, dbName, dbType, initialSql, onVisual
           ) : (
             <div className="query-history-list">
               {history.map((entry) => (
-                <button
-                  key={entry.id}
-                  className="query-history-item"
-                  onClick={() => loadFromHistory(entry)}
-                >
+                <button key={entry.id} className="query-history-item" onClick={() => loadFromHistory(entry)}>
                   <div className="query-history-item-sql">{entry.sql}</div>
                   <div className="query-history-item-meta">
                     <span className={`query-history-status ${entry.status}`}>
-                      {entry.status === 'success' ? (
-                        entry.row_count != null ? `${entry.row_count} rows` : 'OK'
-                      ) : (
-                        'Error'
-                      )}
+                      {entry.status === 'success' ? (entry.row_count != null ? `${entry.row_count} rows` : 'OK') : 'Error'}
                     </span>
                     <span>{formatDuration(entry.duration_ms)}</span>
                     <span>{formatTime(entry.executed_at)}</span>
@@ -321,13 +382,31 @@ export default function QueryEditor({ dbId, dbName, dbType, initialSql, onVisual
                     className="query-history-item saved-query-item-btn"
                     onClick={() => loadFromSaved(entry)}
                   >
-                    <div className="saved-query-item-name">{entry.name}</div>
+                    <div className="saved-query-item-name">
+                      {entry.name}
+                      {entry.parameters.length > 0 && (
+                        <span className="saved-query-param-count" title={`${entry.parameters.length} parameter${entry.parameters.length !== 1 ? 's' : ''}`}>
+                          {entry.parameters.length}
+                        </span>
+                      )}
+                    </div>
                     {entry.description && (
                       <div className="saved-query-item-desc">{entry.description}</div>
                     )}
                     <div className="query-history-item-sql">{entry.sql}</div>
                   </button>
                   <div className="saved-query-item-actions">
+                    {entry.parameters.length > 0 && (
+                      <button
+                        className="btn-icon btn-icon-run"
+                        onClick={() => openRunModal(entry)}
+                        title="Run with parameters"
+                      >
+                        <svg width="13" height="13" viewBox="0 0 24 24" fill="currentColor">
+                          <polygon points="5 3 19 12 5 21 5 3" />
+                        </svg>
+                      </button>
+                    )}
                     <button
                       className="btn-icon"
                       onClick={() => { setSql(entry.sql); openSaveModal(entry); }}
@@ -354,9 +433,10 @@ export default function QueryEditor({ dbId, dbName, dbType, initialSql, onVisual
         </div>
       )}
 
+      {/* ── Save / Edit Query Modal ── */}
       {showSaveModal && (
         <div className="modal-overlay" onClick={() => setShowSaveModal(false)}>
-          <div className="modal" onClick={(e) => e.stopPropagation()}>
+          <div className="modal modal-wide" onClick={(e) => e.stopPropagation()}>
             <div className="modal-title">{editingQuery ? 'Update Saved Query' : 'Save Query'}</div>
             <div className="modal-field">
               <label>Name</label>
@@ -365,7 +445,7 @@ export default function QueryEditor({ dbId, dbName, dbType, initialSql, onVisual
                 onChange={(e) => setSaveName(e.target.value)}
                 placeholder="My useful query"
                 autoFocus
-                onKeyDown={(e) => { if (e.key === 'Enter') handleSaveQuery(); if (e.key === 'Escape') setShowSaveModal(false); }}
+                onKeyDown={(e) => { if (e.key === 'Escape') setShowSaveModal(false); }}
               />
             </div>
             <div className="modal-field">
@@ -374,17 +454,98 @@ export default function QueryEditor({ dbId, dbName, dbType, initialSql, onVisual
                 value={saveDescription}
                 onChange={(e) => setSaveDescription(e.target.value)}
                 placeholder="What does this query do?"
-                onKeyDown={(e) => { if (e.key === 'Enter') handleSaveQuery(); if (e.key === 'Escape') setShowSaveModal(false); }}
+                onKeyDown={(e) => { if (e.key === 'Escape') setShowSaveModal(false); }}
               />
             </div>
             <div className="saved-query-preview">
               <label style={{ display: 'block', fontSize: 12, fontWeight: 500, color: 'var(--text-secondary)', marginBottom: 6 }}>SQL</label>
               <pre className="saved-query-preview-sql">{sql}</pre>
             </div>
+
+            {saveParams.length > 0 && (
+              <div className="modal-params-section">
+                <div className="modal-params-header">
+                  <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ color: 'var(--accent)' }}>
+                    <circle cx="12" cy="12" r="3" /><path d="M19.07 4.93a10 10 0 0 1 0 14.14" /><path d="M4.93 4.93a10 10 0 0 0 0 14.14" />
+                  </svg>
+                  <span>Template Parameters</span>
+                </div>
+                <p className="modal-params-hint">
+                  These <code>{`{{placeholders}}`}</code> were detected in your SQL. Customize the labels and types shown in the run dialog.
+                </p>
+                <div className="modal-params-list">
+                  {saveParams.map((param, i) => (
+                    <div key={param.name} className="modal-param-row">
+                      <span className="modal-param-name">{`{{${param.name}}}`}</span>
+                      <input
+                        className="modal-param-label-input"
+                        value={param.label}
+                        onChange={(e) => updateSaveParam(i, 'label', e.target.value)}
+                        placeholder="Label"
+                      />
+                      <select
+                        className="modal-param-type-select"
+                        value={param.type}
+                        onChange={(e) => updateSaveParam(i, 'type', e.target.value)}
+                      >
+                        <option value="text">Text</option>
+                        <option value="number">Number</option>
+                        <option value="date">Date</option>
+                      </select>
+                      <input
+                        className="modal-param-default-input"
+                        value={param.default_value}
+                        onChange={(e) => updateSaveParam(i, 'default_value', e.target.value)}
+                        placeholder="Default value"
+                      />
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
             <div className="modal-actions">
               <button className="btn" onClick={() => setShowSaveModal(false)}>Cancel</button>
               <button className="btn btn-primary" onClick={handleSaveQuery} disabled={!saveName.trim()}>
                 {editingQuery ? 'Update' : 'Save'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── Run with Parameters Modal ── */}
+      {runTarget && (
+        <div className="modal-overlay" onClick={() => setRunTarget(null)}>
+          <div className="modal" onClick={(e) => e.stopPropagation()}>
+            <div className="modal-title">Run: {runTarget.name}</div>
+            {runTarget.description && (
+              <p style={{ fontSize: 13, color: 'var(--text-secondary)', marginBottom: 16 }}>{runTarget.description}</p>
+            )}
+            <div className="run-params-list">
+              {runTarget.parameters.map((param) => (
+                <div key={param.name} className="modal-field">
+                  <label>{param.label || param.name}</label>
+                  <input
+                    type={param.type === 'number' ? 'number' : param.type === 'date' ? 'date' : 'text'}
+                    value={runValues[param.name] ?? param.default_value}
+                    onChange={(e) => setRunValues((prev) => ({ ...prev, [param.name]: e.target.value }))}
+                    placeholder={param.default_value || `Enter ${param.label || param.name}`}
+                    onKeyDown={(e) => { if (e.key === 'Enter') handleRunWithParams(); if (e.key === 'Escape') setRunTarget(null); }}
+                    autoFocus={runTarget.parameters[0]?.name === param.name}
+                  />
+                </div>
+              ))}
+            </div>
+            <div className="run-params-sql-preview">
+              <span className="run-params-sql-label">SQL template</span>
+              <pre className="saved-query-preview-sql">{runTarget.sql}</pre>
+            </div>
+            {runError && <div className="ai-error" style={{ marginBottom: 12 }}>{runError}</div>}
+            <div className="modal-actions">
+              <button className="btn" onClick={() => setRunTarget(null)}>Cancel</button>
+              <button className="btn btn-primary" onClick={handleRunWithParams} disabled={runLoading}>
+                {runLoading ? 'Running...' : 'Run Query'}
               </button>
             </div>
           </div>
@@ -415,6 +576,7 @@ export default function QueryEditor({ dbId, dbName, dbType, initialSql, onVisual
           <div className="empty-state-title">SQL Query Editor</div>
           <div className="empty-state-text">
             Write a query above and press Run or Cmd+Enter to execute it against the selected database.
+            Use <code style={{ fontFamily: 'var(--font-mono)', fontSize: 12, background: 'var(--bg-tertiary)', padding: '1px 5px', borderRadius: 4 }}>{`{{param_name}}`}</code> to create reusable templates.
           </div>
         </div>
       )}

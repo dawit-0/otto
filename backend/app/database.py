@@ -27,6 +27,7 @@ def _migrate_add_columns() -> None:
         for stmt in [
             "ALTER TABLE connected_databases ADD COLUMN db_type TEXT DEFAULT 'sqlite'",
             "ALTER TABLE connected_databases ADD COLUMN connection_string TEXT",
+            "ALTER TABLE saved_queries ADD COLUMN parameters TEXT",
         ]:
             try:
                 conn.execute(text(stmt))
