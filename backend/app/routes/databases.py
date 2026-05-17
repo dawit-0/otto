@@ -7,6 +7,19 @@ from hashlib import sha256
 from pathlib import Path
 from typing import Any, Optional
 
+_NUMERIC_BASE_TYPES = frozenset({
+    "int", "integer", "bigint", "smallint", "tinyint", "mediumint",
+    "real", "float", "double", "numeric", "decimal", "number",
+    "serial", "bigserial", "float4", "float8", "int2", "int4", "int8",
+})
+
+
+def _is_numeric_type(type_str: str | None) -> bool:
+    if not type_str:
+        return False
+    base = type_str.lower().split("(")[0].strip().split()[0]
+    return base in _NUMERIC_BASE_TYPES
+
 from fastapi import APIRouter, Depends, File, HTTPException, UploadFile
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
@@ -300,5 +313,114 @@ def get_table_data(
     except Exception as e:
         logger.error("Error reading table '%s' from db_id=%s: %s", table_name, db_id, e)
         raise HTTPException(status_code=400, detail=str(e))
+    finally:
+        driver.close(conn)
+
+
+@router.get("/{db_id}/tables/{table_name}/profile")
+def get_table_profile(db_id: str, table_name: str, db: Session = Depends(get_db)):
+    driver = get_driver_for_db(db_id, db)
+    conn = driver.connect()
+    try:
+        try:
+            driver.assert_valid_table(conn, table_name)
+        except ValueError as e:
+            raise HTTPException(status_code=404, detail=str(e))
+        all_tables = driver.get_table_info(conn)
+        table_info = next((t for t in all_tables if t["name"] == table_name), None)
+        if table_info is None:
+            raise HTTPException(status_code=404, detail=f"Table '{table_name}' not found")
+
+        columns = table_info["columns"]
+        row_count = table_info["row_count"]
+
+        empty_profile = [
+            {
+                "name": c["name"], "type": c["type"] or "ANY",
+                "null_count": 0, "null_pct": 0.0,
+                "distinct_count": 0, "distinct_pct": 0.0,
+                "is_numeric": _is_numeric_type(c["type"]),
+                "min": None, "max": None, "avg": None, "top_values": [],
+            }
+            for c in columns
+        ]
+
+        if not columns or row_count == 0:
+            return {"table": table_name, "row_count": row_count, "columns": empty_profile}
+
+        tq = driver.quote_identifier(table_name)
+
+        # Single query: null counts + distinct counts for every column
+        agg_exprs = ["COUNT(*) AS __total"]
+        for i, col in enumerate(columns):
+            cq = driver.quote_identifier(col["name"])
+            agg_exprs.append(f"COUNT({cq}) AS __c{i}_nn")
+            agg_exprs.append(f"COUNT(DISTINCT {cq}) AS __c{i}_dc")
+
+        _, agg_rows = driver.execute(conn, f"SELECT {', '.join(agg_exprs)} FROM {tq}")
+        agg = agg_rows[0] if agg_rows else {}
+        total = int(agg.get("__total") or row_count)
+
+        # Second query: min / max / avg for numeric columns only
+        numeric_idx = [(i, col) for i, col in enumerate(columns) if _is_numeric_type(col["type"])]
+        num_stats: dict = {}
+        if numeric_idx:
+            num_exprs = []
+            for i, col in numeric_idx:
+                cq = driver.quote_identifier(col["name"])
+                num_exprs.append(f"MIN({cq}) AS __c{i}_min")
+                num_exprs.append(f"MAX({cq}) AS __c{i}_max")
+                num_exprs.append(f"AVG({cq}) AS __c{i}_avg")
+            try:
+                _, num_rows = driver.execute(conn, f"SELECT {', '.join(num_exprs)} FROM {tq}")
+                num_stats = num_rows[0] if num_rows else {}
+            except Exception:
+                pass
+
+        result_columns = []
+        for i, col in enumerate(columns):
+            non_null = int(agg.get(f"__c{i}_nn") or 0)
+            distinct = int(agg.get(f"__c{i}_dc") or 0)
+            null_count = total - non_null
+            null_pct = round(null_count / total * 100, 1) if total else 0.0
+            distinct_pct = round(distinct / total * 100, 1) if total else 0.0
+            is_num = _is_numeric_type(col["type"])
+
+            min_val = num_stats.get(f"__c{i}_min") if is_num else None
+            max_val = num_stats.get(f"__c{i}_max") if is_num else None
+            avg_raw = num_stats.get(f"__c{i}_avg") if is_num else None
+            avg_val = round(float(avg_raw), 4) if avg_raw is not None else None
+
+            top_values: list[dict] = []
+            if 0 < distinct <= 500:
+                try:
+                    cq = driver.quote_identifier(col["name"])
+                    top_sql = (
+                        f"SELECT {cq} AS value, COUNT(*) AS cnt FROM {tq} "
+                        f"WHERE {cq} IS NOT NULL GROUP BY {cq} ORDER BY cnt DESC LIMIT 5"
+                    )
+                    _, top_rows = driver.execute(conn, top_sql)
+                    top_values = [
+                        {"value": str(r["value"]), "count": int(r["cnt"])}
+                        for r in top_rows
+                    ]
+                except Exception:
+                    pass
+
+            result_columns.append({
+                "name": col["name"],
+                "type": col["type"] or "ANY",
+                "null_count": null_count,
+                "null_pct": null_pct,
+                "distinct_count": distinct,
+                "distinct_pct": distinct_pct,
+                "is_numeric": is_num,
+                "min": str(min_val) if min_val is not None else None,
+                "max": str(max_val) if max_val is not None else None,
+                "avg": avg_val,
+                "top_values": top_values,
+            })
+
+        return {"table": table_name, "row_count": total, "columns": result_columns}
     finally:
         driver.close(conn)
