@@ -7,6 +7,7 @@ import ConnectModal from './components/ConnectModal';
 import VisualizationDashboard from './components/VisualizationDashboard';
 import AskOtto from './components/AskOtto';
 import OverviewTab from './components/OverviewTab';
+import CommandPalette from './components/CommandPalette';
 import { type ChartType } from './components/charts/ChartRenderer';
 
 type View = 'overview' | 'schema' | 'data' | 'query' | 'visualize' | 'ask';
@@ -18,11 +19,23 @@ export default function App() {
   const [selectedTable, setSelectedTable] = useState<string | null>(null);
   const [view, setView] = useState<View>('overview');
   const [showConnect, setShowConnect] = useState(false);
+  const [showCommandPalette, setShowCommandPalette] = useState(false);
   const [pendingVisualization, setPendingVisualization] = useState<{
     sql: string; chartType: ChartType; xColumn: string; yColumns: string[];
   } | null>(null);
   const [askSeedSql, setAskSeedSql] = useState<string | null>(null);
   const [queryKey, setQueryKey] = useState(0);
+
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      if ((e.metaKey || e.ctrlKey) && e.key === 'k') {
+        e.preventDefault();
+        if (activeDb) setShowCommandPalette(prev => !prev);
+      }
+    };
+    document.addEventListener('keydown', handler);
+    return () => document.removeEventListener('keydown', handler);
+  }, [activeDb]);
 
   useEffect(() => {
     api.listDatabases().then((dbs) => {
@@ -79,6 +92,12 @@ export default function App() {
     setSelectedTable(null);
   }, []);
 
+  const handleLoadQueryFromPalette = useCallback((sql: string) => {
+    setAskSeedSql(sql);
+    setQueryKey(k => k + 1);
+    setView('query');
+  }, []);
+
   const handleVisualizeQuery = (sql: string, chartType: ChartType, xColumn: string, yColumns: string[]) => {
     setPendingVisualization({ sql, chartType, xColumn, yColumns });
     setView('visualize');
@@ -93,6 +112,16 @@ export default function App() {
             <span>&#9672;</span> Otto
           </div>
         </div>
+
+        {activeDb && (
+          <div className="sidebar-search-trigger">
+            <button className="sidebar-search-btn" onClick={() => setShowCommandPalette(true)}>
+              <span className="sidebar-search-btn-icon">⌕</span>
+              <span className="sidebar-search-btn-text">Search…</span>
+              <kbd className="sidebar-search-btn-shortcut">⌘K</kbd>
+            </button>
+          </div>
+        )}
 
         <div className="sidebar-section">
           <div className="sidebar-section-title">Databases</div>
@@ -228,6 +257,16 @@ export default function App() {
       </div>
 
       {showConnect && <ConnectModal onConnect={handleConnect} onClose={() => setShowConnect(false)} />}
+
+      {showCommandPalette && activeDb && (
+        <CommandPalette
+          dbId={activeDb.id}
+          tables={tables}
+          onNavigateTable={handleSelectTable}
+          onLoadQuery={handleLoadQueryFromPalette}
+          onClose={() => setShowCommandPalette(false)}
+        />
+      )}
     </div>
   );
 }
