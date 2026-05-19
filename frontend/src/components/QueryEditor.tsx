@@ -560,6 +560,9 @@ export default function QueryEditor({ dbId, dbName, dbType, initialSql, onVisual
             onVisualize={(chartType, xColumn, yColumns) => {
               if (onVisualize) onVisualize(sql, chartType, xColumn, yColumns);
             }}
+            dbId={dbId}
+            sql={sql}
+            onLoadQuery={(querySql) => setSql(querySql)}
           />
           <DataTable columns={result.columns} rows={result.rows} exportFilename="query-results" />
         </>

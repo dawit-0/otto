@@ -1,3 +1,4 @@
+import json
 import subprocess
 import time
 
@@ -99,6 +100,97 @@ def generate_query(req: AiQueryRequest, db: Session = Depends(get_db)):
         raise HTTPException(status_code=504, detail="AI query generation timed out")
     except FileNotFoundError:
         logger.error("Claude CLI not found on system PATH")
+        raise HTTPException(
+            status_code=500,
+            detail="Claude CLI not found. Please install and configure the Claude CLI.",
+        )
+
+
+class InsightsRequest(BaseModel):
+    db_id: str
+    sql: str
+    columns: list[str]
+    rows: list[dict]
+
+
+def _format_table_for_prompt(columns: list[str], rows: list[dict], max_rows: int = 75) -> str:
+    sample = rows[:max_rows]
+    lines = [" | ".join(columns), "-" * min(120, sum(len(c) + 3 for c in columns))]
+    for row in sample:
+        vals = [str(row.get(col, "")) if row.get(col) is not None else "NULL" for col in columns]
+        lines.append(" | ".join(vals))
+    if len(rows) > max_rows:
+        lines.append(f"... ({len(rows) - max_rows} more rows not shown)")
+    return "\n".join(lines)
+
+
+@router.post("/insights")
+def get_insights(req: InsightsRequest, db: Session = Depends(get_db)):
+    logger.info("AI insights requested for db_id=%s (%d rows)", req.db_id, len(req.rows))
+    driver = get_driver_for_db(req.db_id, db)
+    conn = driver.connect()
+    try:
+        tables = driver.get_table_info(conn)
+        schema_summary = _build_schema_summary(tables)
+    finally:
+        driver.close(conn)
+
+    db_type = get_db_type(req.db_id, db)
+    dialect = "PostgreSQL" if db_type == "postgres" else "SQLite"
+
+    table_str = _format_table_for_prompt(req.columns, req.rows)
+
+    system_prompt = (
+        f"You are Otto, a friendly {dialect} data analyst. "
+        "Analyze the provided query results and return insights as valid JSON only. "
+        "No markdown, no code fences, no explanation — ONLY the raw JSON object.\n\n"
+        "Required format:\n"
+        '{"summary": "1-2 sentences describing what this data shows overall", '
+        '"insights": [{"type": "trend|anomaly|pattern|stat", "text": "specific insight referencing actual values"}], '
+        '"follow_up_queries": [{"description": "what this explores", "sql": "SELECT ..."}]}\n\n'
+        "Rules: insights must be 2-4 specific observations with actual numbers from the data. "
+        f"follow_up_queries must be 2-3 valid {dialect} SELECT queries. "
+        "Be specific and data-driven, not generic. "
+        "insight type must be exactly one of: trend, anomaly, pattern, stat"
+    )
+
+    user_prompt = (
+        f"Database schema:\n{schema_summary}\n\n"
+        f"SQL query:\n{req.sql}\n\n"
+        f"Results ({len(req.rows)} rows):\n{table_str}"
+    )
+
+    try:
+        result = subprocess.run(
+            ["claude", "--print", "--system-prompt", system_prompt, user_prompt],
+            capture_output=True,
+            text=True,
+            timeout=45,
+        )
+        if result.returncode != 0:
+            raise HTTPException(
+                status_code=500,
+                detail=f"Claude CLI error: {result.stderr.strip() or 'Unknown error'}",
+            )
+
+        raw = result.stdout.strip()
+        if raw.startswith("```"):
+            raw = "\n".join(l for l in raw.split("\n") if not l.strip().startswith("```")).strip()
+
+        data = json.loads(raw)
+        logger.info("AI insights generated for db_id=%s: %d insights", req.db_id, len(data.get("insights", [])))
+        return {
+            "summary": data.get("summary", ""),
+            "insights": data.get("insights", []),
+            "follow_up_queries": data.get("follow_up_queries", []),
+        }
+
+    except json.JSONDecodeError as e:
+        logger.error("Failed to parse AI insights JSON: %s", e)
+        raise HTTPException(status_code=500, detail="Could not parse AI response — please try again")
+    except subprocess.TimeoutExpired:
+        raise HTTPException(status_code=504, detail="Insights analysis timed out")
+    except FileNotFoundError:
         raise HTTPException(
             status_code=500,
             detail="Claude CLI not found. Please install and configure the Claude CLI.",

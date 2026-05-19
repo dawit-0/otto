@@ -340,4 +340,14 @@ export const api = {
       method: 'POST',
       body: JSON.stringify({ db_id: dbId, question }),
     }),
+
+  getInsights: (dbId: string, sql: string, columns: string[], rows: Record<string, unknown>[]) =>
+    request<{
+      summary: string;
+      insights: { type: 'trend' | 'anomaly' | 'pattern' | 'stat'; text: string }[];
+      follow_up_queries: { description: string; sql: string }[];
+    }>('/ai/insights', {
+      method: 'POST',
+      body: JSON.stringify({ db_id: dbId, sql, columns, rows: rows.slice(0, 100) }),
+    }),
 };

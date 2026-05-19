@@ -1,10 +1,15 @@
-import { useMemo } from 'react';
+import { useMemo, useState } from 'react';
+import { api } from '../api';
+import AiInsights, { type InsightsData } from './AiInsights';
 import { type ChartType } from './charts/ChartRenderer';
 
 interface Props {
   columns: string[];
   rows: Record<string, unknown>[];
   onVisualize: (chartType: ChartType, xColumn: string, yColumns: string[]) => void;
+  dbId?: string;
+  sql?: string;
+  onLoadQuery?: (sql: string) => void;
 }
 
 type ColType = 'number' | 'date' | 'text';
@@ -117,7 +122,29 @@ const TYPE_LABEL: Record<ColType, string> = {
   text: 'text',
 };
 
-export default function QueryInsights({ columns, rows, onVisualize }: Props) {
+export default function QueryInsights({ columns, rows, onVisualize, dbId, sql, onLoadQuery }: Props) {
+  const [insightsData, setInsightsData] = useState<InsightsData | null>(null);
+  const [insightsLoading, setInsightsLoading] = useState(false);
+  const [insightsError, setInsightsError] = useState<string | null>(null);
+  const [insightsOpen, setInsightsOpen] = useState(false);
+
+  const handleAnalyze = async () => {
+    if (!dbId || !sql) return;
+    if (insightsOpen && insightsData) { setInsightsOpen(false); return; }
+    setInsightsOpen(true);
+    if (insightsData) return;
+    setInsightsLoading(true);
+    setInsightsError(null);
+    try {
+      const data = await api.getInsights(dbId, sql, columns, rows);
+      setInsightsData(data);
+    } catch (e: any) {
+      setInsightsError(e.message ?? 'Analysis failed');
+    } finally {
+      setInsightsLoading(false);
+    }
+  };
+
   const { profiles, suggestion } = useMemo(() => {
     const valuesByCol: Record<string, unknown[]> = {};
     columns.forEach((c) => { valuesByCol[c] = rows.map((r) => r[c]); });
@@ -134,17 +161,32 @@ export default function QueryInsights({ columns, rows, onVisualize }: Props) {
     <div className="query-insights">
       <div className="query-insights-header">
         <span className="query-insights-label">Column Profile</span>
-        <button
-          className="btn btn-sm btn-insights-visualize"
-          onClick={() => onVisualize(suggestion.chartType, suggestion.xColumn, suggestion.yColumns)}
-          title={`Suggested: ${suggestion.chartType} chart`}
-        >
-          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0 }}>
-            <rect x="3" y="3" width="18" height="18" rx="2" /><polyline points="3 9 9 9 9 3" /><line x1="9" y1="9" x2="15" y2="15" />
-          </svg>
-          Chart This
-          <span className="query-insights-chart-badge">{suggestion.chartType}</span>
-        </button>
+        <div className="query-insights-actions">
+          {dbId && sql && (
+            <button
+              className={`btn btn-sm btn-insights-analyze${insightsOpen ? ' btn-insights-analyze-active' : ''}`}
+              onClick={handleAnalyze}
+              disabled={insightsLoading}
+              title="Ask Otto to analyze this data"
+            >
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor" style={{ flexShrink: 0 }}>
+                <path d="M12 2l2.4 7.4H22l-6.2 4.5 2.4 7.4L12 17l-6.2 4.3 2.4-7.4L2 9.4h7.6z" />
+              </svg>
+              {insightsLoading ? 'Analyzing...' : insightsOpen ? 'Hide Insights' : 'Analyze with Otto'}
+            </button>
+          )}
+          <button
+            className="btn btn-sm btn-insights-visualize"
+            onClick={() => onVisualize(suggestion.chartType, suggestion.xColumn, suggestion.yColumns)}
+            title={`Suggested: ${suggestion.chartType} chart`}
+          >
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0 }}>
+              <rect x="3" y="3" width="18" height="18" rx="2" /><polyline points="3 9 9 9 9 3" /><line x1="9" y1="9" x2="15" y2="15" />
+            </svg>
+            Chart This
+            <span className="query-insights-chart-badge">{suggestion.chartType}</span>
+          </button>
+        </div>
       </div>
 
       <div className="query-insights-cards">
@@ -162,6 +204,25 @@ export default function QueryInsights({ columns, rows, onVisualize }: Props) {
           </div>
         ))}
       </div>
+
+      {insightsOpen && (
+        <div className="ai-insights-wrapper">
+          {insightsLoading && (
+            <div className="ai-insights-loading">
+              <span className="ai-insights-loading-dot" />
+              <span className="ai-insights-loading-dot" />
+              <span className="ai-insights-loading-dot" />
+              <span className="ai-insights-loading-text">Otto is analyzing your data...</span>
+            </div>
+          )}
+          {insightsError && (
+            <div className="ai-insights-error">{insightsError}</div>
+          )}
+          {insightsData && !insightsLoading && (
+            <AiInsights data={insightsData} onLoadQuery={onLoadQuery} />
+          )}
+        </div>
+      )}
     </div>
   );
 }
