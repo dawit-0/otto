@@ -1,8 +1,9 @@
-import { useState, useEffect, useCallback } from 'react';
-import { api, type QueryResponse, type QueryHistoryEntry, type SavedQueryEntry, type QueryParam } from '../api';
+import { useState, useEffect, useCallback, useRef } from 'react';
+import { api, type QueryResponse, type QueryHistoryEntry, type SavedQueryEntry, type QueryParam, type TableInfo } from '../api';
 import DataTable from './DataTable';
 import QueryInsights from './QueryInsights';
-import SQLEditor from './SQLEditor';
+import SQLEditor, { type SQLEditorHandle } from './SQLEditor';
+import SchemaPanel from './SchemaPanel';
 import { type ChartType } from './charts/ChartRenderer';
 
 interface Props {
@@ -24,8 +25,11 @@ function detectParams(sql: string): string[] {
 }
 
 export default function QueryEditor({ dbId, dbName, dbType, initialSql, onVisualize }: Props) {
+  const editorRef = useRef<SQLEditorHandle>(null);
+  const [schemaPanelOpen, setSchemaPanelOpen] = useState(true);
   const [sql, setSql] = useState(initialSql ?? '');
-  const [schema, setSchema] = useState<Record<string, string[]>>({});
+  const [schemaTables, setSchemaTables] = useState<TableInfo[]>([]);
+  const [cmSchema, setCmSchema] = useState<Record<string, string[]>>({});
   const [result, setResult] = useState<QueryResponse | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
@@ -53,11 +57,16 @@ export default function QueryEditor({ dbId, dbName, dbType, initialSql, onVisual
 
   useEffect(() => {
     api.getSchema(dbId).then((res) => {
+      setSchemaTables(res.tables);
       const s: Record<string, string[]> = {};
-      for (const table of res.tables) s[table.name] = table.columns.map((c) => c.name);
-      setSchema(s);
+      for (const t of res.tables) s[t.name] = t.columns.map((c) => c.name);
+      setCmSchema(s);
     }).catch(() => {});
   }, [dbId]);
+
+  const insertAtCursor = useCallback((text: string) => {
+    editorRef.current?.insertText(text);
+  }, []);
 
   const fetchHistory = useCallback(async () => {
     try {
@@ -253,12 +262,21 @@ export default function QueryEditor({ dbId, dbName, dbType, initialSql, onVisual
 
   return (
     <div className="query-panel">
+      <div className="query-with-schema">
+        <SchemaPanel
+          tables={schemaTables}
+          onInsert={insertAtCursor}
+          isOpen={schemaPanelOpen}
+          onToggle={() => setSchemaPanelOpen((v) => !v)}
+        />
+        <div className="query-main">
       <div className="query-editor">
         <SQLEditor
+          ref={editorRef}
           value={sql}
           onChange={handleSqlChange}
           onExecute={run}
-          schema={schema}
+          schema={cmSchema}
           dialect={dbType}
           placeholder="SELECT * FROM table_name LIMIT 100;"
         />
@@ -580,6 +598,8 @@ export default function QueryEditor({ dbId, dbName, dbType, initialSql, onVisual
           </div>
         </div>
       )}
+        </div>{/* query-main */}
+      </div>{/* query-with-schema */}
     </div>
   );
 }

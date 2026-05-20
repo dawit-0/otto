@@ -1,9 +1,13 @@
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useImperativeHandle, forwardRef } from 'react';
 import { EditorView, keymap, placeholder as cmPlaceholder } from '@codemirror/view';
 import { EditorState, Compartment } from '@codemirror/state';
 import { basicSetup } from 'codemirror';
 import { sql, SQLite, PostgreSQL, type SQLDialect } from '@codemirror/lang-sql';
 import { oneDark } from '@codemirror/theme-one-dark';
+
+export interface SQLEditorHandle {
+  insertText: (text: string) => void;
+}
 
 interface Props {
   value: string;
@@ -63,12 +67,28 @@ const ottoOverrides = EditorView.theme(
   { dark: true },
 );
 
-export default function SQLEditor({ value, onChange, onExecute, schema = {}, placeholder, dialect }: Props) {
+const SQLEditor = forwardRef<SQLEditorHandle, Props>(function SQLEditor(
+  { value, onChange, onExecute, schema = {}, placeholder, dialect }: Props,
+  ref,
+) {
   const containerRef = useRef<HTMLDivElement>(null);
   const viewRef = useRef<EditorView | null>(null);
   const onChangeRef = useRef(onChange);
   const onExecuteRef = useRef(onExecute);
   const sqlCompartment = useRef(new Compartment());
+
+  useImperativeHandle(ref, () => ({
+    insertText: (text: string) => {
+      const view = viewRef.current;
+      if (!view) return;
+      const { from, to } = view.state.selection.main;
+      view.dispatch({
+        changes: { from, to, insert: text },
+        selection: { anchor: from + text.length },
+      });
+      view.focus();
+    },
+  }), []);
 
   useEffect(() => { onChangeRef.current = onChange; }, [onChange]);
   useEffect(() => { onExecuteRef.current = onExecute; }, [onExecute]);
@@ -128,4 +148,6 @@ export default function SQLEditor({ value, onChange, onExecute, schema = {}, pla
   }, [value]);
 
   return <div ref={containerRef} className="sql-editor-cm" />;
-}
+});
+
+export default SQLEditor;
