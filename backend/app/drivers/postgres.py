@@ -31,6 +31,16 @@ class PostgresDriver(DatabaseDriver):
         conn.commit()
         return [], [{"affected_rows": cursor.rowcount}]
 
+    def execute_params(self, conn: Any, sql: str, params: list) -> tuple[list[str], list[dict]]:
+        cursor = conn.cursor()
+        cursor.execute(sql, params)
+        if cursor.description:
+            columns = [desc[0] for desc in cursor.description]
+            rows = [dict(zip(columns, row)) for row in cursor.fetchall()]
+            return columns, rows
+        conn.commit()
+        return [], [{"affected_rows": cursor.rowcount}]
+
     def validate(self) -> None:
         conn = psycopg2.connect(self._dsn)
         try:

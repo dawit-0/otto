@@ -321,6 +321,31 @@ export const api = {
       body: JSON.stringify({ db_id: dbId, parameters }),
     }),
 
+  // ── Row mutations ──
+
+  insertTableRow: (dbId: string, table: string, values: Record<string, unknown>) =>
+    request<{ ok: boolean }>(`/databases/${dbId}/tables/${encodeURIComponent(table)}/rows`, {
+      method: 'POST',
+      body: JSON.stringify({ values }),
+    }),
+
+  updateTableRow: (
+    dbId: string,
+    table: string,
+    pkValues: Record<string, unknown>,
+    updates: Record<string, unknown>,
+  ) =>
+    request<{ ok: boolean }>(`/databases/${dbId}/tables/${encodeURIComponent(table)}/rows`, {
+      method: 'PATCH',
+      body: JSON.stringify({ pk_values: pkValues, updates }),
+    }),
+
+  deleteTableRow: (dbId: string, table: string, pkValues: Record<string, unknown>) =>
+    request<{ ok: boolean }>(`/databases/${dbId}/tables/${encodeURIComponent(table)}/rows`, {
+      method: 'DELETE',
+      body: JSON.stringify({ pk_values: pkValues }),
+    }),
+
   // ── AI ──
 
   generateAiQuery: (dbId: string, prompt: string) =>

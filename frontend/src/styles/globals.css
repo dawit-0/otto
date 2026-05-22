@@ -2624,3 +2624,344 @@ body {
   color: var(--text-muted);
   margin-bottom: 6px;
 }
+
+/* ─── Inline Row Editing ─── */
+
+/* Edit toggle button */
+.edit-mode-toggle {
+  transition: all 0.15s ease;
+}
+.edit-mode-toggle:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+.edit-mode-active {
+  background: rgba(99, 102, 241, 0.15) !important;
+  border-color: rgba(99, 102, 241, 0.4) !important;
+  color: var(--accent-hover) !important;
+}
+
+/* PK column header badge */
+.pk-col-header {
+  color: var(--warning) !important;
+}
+.pk-badge {
+  margin-right: 4px;
+  font-size: 10px;
+}
+
+/* Editable cell — hover hint */
+.editable-cell {
+  cursor: text;
+  position: relative;
+  transition: background 0.1s;
+}
+.editable-cell:hover {
+  background: rgba(99, 102, 241, 0.06) !important;
+  outline: 1px solid rgba(99, 102, 241, 0.25);
+  outline-offset: -1px;
+}
+
+/* Cell with a staged (unsaved) edit */
+.cell-modified {
+  background: rgba(245, 158, 11, 0.1) !important;
+  color: var(--warning) !important;
+}
+
+/* Active cell in edit mode */
+.editing-cell {
+  padding: 2px 4px !important;
+  background: rgba(99, 102, 241, 0.08) !important;
+  outline: 1px solid var(--accent) !important;
+  outline-offset: -1px;
+}
+
+.cell-input-wrapper {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.cell-input {
+  flex: 1;
+  min-width: 80px;
+  padding: 3px 6px;
+  background: var(--bg-secondary);
+  border: 1px solid var(--accent);
+  border-radius: var(--radius-sm);
+  color: var(--text-primary);
+  font-size: 12px;
+  font-family: var(--font-mono);
+  outline: none;
+  box-shadow: 0 0 0 2px var(--ring-color);
+}
+
+/* NULL display/edit within a cell */
+.cell-null-edit {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.cell-null-tag {
+  font-size: 11px;
+  font-style: italic;
+  color: var(--text-muted);
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 2px 6px;
+  font-family: var(--font-mono);
+}
+.cell-null-clear {
+  font-size: 11px;
+  color: var(--text-muted);
+  background: none;
+  border: none;
+  cursor: pointer;
+  padding: 2px 4px;
+  border-radius: 3px;
+  transition: color 0.1s;
+  font-family: inherit;
+}
+.cell-null-clear:hover {
+  color: var(--text-primary);
+  background: var(--bg-hover);
+}
+
+/* Set-to-NULL button inside inputs */
+.cell-set-null-btn {
+  flex-shrink: 0;
+  width: 20px;
+  height: 20px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 12px;
+  background: none;
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  color: var(--text-muted);
+  cursor: pointer;
+  transition: all 0.1s;
+  font-family: var(--font-mono);
+  padding: 0;
+}
+.cell-set-null-btn:hover {
+  border-color: var(--warning);
+  color: var(--warning);
+  background: rgba(245, 158, 11, 0.1);
+}
+
+/* Row state classes */
+.row-modified td {
+  border-left: none;
+}
+.row-modified td:first-child {
+  border-left: 3px solid var(--warning) !important;
+  padding-left: 11px !important;
+}
+.row-deleting td {
+  opacity: 0.6;
+}
+.row-deleting td:first-child {
+  border-left: 3px solid var(--danger) !important;
+  padding-left: 11px !important;
+}
+.row-saving {
+  opacity: 0.6;
+  pointer-events: none;
+}
+
+/* Actions column */
+.row-action-col {
+  width: 120px;
+  min-width: 120px;
+  text-align: center !important;
+}
+.row-actions {
+  padding: 4px 8px !important;
+  white-space: nowrap;
+  text-align: right;
+}
+.row-action-btns {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  justify-content: flex-end;
+}
+
+/* Individual action buttons */
+.row-action-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 3px 7px;
+  font-size: 11px;
+  font-weight: 600;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border);
+  background: var(--bg-tertiary);
+  color: var(--text-secondary);
+  cursor: pointer;
+  transition: all 0.12s;
+  font-family: inherit;
+  height: 24px;
+  min-width: 24px;
+}
+.row-action-btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+.row-action-save {
+  background: rgba(34, 197, 94, 0.12);
+  border-color: rgba(34, 197, 94, 0.3);
+  color: var(--success);
+}
+.row-action-save:hover:not(:disabled) {
+  background: rgba(34, 197, 94, 0.2);
+  border-color: var(--success);
+}
+.row-action-cancel:hover:not(:disabled) {
+  background: var(--bg-hover);
+  color: var(--text-primary);
+}
+.row-action-delete {
+  color: var(--text-muted);
+}
+.row-action-delete:hover:not(:disabled) {
+  background: rgba(239, 68, 68, 0.1);
+  border-color: rgba(239, 68, 68, 0.4);
+  color: var(--danger);
+}
+
+/* Delete confirmation inline */
+.delete-confirm {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  justify-content: flex-end;
+}
+.delete-confirm-label {
+  font-size: 11px;
+  color: var(--danger);
+  white-space: nowrap;
+}
+.row-action-confirm-delete {
+  background: rgba(239, 68, 68, 0.15);
+  border-color: rgba(239, 68, 68, 0.4);
+  color: var(--danger);
+}
+.row-action-confirm-delete:hover:not(:disabled) {
+  background: rgba(239, 68, 68, 0.3);
+}
+
+/* Inline row error */
+.row-error-row td {
+  padding: 4px 14px 6px !important;
+  border-bottom: 1px solid rgba(239, 68, 68, 0.2);
+}
+.row-error-cell {
+  font-size: 11px;
+  color: var(--danger) !important;
+  background: rgba(239, 68, 68, 0.06) !important;
+  font-family: inherit !important;
+}
+
+/* ── Add Row Modal ── */
+.add-row-modal {
+  width: 520px;
+  max-width: 92vw;
+}
+.add-row-body {
+  max-height: 60vh;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 4px 2px;
+}
+.add-row-field {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+.add-row-label {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+.add-row-col-name {
+  font-size: 12px;
+  font-weight: 600;
+  font-family: var(--font-mono);
+  color: var(--text-primary);
+}
+.add-row-col-meta {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+}
+.add-row-col-type {
+  font-size: 10px;
+  font-family: var(--font-mono);
+  color: var(--text-muted);
+}
+.add-row-col-badge {
+  font-size: 9px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  padding: 1px 5px;
+  border-radius: 9999px;
+}
+.add-row-col-badge.pk {
+  background: rgba(245, 158, 11, 0.15);
+  color: var(--warning);
+  border: 1px solid rgba(245, 158, 11, 0.3);
+}
+.add-row-col-badge.required {
+  background: rgba(239, 68, 68, 0.1);
+  color: var(--danger);
+  border: 1px solid rgba(239, 68, 68, 0.25);
+}
+.add-row-input-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.add-row-input {
+  flex: 1;
+  padding: 6px 10px;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  color: var(--text-primary);
+  font-size: 13px;
+  font-family: var(--font-mono);
+  outline: none;
+  transition: border-color 0.15s, box-shadow 0.15s;
+}
+.add-row-input:focus {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 2px var(--ring-color);
+}
+.add-row-null-field {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 5px 10px;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+}
+.add-row-error {
+  padding: 8px 12px;
+  background: rgba(239, 68, 68, 0.1);
+  border: 1px solid rgba(239, 68, 68, 0.25);
+  border-radius: var(--radius-sm);
+  font-size: 12px;
+  color: var(--danger);
+  margin: 0 0 4px;
+}

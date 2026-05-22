@@ -59,6 +59,14 @@ class DatabaseDriver(ABC):
         ...
 
     @abstractmethod
+    def execute_params(self, conn: Any, sql: str, params: list) -> tuple[list[str], list[dict]]:
+        """Execute parameterized SQL and return (column_names, rows_as_dicts).
+
+        Commits automatically for DML statements (no cursor.description).
+        """
+        ...
+
+    @abstractmethod
     def validate(self) -> None:
         """Test connectivity. Raise on failure."""
         ...
