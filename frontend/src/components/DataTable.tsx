@@ -1,4 +1,5 @@
 import { useState, useRef } from 'react';
+import ColumnProfiler from './ColumnProfiler';
 
 interface Props {
   columns: string[];
@@ -51,6 +52,7 @@ function downloadFile(filename: string, content: string, mimeType: string) {
 export default function DataTable({ columns, rows, total, limit = 100, offset = 0, onPageChange, exportFilename = 'export', sortColumn, sortDirection, onSort }: Props) {
   const [copyState, setCopyState] = useState<null | 'csv' | 'json'>(null);
   const copyTimeout = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const [profileColumn, setProfileColumn] = useState<string | null>(null);
 
   if (columns.length === 0) {
     return (
@@ -84,7 +86,8 @@ export default function DataTable({ columns, rows, total, limit = 100, offset = 
     triggerCopy('json', toJSON(columns, rows));
 
   return (
-    <div className="table-browser">
+    <div className={`table-browser${profileColumn ? ' table-browser-profiling' : ''}`}>
+      <div className="table-browser-main">
       <div className="data-table-container">
         <table className="data-table">
           <thead>
@@ -92,15 +95,29 @@ export default function DataTable({ columns, rows, total, limit = 100, offset = 
               {columns.map((col) => (
                 <th
                   key={col}
-                  className={onSort ? 'sortable-th' : ''}
+                  className={`${onSort ? 'sortable-th' : ''} col-th`}
                   onClick={onSort ? () => onSort(col) : undefined}
                 >
-                  {col}
+                  <span className="col-th-label">{col}</span>
                   {onSort && (
                     <span className="sort-arrow">
                       {sortColumn === col ? (sortDirection === 'asc' ? '↑' : '↓') : '⇅'}
                     </span>
                   )}
+                  <button
+                    className={`col-profile-btn${profileColumn === col ? ' col-profile-btn-active' : ''}`}
+                    title={`Profile column: ${col}`}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setProfileColumn(profileColumn === col ? null : col);
+                    }}
+                  >
+                    <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                      <line x1="18" y1="20" x2="18" y2="10" />
+                      <line x1="12" y1="20" x2="12" y2="4" />
+                      <line x1="6" y1="20" x2="6" y2="14" />
+                    </svg>
+                  </button>
                 </th>
               ))}
             </tr>
@@ -121,7 +138,7 @@ export default function DataTable({ columns, rows, total, limit = 100, offset = 
             ))}
           </tbody>
         </table>
-      </div>
+      </div>{/* /data-table-container */}
 
       <div className="table-footer">
         <div className="table-footer-left">
@@ -199,6 +216,15 @@ export default function DataTable({ columns, rows, total, limit = 100, offset = 
           </button>
         </div>
       </div>
+      </div>{/* /table-browser-main */}
+
+      {profileColumn && (
+        <ColumnProfiler
+          column={profileColumn}
+          rows={rows}
+          onClose={() => setProfileColumn(null)}
+        />
+      )}
     </div>
   );
 }
