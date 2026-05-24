@@ -7,6 +7,7 @@ import ConnectModal from './components/ConnectModal';
 import VisualizationDashboard from './components/VisualizationDashboard';
 import AskOtto from './components/AskOtto';
 import OverviewTab from './components/OverviewTab';
+import CommandPalette, { type PaletteAction } from './components/CommandPalette';
 import { type ChartType } from './components/charts/ChartRenderer';
 
 type View = 'overview' | 'schema' | 'data' | 'query' | 'visualize' | 'ask';
@@ -18,6 +19,7 @@ export default function App() {
   const [selectedTable, setSelectedTable] = useState<string | null>(null);
   const [view, setView] = useState<View>('overview');
   const [showConnect, setShowConnect] = useState(false);
+  const [showPalette, setShowPalette] = useState(false);
   const [pendingVisualization, setPendingVisualization] = useState<{
     sql: string; chartType: ChartType; xColumn: string; yColumns: string[];
   } | null>(null);
@@ -78,6 +80,27 @@ export default function App() {
   const handleClearTable = useCallback(() => {
     setSelectedTable(null);
   }, []);
+
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      if ((e.metaKey || e.ctrlKey) && e.key === 'k') {
+        e.preventDefault();
+        setShowPalette((v) => !v);
+      }
+    };
+    window.addEventListener('keydown', handler);
+    return () => window.removeEventListener('keydown', handler);
+  }, []);
+
+  const handlePaletteAction = useCallback((action: PaletteAction) => {
+    if (action.type === 'navigate') {
+      setView(action.view);
+    } else if (action.type === 'table') {
+      handleSelectTable(action.name);
+    } else if (action.type === 'switch-db') {
+      selectDb(action.db);
+    }
+  }, [handleSelectTable, selectDb]);
 
   const handleVisualizeQuery = (sql: string, chartType: ChartType, xColumn: string, yColumns: string[]) => {
     setPendingVisualization({ sql, chartType, xColumn, yColumns });
@@ -151,6 +174,13 @@ export default function App() {
               </button>
               <button className={`header-tab header-tab-ask${view === 'ask' ? ' active' : ''}`} onClick={() => setView('ask')}>
                 ◆ Ask Otto
+              </button>
+              <button className="cp-trigger" onClick={() => setShowPalette(true)} title="Open command palette">
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <circle cx="11" cy="11" r="8" />
+                  <line x1="21" y1="21" x2="16.65" y2="16.65" />
+                </svg>
+                <kbd>⌘K</kbd>
               </button>
             </div>
 
@@ -228,6 +258,15 @@ export default function App() {
       </div>
 
       {showConnect && <ConnectModal onConnect={handleConnect} onClose={() => setShowConnect(false)} />}
+      {showPalette && (
+        <CommandPalette
+          databases={databases}
+          activeDb={activeDb}
+          tables={tables}
+          onAction={handlePaletteAction}
+          onClose={() => setShowPalette(false)}
+        />
+      )}
     </div>
   );
 }
