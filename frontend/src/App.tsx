@@ -7,6 +7,7 @@ import ConnectModal from './components/ConnectModal';
 import VisualizationDashboard from './components/VisualizationDashboard';
 import AskOtto from './components/AskOtto';
 import OverviewTab from './components/OverviewTab';
+import CommandPalette from './components/CommandPalette';
 import { type ChartType } from './components/charts/ChartRenderer';
 
 type View = 'overview' | 'schema' | 'data' | 'query' | 'visualize' | 'ask';
@@ -23,6 +24,7 @@ export default function App() {
   } | null>(null);
   const [askSeedSql, setAskSeedSql] = useState<string | null>(null);
   const [queryKey, setQueryKey] = useState(0);
+  const [showPalette, setShowPalette] = useState(false);
 
   useEffect(() => {
     api.listDatabases().then((dbs) => {
@@ -84,6 +86,24 @@ export default function App() {
     setView('visualize');
   };
 
+  const handleLoadQuery = useCallback((sql: string) => {
+    setAskSeedSql(sql);
+    setQueryKey(k => k + 1);
+    setView('query');
+  }, []);
+
+  // Global Cmd+K / Ctrl+K shortcut
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      if ((e.metaKey || e.ctrlKey) && e.key === 'k') {
+        e.preventDefault();
+        if (activeDb) setShowPalette(prev => !prev);
+      }
+    };
+    window.addEventListener('keydown', handler);
+    return () => window.removeEventListener('keydown', handler);
+  }, [activeDb]);
+
   return (
     <div className="app-layout">
       {/* Sidebar */}
@@ -123,6 +143,20 @@ export default function App() {
         </div>
 
         <div className="sidebar-footer">
+          {activeDb && (
+            <button
+              className="btn btn-ghost sidebar-palette-btn"
+              onClick={() => setShowPalette(true)}
+              title="Open command palette (⌘K)"
+            >
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <circle cx="11" cy="11" r="8" />
+                <line x1="21" y1="21" x2="16.65" y2="16.65" />
+              </svg>
+              <span>Search</span>
+              <kbd className="sidebar-palette-kbd">⌘K</kbd>
+            </button>
+          )}
           <button className="btn btn-primary" style={{ width: '100%' }} onClick={() => setShowConnect(true)}>
             + Connect Database
           </button>
@@ -228,6 +262,16 @@ export default function App() {
       </div>
 
       {showConnect && <ConnectModal onConnect={handleConnect} onClose={() => setShowConnect(false)} />}
+
+      {showPalette && activeDb && (
+        <CommandPalette
+          tables={tables}
+          dbId={activeDb.id}
+          onSelectTable={handleSelectTable}
+          onLoadQuery={handleLoadQuery}
+          onClose={() => setShowPalette(false)}
+        />
+      )}
     </div>
   );
 }
