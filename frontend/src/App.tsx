@@ -7,6 +7,7 @@ import ConnectModal from './components/ConnectModal';
 import VisualizationDashboard from './components/VisualizationDashboard';
 import AskOtto from './components/AskOtto';
 import OverviewTab from './components/OverviewTab';
+import CommandPalette from './components/CommandPalette';
 import { type ChartType } from './components/charts/ChartRenderer';
 
 type View = 'overview' | 'schema' | 'data' | 'query' | 'visualize' | 'ask';
@@ -18,6 +19,7 @@ export default function App() {
   const [selectedTable, setSelectedTable] = useState<string | null>(null);
   const [view, setView] = useState<View>('overview');
   const [showConnect, setShowConnect] = useState(false);
+  const [showPalette, setShowPalette] = useState(false);
   const [pendingVisualization, setPendingVisualization] = useState<{
     sql: string; chartType: ChartType; xColumn: string; yColumns: string[];
   } | null>(null);
@@ -33,6 +35,17 @@ export default function App() {
       }
     }).catch(() => {});
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  useEffect(() => {
+    const handleGlobalKey = (e: KeyboardEvent) => {
+      if ((e.metaKey || e.ctrlKey) && e.key === 'k') {
+        e.preventDefault();
+        setShowPalette(p => !p);
+      }
+    };
+    window.addEventListener('keydown', handleGlobalKey);
+    return () => window.removeEventListener('keydown', handleGlobalKey);
+  }, []);
 
   const loadSchema = useCallback(async (db: Database) => {
     try {
@@ -79,6 +92,12 @@ export default function App() {
     setSelectedTable(null);
   }, []);
 
+  const handleLoadSql = useCallback((sql: string) => {
+    setAskSeedSql(sql);
+    setQueryKey(k => k + 1);
+    setView('query');
+  }, []);
+
   const handleVisualizeQuery = (sql: string, chartType: ChartType, xColumn: string, yColumns: string[]) => {
     setPendingVisualization({ sql, chartType, xColumn, yColumns });
     setView('visualize');
@@ -92,6 +111,16 @@ export default function App() {
           <div className="sidebar-logo">
             <span>&#9672;</span> Otto
           </div>
+          <button
+            className="btn-icon cmd-trigger"
+            onClick={() => setShowPalette(true)}
+            title="Command Palette (⌘K)"
+          >
+            <svg width="14" height="14" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+              <circle cx="6.5" cy="6.5" r="4.5" stroke="currentColor" strokeWidth="1.5" />
+              <path d="M10 10l3 3" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
+            </svg>
+          </button>
         </div>
 
         <div className="sidebar-section">
@@ -125,6 +154,14 @@ export default function App() {
         <div className="sidebar-footer">
           <button className="btn btn-primary" style={{ width: '100%' }} onClick={() => setShowConnect(true)}>
             + Connect Database
+          </button>
+          <button className="sidebar-cmd-hint" onClick={() => setShowPalette(true)}>
+            <svg width="12" height="12" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+              <circle cx="6.5" cy="6.5" r="4.5" stroke="currentColor" strokeWidth="1.5" />
+              <path d="M10 10l3 3" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
+            </svg>
+            Search & commands
+            <kbd>⌘K</kbd>
           </button>
         </div>
       </div>
@@ -228,6 +265,20 @@ export default function App() {
       </div>
 
       {showConnect && <ConnectModal onConnect={handleConnect} onClose={() => setShowConnect(false)} />}
+
+      {showPalette && (
+        <CommandPalette
+          databases={databases}
+          activeDb={activeDb}
+          tables={tables}
+          onClose={() => setShowPalette(false)}
+          onNavigate={(v) => { setView(v); }}
+          onSelectDb={selectDb}
+          onSelectTable={handleSelectTable}
+          onConnect={() => setShowConnect(true)}
+          onLoadSql={handleLoadSql}
+        />
+      )}
     </div>
   );
 }
