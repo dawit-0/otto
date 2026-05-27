@@ -2624,3 +2624,261 @@ body {
   color: var(--text-muted);
   margin-bottom: 6px;
 }
+
+/* ─── Inline Row Editing ──────────────────────────────────────────────────── */
+
+/* Edit toggle button in the toolbar */
+.btn-edit-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 4px 10px;
+  font-size: 12px;
+  font-weight: 500;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--bg-tertiary);
+  color: var(--text-secondary);
+  cursor: pointer;
+  transition: all 0.15s ease;
+  font-family: inherit;
+}
+.btn-edit-toggle:hover {
+  background: var(--bg-hover);
+  border-color: var(--border-strong);
+  color: var(--text-primary);
+}
+.btn-edit-toggle.btn-edit-active {
+  background: rgba(245, 158, 11, 0.1);
+  border-color: rgba(245, 158, 11, 0.35);
+  color: var(--warning);
+}
+.btn-edit-toggle.btn-edit-active:hover {
+  background: rgba(245, 158, 11, 0.18);
+}
+
+/* Pulsing dot shown next to "Editing" label in the toolbar */
+.edit-mode-dot-sm {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--warning);
+  flex-shrink: 0;
+  animation: edit-pulse 2s ease-in-out infinite;
+}
+
+@keyframes edit-pulse {
+  0%, 100% { opacity: 1; }
+  50%       { opacity: 0.35; }
+}
+
+/* Warning banner: table has no primary key */
+.edit-no-pk-banner {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 16px;
+  font-size: 12px;
+  color: var(--warning);
+  background: rgba(245, 158, 11, 0.07);
+  border-bottom: 1px solid rgba(245, 158, 11, 0.18);
+  flex-shrink: 0;
+}
+
+/* Pending-changes banner (above the table) */
+.edit-pending-banner {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 7px 14px;
+  background: rgba(245, 158, 11, 0.06);
+  border-bottom: 1px solid rgba(245, 158, 11, 0.16);
+  flex-shrink: 0;
+  min-height: 40px;
+}
+
+/* Pulsing dot in the banner */
+.edit-mode-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--warning);
+  flex-shrink: 0;
+  animation: edit-pulse 2s ease-in-out infinite;
+}
+
+.edit-pending-label {
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--warning);
+}
+
+/* Save result inline message */
+.save-result-inline {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 12px;
+  padding: 3px 10px;
+  border-radius: var(--radius-sm);
+  font-weight: 500;
+  animation: edit-fade-in 0.2s ease;
+}
+.save-result-inline.ok {
+  color: var(--success);
+  background: rgba(34, 197, 94, 0.1);
+  border: 1px solid rgba(34, 197, 94, 0.2);
+}
+.save-result-inline.fail {
+  color: var(--danger);
+  background: rgba(239, 68, 68, 0.08);
+  border: 1px solid rgba(239, 68, 68, 0.2);
+}
+
+@keyframes edit-fade-in {
+  from { opacity: 0; transform: translateY(-3px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+/* ── Edit-actions column (narrow, holds row-level buttons) ── */
+.edit-col-header {
+  width: 34px !important;
+  min-width: 34px !important;
+  max-width: 34px !important;
+  padding: 0 4px !important;
+  background: var(--bg-tertiary);
+}
+.edit-col-cell {
+  width: 34px !important;
+  min-width: 34px !important;
+  max-width: 34px !important;
+  padding: 0 4px !important;
+  text-align: center;
+  vertical-align: middle;
+}
+
+/* Delete / restore / remove-new row action buttons */
+.row-action-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  border: none;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  cursor: pointer;
+  opacity: 0;
+  transition: opacity 0.12s ease, background 0.12s ease, color 0.12s ease;
+  padding: 0;
+}
+/* Show the button when the row is hovered or in pending state */
+.data-table tr:hover .row-action-btn,
+.row-action-btn.restore-btn,
+.row-new .row-action-btn {
+  opacity: 1;
+}
+.row-action-btn.delete-btn {
+  color: var(--text-muted);
+}
+.row-action-btn.delete-btn:hover {
+  color: var(--danger);
+  background: rgba(239, 68, 68, 0.1);
+}
+.row-action-btn.restore-btn {
+  color: var(--success);
+  background: rgba(34, 197, 94, 0.08);
+}
+.row-action-btn.restore-btn:hover {
+  background: rgba(34, 197, 94, 0.16);
+}
+.row-action-btn.remove-new-btn {
+  color: var(--text-muted);
+  opacity: 1;
+}
+.row-action-btn.remove-new-btn:hover {
+  color: var(--danger);
+  background: rgba(239, 68, 68, 0.1);
+}
+
+/* ── Editable cells ── */
+.data-table td.editable-cell {
+  cursor: text;
+  position: relative;
+}
+.data-table td.editable-cell:hover:not(.cell-edited) {
+  background: rgba(99, 102, 241, 0.05);
+}
+
+/* Cell that has been edited (unsaved) */
+.data-table td.cell-edited {
+  background: rgba(245, 158, 11, 0.07) !important;
+  box-shadow: inset 2px 0 0 rgba(245, 158, 11, 0.55);
+}
+
+/* New row (INSERT pending) */
+.data-table tr.row-new td {
+  background: rgba(34, 197, 94, 0.04);
+  border-bottom-color: rgba(34, 197, 94, 0.12);
+}
+.data-table td.cell-new-filled {
+  box-shadow: inset 2px 0 0 rgba(34, 197, 94, 0.45);
+}
+.data-table td.cell-new-empty {
+  /* subtle dashed feel via opacity */
+  opacity: 0.7;
+}
+
+/* Row pending deletion */
+.data-table tr.row-pending-delete td {
+  background: rgba(239, 68, 68, 0.04) !important;
+  color: var(--text-muted) !important;
+  text-decoration: line-through;
+  text-decoration-color: rgba(239, 68, 68, 0.5);
+  cursor: default !important;
+}
+
+/* Row that has at least one edited cell */
+.data-table tr.row-edited td {
+  /* subtle left gutter hint, individual cells carry the orange box-shadow */
+}
+
+/* Placeholder text inside new/empty cells */
+.new-cell-placeholder {
+  color: var(--text-muted);
+  font-style: italic;
+  font-size: 11px;
+  user-select: none;
+}
+
+/* Inline cell edit input */
+.cell-edit-input {
+  display: block;
+  width: 100%;
+  min-width: 60px;
+  padding: 2px 6px;
+  margin: -3px -6px;          /* bleed to cell edges */
+  font-family: var(--font-mono);
+  font-size: 12px;
+  background: var(--bg-primary);
+  color: var(--text-primary);
+  border: 1px solid var(--accent);
+  border-radius: 3px;
+  outline: none;
+  box-shadow: 0 0 0 2px var(--ring-color);
+  box-sizing: border-box;
+}
+
+/* Add Row button in the footer */
+.btn-add-row {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  color: var(--success);
+  border-color: rgba(34, 197, 94, 0.3);
+  background: rgba(34, 197, 94, 0.06);
+}
+.btn-add-row:hover {
+  background: rgba(34, 197, 94, 0.12);
+  border-color: rgba(34, 197, 94, 0.45);
+}

@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useRef } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { Responsive, useContainerWidth, type LayoutItem } from 'react-grid-layout';
 import 'react-grid-layout/css/styles.css';
 import 'react-resizable/css/styles.css';
@@ -40,7 +40,10 @@ export default function VisualizationDashboard({ dbId, dbName, dbType, initialQu
   const [showHistory, setShowHistory] = useState(false);
   const [history, setHistory] = useState<VisualizationHistoryEntry[]>([]);
   const [loadingPanels, setLoadingPanels] = useState(true);
-  const { containerRef, width: containerWidth } = useContainerWidth();
+  const { containerRef, width: containerWidth } = useContainerWidth() as {
+    containerRef: React.RefObject<HTMLDivElement>;
+    width: number;
+  };
 
   const [historyInitial, setHistoryInitial] = useState<{
     title?: string; sql?: string; chart_type?: string;
