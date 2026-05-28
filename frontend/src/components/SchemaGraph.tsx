@@ -46,6 +46,19 @@ function TableNode({ data }: { data: { table: TableInfo; selected: boolean; onSe
           );
         })}
       </div>
+      {table.indexes.length > 0 && (
+        <div className="table-node-indexes">
+          <div className="table-node-section-label">Indexes</div>
+          {table.indexes.map((idx) => (
+            <div key={idx.name} className="table-node-index" title={`${idx.name} (${idx.columns.join(', ')})`}>
+              <span className="col-icon idx">🔍</span>
+              <span className="col-name">{idx.name}</span>
+              {idx.unique && <span className="index-badge-unique">UQ</span>}
+              <span className="col-type">{idx.columns.join(', ')}</span>
+            </div>
+          ))}
+        </div>
+      )}
       <Handle type="source" position={Position.Bottom} style={{ background: '#6366f1', width: 8, height: 8 }} />
     </div>
   );
@@ -61,7 +74,9 @@ function layoutGraph(tables: TableInfo[], onSelectTable: (name: string) => void,
   const nodeWidth = 260;
 
   tables.forEach((table) => {
-    const nodeHeight = 44 + Math.min(table.columns.length, 10) * 24;
+    const columnsHeight = Math.min(table.columns.length, 10) * 24;
+    const indexesHeight = table.indexes.length > 0 ? 22 + table.indexes.length * 22 : 0;
+    const nodeHeight = 44 + columnsHeight + indexesHeight;
     g.setNode(table.name, { width: nodeWidth, height: nodeHeight });
   });
 

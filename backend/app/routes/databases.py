@@ -254,6 +254,7 @@ def get_overview(db_id: str, db: Session = Depends(get_db)):
                     {"name": c["name"], "type": c["type"] or "ANY", "pk": c["pk"], "notnull": c["notnull"]}
                     for c in t["columns"]
                 ],
+                "indexes": t["indexes"],
             }
             for t in tables
         ]
