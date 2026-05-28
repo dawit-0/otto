@@ -16,12 +16,69 @@ function formatNumber(n: number): string {
   return n.toLocaleString();
 }
 
-function StatCard({ label, value, sub }: { label: string; value: string | number; sub?: string }) {
+function StatCard({
+  label,
+  value,
+  sub,
+  onClick,
+}: {
+  label: string;
+  value: string | number;
+  sub?: string;
+  onClick?: () => void;
+}) {
   return (
-    <div className="overview-stat-card">
+    <div
+      className={`overview-stat-card${onClick ? ' overview-stat-card-clickable' : ''}`}
+      onClick={onClick}
+      title={onClick ? `View ${label.toLowerCase()}` : undefined}
+    >
       <div className="overview-stat-value">{typeof value === 'number' ? formatNumber(value) : value}</div>
       <div className="overview-stat-label">{label}</div>
       {sub && <div className="overview-stat-sub">{sub}</div>}
+    </div>
+  );
+}
+
+function IndexesModal({
+  tables,
+  onClose,
+}: {
+  tables: OverviewTableSummary[];
+  onClose: () => void;
+}) {
+  const tablesWithIndexes = tables.filter((t) => t.indexes.length > 0);
+  const total = tablesWithIndexes.reduce((sum, t) => sum + t.indexes.length, 0);
+
+  return (
+    <div className="modal-overlay" onClick={onClose}>
+      <div className="modal modal-wide" onClick={(e) => e.stopPropagation()}>
+        <div className="modal-title">Indexes ({total})</div>
+        {tablesWithIndexes.length === 0 ? (
+          <div className="overview-empty">No indexes defined in this database.</div>
+        ) : (
+          <div className="index-modal-list">
+            {tablesWithIndexes.map((table) => (
+              <div key={table.name} className="index-modal-group">
+                <div className="index-modal-table">{table.name}</div>
+                {table.indexes.map((idx) => (
+                  <div key={idx.name} className="index-modal-row">
+                    <span className="index-modal-icon">🔍</span>
+                    <span className="index-modal-name">{idx.name}</span>
+                    {idx.unique && <span className="index-modal-unique">UNIQUE</span>}
+                    <span className="index-modal-cols">({idx.columns.join(', ')})</span>
+                  </div>
+                ))}
+              </div>
+            ))}
+          </div>
+        )}
+        <div className="modal-actions">
+          <button className="btn" onClick={onClose}>
+            Close
+          </button>
+        </div>
+      </div>
     </div>
   );
 }
@@ -83,6 +140,7 @@ export default function OverviewTab({ dbId, onSelectTable }: Props) {
   const [data, setData] = useState<OverviewResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [showIndexes, setShowIndexes] = useState(false);
 
   useEffect(() => {
     setLoading(true);
@@ -151,8 +209,14 @@ export default function OverviewTab({ dbId, onSelectTable }: Props) {
         <StatCard label="Tables" value={data.stats.table_count} />
         <StatCard label="Total Rows" value={data.stats.total_rows} />
         <StatCard label="Columns" value={data.stats.total_columns} />
-        <StatCard label="Indexes" value={data.stats.index_count} />
+        <StatCard
+          label="Indexes"
+          value={data.stats.index_count}
+          onClick={data.stats.index_count > 0 ? () => setShowIndexes(true) : undefined}
+        />
       </div>
+
+      {showIndexes && <IndexesModal tables={data.tables} onClose={() => setShowIndexes(false)} />}
 
       {/* Section header */}
       <div className="overview-section-header">

@@ -165,6 +165,7 @@ export interface OverviewTableSummary {
   fk_count: number;
   has_pk: boolean;
   columns: { name: string; type: string; pk: boolean; notnull: boolean }[];
+  indexes: Index[];
 }
 
 export interface OverviewResponse {
