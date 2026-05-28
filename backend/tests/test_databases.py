@@ -123,6 +123,78 @@ def test_get_table_data_nonexistent_table(client, sample_db):
     assert "unknown table" in resp.json()["detail"].lower()
 
 
+# ── Column Profile ──
+
+
+def test_get_table_profile_basic(client, sample_db):
+    info = _connect(client, sample_db)
+    resp = client.get(f"/api/databases/{info['id']}/tables/books/profile")
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["table"] == "books"
+    assert data["row_count"] == 3
+    col_map = {c["name"]: c for c in data["columns"]}
+    assert set(col_map) == {"id", "title", "author_id", "pages"}
+
+
+def test_get_table_profile_numeric_stats(client, sample_db):
+    info = _connect(client, sample_db)
+    resp = client.get(f"/api/databases/{info['id']}/tables/books/profile")
+    data = resp.json()
+    col_map = {c["name"]: c for c in data["columns"]}
+
+    # "pages" is an INTEGER column — should have numeric stats
+    pages = col_map["pages"]
+    assert pages["is_numeric"] is True
+    assert pages["min"] is not None
+    assert pages["max"] is not None
+    assert pages["avg"] is not None
+
+    # "title" is TEXT — should not have numeric stats
+    title = col_map["title"]
+    assert title["is_numeric"] is False
+    assert title["avg"] is None
+
+
+def test_get_table_profile_null_and_distinct(client, sample_db):
+    info = _connect(client, sample_db)
+    resp = client.get(f"/api/databases/{info['id']}/tables/books/profile")
+    data = resp.json()
+    col_map = {c["name"]: c for c in data["columns"]}
+
+    # id should have 0 nulls and distinct_count == row_count
+    id_col = col_map["id"]
+    assert id_col["null_count"] == 0
+    assert id_col["null_pct"] == 0.0
+    assert id_col["distinct_count"] == 3
+
+
+def test_get_table_profile_top_values(client, sample_db):
+    info = _connect(client, sample_db)
+    resp = client.get(f"/api/databases/{info['id']}/tables/books/profile")
+    data = resp.json()
+    col_map = {c["name"]: c for c in data["columns"]}
+
+    # author_id has low cardinality (2 authors) — top_values should be populated
+    author_id = col_map["author_id"]
+    assert len(author_id["top_values"]) > 0
+    first = author_id["top_values"][0]
+    assert "value" in first
+    assert "count" in first
+    assert first["count"] >= 1
+
+
+def test_get_table_profile_nonexistent_table(client, sample_db):
+    info = _connect(client, sample_db)
+    resp = client.get(f"/api/databases/{info['id']}/tables/nope/profile")
+    assert resp.status_code in (400, 404)
+
+
+def test_get_table_profile_unknown_db(client):
+    resp = client.get("/api/databases/nonexistent_12345678/tables/books/profile")
+    assert resp.status_code == 404
+
+
 # ── Upload ──
 
 
