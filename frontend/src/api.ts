@@ -132,6 +132,20 @@ export interface SavedQueryEntry {
   updated_at: string;
 }
 
+export interface ColumnProfile {
+  column: string;
+  type: string;
+  total_count: number;
+  null_count: number;
+  null_percent: number;
+  unique_count: number;
+  is_numeric: boolean;
+  min: number | string | null;
+  max: number | string | null;
+  avg: number | null;
+  top_values: { value: string; count: number }[];
+}
+
 export interface OverviewTableSummary {
   name: string;
   row_count: number;
@@ -320,6 +334,9 @@ export const api = {
       method: 'POST',
       body: JSON.stringify({ db_id: dbId, parameters }),
     }),
+
+  getColumnProfile: (dbId: string, tableName: string, columnName: string) =>
+    request<ColumnProfile>(`/databases/${dbId}/tables/${tableName}/columns/${columnName}/profile`),
 
   // ── AI ──
 

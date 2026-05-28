@@ -11,6 +11,8 @@ interface Props {
   sortColumn?: string;
   sortDirection?: 'asc' | 'desc';
   onSort?: (column: string) => void;
+  onColumnProfile?: (column: string) => void;
+  activeProfileColumn?: string;
 }
 
 function toCSV(columns: string[], rows: Record<string, unknown>[]): string {
@@ -48,7 +50,7 @@ function downloadFile(filename: string, content: string, mimeType: string) {
   URL.revokeObjectURL(url);
 }
 
-export default function DataTable({ columns, rows, total, limit = 100, offset = 0, onPageChange, exportFilename = 'export', sortColumn, sortDirection, onSort }: Props) {
+export default function DataTable({ columns, rows, total, limit = 100, offset = 0, onPageChange, exportFilename = 'export', sortColumn, sortDirection, onSort, onColumnProfile, activeProfileColumn }: Props) {
   const [copyState, setCopyState] = useState<null | 'csv' | 'json'>(null);
   const copyTimeout = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -92,14 +94,30 @@ export default function DataTable({ columns, rows, total, limit = 100, offset = 
               {columns.map((col) => (
                 <th
                   key={col}
-                  className={onSort ? 'sortable-th' : ''}
+                  className={`${onSort ? 'sortable-th' : ''}${activeProfileColumn === col ? ' th-profile-active' : ''}`}
                   onClick={onSort ? () => onSort(col) : undefined}
                 >
-                  {col}
+                  <span className="th-col-name">{col}</span>
                   {onSort && (
                     <span className="sort-arrow">
                       {sortColumn === col ? (sortDirection === 'asc' ? '↑' : '↓') : '⇅'}
                     </span>
+                  )}
+                  {onColumnProfile && (
+                    <button
+                      className={`col-profile-trigger${activeProfileColumn === col ? ' active' : ''}`}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        onColumnProfile(activeProfileColumn === col ? '' : col);
+                      }}
+                      title="Column statistics"
+                    >
+                      <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                        <line x1="18" y1="20" x2="18" y2="10" />
+                        <line x1="12" y1="20" x2="12" y2="4" />
+                        <line x1="6" y1="20" x2="6" y2="14" />
+                      </svg>
+                    </button>
                   )}
                 </th>
               ))}

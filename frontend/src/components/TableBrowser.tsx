@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { api, type FilterRule, type FilterOp, type Column } from '../api';
 import DataTable from './DataTable';
+import ColumnProfilePanel from './ColumnProfilePanel';
 
 interface Props {
   dbId: string;
@@ -45,6 +46,8 @@ export default function TableBrowser({ dbId, tableName, columnDefs }: Props) {
   const [newCol, setNewCol] = useState('');
   const [newOp, setNewOp] = useState<FilterOp>('contains');
   const [newVal, setNewVal] = useState('');
+
+  const [profileColumn, setProfileColumn] = useState<string>('');
 
   const addFilterRef = useRef<HTMLDivElement>(null);
 
@@ -258,6 +261,16 @@ export default function TableBrowser({ dbId, tableName, columnDefs }: Props) {
         </div>
       )}
 
+      {/* ── Column profile panel ── */}
+      {profileColumn && (
+        <ColumnProfilePanel
+          dbId={dbId}
+          tableName={tableName}
+          columnName={profileColumn}
+          onClose={() => setProfileColumn('')}
+        />
+      )}
+
       {/* ── Data table ── */}
       {!error && (
         <DataTable
@@ -271,6 +284,8 @@ export default function TableBrowser({ dbId, tableName, columnDefs }: Props) {
           sortColumn={sort?.column}
           sortDirection={sort?.direction}
           onSort={handleSort}
+          onColumnProfile={(col) => setProfileColumn(col)}
+          activeProfileColumn={profileColumn}
         />
       )}
     </div>

@@ -266,6 +266,96 @@ def get_overview(db_id: str, db: Session = Depends(get_db)):
         driver.close(conn)
 
 
+@router.get("/{db_id}/tables/{table_name}/columns/{column_name}/profile")
+def get_column_profile(
+    db_id: str,
+    table_name: str,
+    column_name: str,
+    db: Session = Depends(get_db),
+):
+    from app.utils.sql_safety import quote_identifier
+
+    driver = get_driver_for_db(db_id, db)
+    conn = driver.connect()
+    try:
+        tables = driver.get_table_info(conn)
+        table = next((t for t in tables if t["name"] == table_name), None)
+        if not table:
+            raise HTTPException(status_code=404, detail=f"Table '{table_name}' not found")
+
+        col_def = next((c for c in table["columns"] if c["name"] == column_name), None)
+        if not col_def:
+            raise HTTPException(status_code=404, detail=f"Column '{column_name}' not found")
+
+        col_type = (col_def["type"] or "").upper()
+        is_numeric = any(
+            t in col_type
+            for t in ["INT", "REAL", "FLOAT", "DOUBLE", "DECIMAL", "NUMERIC", "NUMBER", "BIGINT", "SMALLINT"]
+        )
+
+        q_table = quote_identifier(table_name)
+        q_col = quote_identifier(column_name)
+
+        _, stats_rows = driver.execute(
+            conn,
+            f"SELECT COUNT(*) AS total_count, "
+            f"SUM(CASE WHEN {q_col} IS NULL THEN 1 ELSE 0 END) AS null_count, "
+            f"COUNT(DISTINCT {q_col}) AS unique_count "
+            f"FROM {q_table}",
+        )
+        stats = stats_rows[0] if stats_rows else {}
+        total_count = int(stats.get("total_count") or 0)
+        null_count = int(stats.get("null_count") or 0)
+        unique_count = int(stats.get("unique_count") or 0)
+        null_percent = round((null_count / total_count * 100) if total_count else 0, 1)
+
+        min_val = max_val = avg_val = None
+        if is_numeric:
+            _, num_rows = driver.execute(
+                conn,
+                f"SELECT MIN({q_col}) AS min_val, MAX({q_col}) AS max_val, "
+                f"AVG(CAST({q_col} AS FLOAT)) AS avg_val "
+                f"FROM {q_table} WHERE {q_col} IS NOT NULL",
+            )
+            if num_rows:
+                min_val = num_rows[0].get("min_val")
+                max_val = num_rows[0].get("max_val")
+                raw_avg = num_rows[0].get("avg_val")
+                avg_val = round(float(raw_avg), 4) if raw_avg is not None else None
+
+        _, top_rows = driver.execute(
+            conn,
+            f"SELECT {q_col} AS value, COUNT(*) AS count "
+            f"FROM {q_table} WHERE {q_col} IS NOT NULL "
+            f"GROUP BY {q_col} ORDER BY count DESC LIMIT 10",
+        )
+        top_values = [
+            {"value": str(r.get("value")), "count": int(r.get("count") or 0)}
+            for r in top_rows
+        ]
+
+        return {
+            "column": column_name,
+            "type": col_def["type"] or "ANY",
+            "total_count": total_count,
+            "null_count": null_count,
+            "null_percent": null_percent,
+            "unique_count": unique_count,
+            "is_numeric": is_numeric,
+            "min": min_val,
+            "max": max_val,
+            "avg": avg_val,
+            "top_values": top_values,
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error("Error profiling column '%s.%s': %s", table_name, column_name, e)
+        raise HTTPException(status_code=400, detail=str(e))
+    finally:
+        driver.close(conn)
+
+
 @router.get("/{db_id}/tables/{table_name}/data")
 def get_table_data(
     db_id: str,
