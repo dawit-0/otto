@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback, useRef } from 'react';
 import { api, type FilterRule, type FilterOp, type Column } from '../api';
 import DataTable from './DataTable';
 import ColumnProfilePanel from './ColumnProfilePanel';
+import RowDetailPanel from './RowDetailPanel';
 
 interface Props {
   dbId: string;
@@ -48,6 +49,7 @@ export default function TableBrowser({ dbId, tableName, columnDefs }: Props) {
   const [newVal, setNewVal] = useState('');
 
   const [showProfile, setShowProfile] = useState(false);
+  const [selectedRowIdx, setSelectedRowIdx] = useState<number | null>(null);
 
   const addFilterRef = useRef<HTMLDivElement>(null);
 
@@ -128,11 +130,16 @@ export default function TableBrowser({ dbId, tableName, columnDefs }: Props) {
     setSort(null);
   };
 
+  const handleRowClick = (i: number) => {
+    setSelectedRowIdx((prev) => (prev === i ? null : i));
+  };
+
   const hasActiveState = filters.length > 0 || sort !== null;
+  const detailOpen = selectedRowIdx !== null;
   const needsValueInput = VALUE_OPS.includes(newOp);
 
   return (
-    <div className={`table-browser-wrapper${showProfile ? ' profile-open' : ''}`}>
+    <div className={`table-browser-wrapper${showProfile ? ' profile-open' : ''}${detailOpen ? ' detail-open' : ''}`}>
       <div className="table-browser-main">
       {/* ── Toolbar ── */}
       <div className="filter-toolbar">
@@ -286,9 +293,23 @@ export default function TableBrowser({ dbId, tableName, columnDefs }: Props) {
           sortColumn={sort?.column}
           sortDirection={sort?.direction}
           onSort={handleSort}
+          onRowClick={handleRowClick}
+          selectedRowIndex={selectedRowIdx ?? undefined}
         />
       )}
       </div>
+
+      {detailOpen && (
+        <RowDetailPanel
+          columns={columns}
+          rows={rows}
+          selectedIndex={selectedRowIdx!}
+          onIndexChange={setSelectedRowIdx}
+          onClose={() => setSelectedRowIdx(null)}
+          columnDefs={columnDefs}
+          title={tableName}
+        />
+      )}
 
       {showProfile && (
         <ColumnProfilePanel

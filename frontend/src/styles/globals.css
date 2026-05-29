@@ -3040,3 +3040,240 @@ body {
   color: var(--text-muted);
   font-style: italic;
 }
+
+/* ─── Row Detail Inspector ─── */
+
+/* Wrapper layout when detail panel is open */
+.table-browser-wrapper.detail-open {
+  display: flex;
+  flex-direction: row;
+  overflow: hidden;
+  height: 100%;
+}
+
+/* Clickable table rows */
+.data-table tbody tr.clickable-row {
+  cursor: pointer;
+}
+
+.data-table tbody tr.selected-row td {
+  background: var(--accent-subtle) !important;
+  border-bottom-color: rgba(99, 102, 241, 0.2);
+}
+
+.data-table tbody tr.selected-row:hover td {
+  background: rgba(99, 102, 241, 0.12) !important;
+}
+
+/* Row detail panel */
+.row-detail-panel {
+  width: 360px;
+  min-width: 280px;
+  flex-shrink: 0;
+  border-left: 1px solid var(--border);
+  background: var(--bg-secondary);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.row-detail-header {
+  padding: 10px 14px 10px;
+  border-bottom: 1px solid var(--border);
+  flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.row-detail-header-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.row-detail-title {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.row-detail-title-icon {
+  color: var(--text-muted);
+}
+
+.row-detail-title-table {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--text-muted);
+  font-weight: 400;
+  max-width: 160px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.row-detail-close {
+  flex-shrink: 0;
+}
+
+.row-detail-nav {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.row-detail-nav-btn {
+  width: 24px;
+  height: 24px;
+  flex-shrink: 0;
+}
+
+.row-detail-nav-btn:disabled {
+  opacity: 0.25;
+  cursor: not-allowed;
+}
+
+.row-detail-nav-pos {
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+  color: var(--text-primary);
+  min-width: 56px;
+  text-align: center;
+}
+
+.row-detail-nav-of {
+  color: var(--text-muted);
+  font-weight: 400;
+}
+
+.row-detail-copy-all {
+  margin-left: auto;
+  font-size: 11px;
+  padding: 4px 10px;
+  gap: 5px;
+}
+
+/* Field list */
+.row-detail-body {
+  flex: 1;
+  overflow-y: auto;
+  padding: 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.row-detail-field {
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--bg-primary);
+  overflow: hidden;
+  transition: border-color 0.12s ease;
+}
+
+.row-detail-field:hover {
+  border-color: var(--border-strong);
+}
+
+.row-detail-field:hover .row-detail-copy-btn {
+  opacity: 1;
+}
+
+.row-detail-field-header {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  padding: 6px 8px 3px;
+}
+
+.row-detail-col-name {
+  font-size: 11px;
+  font-weight: 600;
+  font-family: var(--font-mono);
+  color: var(--text-muted);
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.row-detail-col-name.pk {
+  color: var(--warning);
+}
+
+.row-detail-pk-icon {
+  font-size: 9px;
+  flex-shrink: 0;
+}
+
+.row-detail-col-type {
+  font-size: 10px;
+  font-family: var(--font-mono);
+  color: var(--text-muted);
+  background: var(--bg-tertiary);
+  padding: 1px 5px;
+  border-radius: 9999px;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+.row-detail-copy-btn {
+  opacity: 0;
+  color: var(--text-muted);
+  width: 20px;
+  height: 20px;
+  flex-shrink: 0;
+  transition: opacity 0.12s ease, color 0.12s ease;
+}
+
+.row-detail-copy-btn.copied {
+  opacity: 1 !important;
+  color: var(--success);
+}
+
+.row-detail-copy-btn:hover {
+  color: var(--text-secondary);
+}
+
+/* Field value */
+.row-detail-field-value {
+  padding: 2px 8px 8px;
+  font-size: 12px;
+  font-family: var(--font-mono);
+  color: var(--text-primary);
+  white-space: pre-wrap;
+  word-break: break-all;
+  line-height: 1.55;
+  max-height: 180px;
+  overflow-y: auto;
+}
+
+.row-detail-field-value.is-null {
+  color: var(--text-muted);
+  font-style: italic;
+  font-size: 11px;
+}
+
+.row-detail-field-value.is-json {
+  color: var(--accent-hover);
+}
+
+/* Query results wrapper — becomes a row when detail panel opens */
+.query-results-area {
+  flex: 1;
+  display: flex;
+  overflow: hidden;
+  min-height: 0;
+}
+
+.query-results-area .table-browser {
+  min-width: 0;
+}

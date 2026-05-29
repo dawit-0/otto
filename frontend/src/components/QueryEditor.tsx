@@ -3,6 +3,7 @@ import { api, type QueryResponse, type QueryHistoryEntry, type SavedQueryEntry, 
 import DataTable from './DataTable';
 import QueryInsights from './QueryInsights';
 import SQLEditor from './SQLEditor';
+import RowDetailPanel from './RowDetailPanel';
 import { type ChartType } from './charts/ChartRenderer';
 
 interface Props {
@@ -44,6 +45,8 @@ export default function QueryEditor({ dbId, dbName, dbType, initialSql, onVisual
   const [saveDescription, setSaveDescription] = useState('');
   const [saveParams, setSaveParams] = useState<QueryParam[]>([]);
   const [editingQuery, setEditingQuery] = useState<SavedQueryEntry | null>(null);
+
+  const [selectedResultRowIdx, setSelectedResultRowIdx] = useState<number | null>(null);
 
   // Parameter run modal state
   const [runTarget, setRunTarget] = useState<SavedQueryEntry | null>(null);
@@ -172,6 +175,7 @@ export default function QueryEditor({ dbId, dbName, dbType, initialSql, onVisual
     if (!sql.trim()) return;
     setLoading(true);
     setError(null);
+    setSelectedResultRowIdx(null);
     try {
       const res = await api.executeQuery(dbId, sql);
       setResult(res);
@@ -561,7 +565,25 @@ export default function QueryEditor({ dbId, dbName, dbType, initialSql, onVisual
               if (onVisualize) onVisualize(sql, chartType, xColumn, yColumns);
             }}
           />
-          <DataTable columns={result.columns} rows={result.rows} exportFilename="query-results" />
+          <div className={`query-results-area${selectedResultRowIdx !== null ? ' detail-open' : ''}`}>
+            <DataTable
+              columns={result.columns}
+              rows={result.rows}
+              exportFilename="query-results"
+              onRowClick={(i) => setSelectedResultRowIdx((prev) => (prev === i ? null : i))}
+              selectedRowIndex={selectedResultRowIdx ?? undefined}
+            />
+            {selectedResultRowIdx !== null && (
+              <RowDetailPanel
+                columns={result.columns}
+                rows={result.rows}
+                selectedIndex={selectedResultRowIdx}
+                onIndexChange={setSelectedResultRowIdx}
+                onClose={() => setSelectedResultRowIdx(null)}
+                title="Query Results"
+              />
+            )}
+          </div>
         </>
       )}
       {result && result.columns.length === 0 && !error && (
