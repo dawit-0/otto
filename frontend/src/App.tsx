@@ -7,6 +7,7 @@ import ConnectModal from './components/ConnectModal';
 import VisualizationDashboard from './components/VisualizationDashboard';
 import AskOtto from './components/AskOtto';
 import OverviewTab from './components/OverviewTab';
+import CommandPalette from './components/CommandPalette';
 import { type ChartType } from './components/charts/ChartRenderer';
 
 type View = 'overview' | 'schema' | 'data' | 'query' | 'visualize' | 'ask';
@@ -23,6 +24,7 @@ export default function App() {
   } | null>(null);
   const [askSeedSql, setAskSeedSql] = useState<string | null>(null);
   const [queryKey, setQueryKey] = useState(0);
+  const [showPalette, setShowPalette] = useState(false);
 
   useEffect(() => {
     api.listDatabases().then((dbs) => {
@@ -33,6 +35,17 @@ export default function App() {
       }
     }).catch(() => {});
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      if ((e.metaKey || e.ctrlKey) && e.key === 'k') {
+        e.preventDefault();
+        setShowPalette((s) => !s);
+      }
+    };
+    window.addEventListener('keydown', handler);
+    return () => window.removeEventListener('keydown', handler);
+  }, []);
 
   const loadSchema = useCallback(async (db: Database) => {
     try {
@@ -92,6 +105,16 @@ export default function App() {
           <div className="sidebar-logo">
             <span>&#9672;</span> Otto
           </div>
+          <button
+            className="cmd-trigger-btn"
+            onClick={() => setShowPalette(true)}
+            title="Open command palette (⌘K)"
+          >
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <circle cx="11" cy="11" r="8" /><line x1="21" y1="21" x2="16.65" y2="16.65" />
+            </svg>
+            <kbd className="cmd-trigger-kbd">⌘K</kbd>
+          </button>
         </div>
 
         <div className="sidebar-section">
@@ -228,6 +251,21 @@ export default function App() {
       </div>
 
       {showConnect && <ConnectModal onConnect={handleConnect} onClose={() => setShowConnect(false)} />}
+
+      {showPalette && (
+        <CommandPalette
+          tables={tables}
+          activeDb={activeDb}
+          onNavigateTable={(name) => { handleSelectTable(name); }}
+          onNavigateView={(v) => { setView(v); }}
+          onLoadQuery={(sql) => {
+            setAskSeedSql(sql);
+            setQueryKey((k) => k + 1);
+            setView('query');
+          }}
+          onClose={() => setShowPalette(false)}
+        />
+      )}
     </div>
   );
 }
