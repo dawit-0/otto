@@ -3040,3 +3040,213 @@ body {
   color: var(--text-muted);
   font-style: italic;
 }
+
+/* ─── Command Palette ─── */
+
+.sidebar-search-btn {
+  color: var(--text-muted);
+  flex-shrink: 0;
+}
+.sidebar-search-btn:hover {
+  color: var(--text-secondary);
+}
+
+.palette-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.65);
+  backdrop-filter: blur(6px);
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  z-index: 500;
+  padding-top: 80px;
+}
+
+.palette-container {
+  width: 560px;
+  max-width: calc(100vw - 32px);
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-lg);
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.6), 0 0 0 1px rgba(99, 102, 241, 0.1);
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  max-height: calc(100vh - 160px);
+}
+
+.palette-input-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 14px 16px;
+  border-bottom: 1px solid var(--border);
+}
+
+.palette-search-icon {
+  color: var(--text-muted);
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+}
+
+.palette-input {
+  flex: 1;
+  background: none;
+  border: none;
+  outline: none;
+  font-size: 15px;
+  color: var(--text-primary);
+  font-family: inherit;
+  caret-color: var(--accent);
+}
+.palette-input::placeholder {
+  color: var(--text-muted);
+}
+
+.palette-esc-hint {
+  font-size: 11px;
+  color: var(--text-muted);
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 2px 6px;
+  cursor: pointer;
+  user-select: none;
+  flex-shrink: 0;
+  font-family: inherit;
+}
+.palette-esc-hint:hover {
+  color: var(--text-secondary);
+}
+
+.palette-results {
+  overflow-y: auto;
+  flex: 1;
+  min-height: 0;
+  padding: 6px 0;
+}
+
+.palette-empty {
+  padding: 32px 20px;
+  text-align: center;
+  color: var(--text-muted);
+  font-size: 13px;
+}
+
+.palette-group {
+  margin-bottom: 4px;
+}
+
+.palette-group-label {
+  font-size: 10px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--text-muted);
+  padding: 6px 16px 4px;
+}
+
+.palette-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  padding: 8px 16px;
+  background: none;
+  border: none;
+  cursor: pointer;
+  text-align: left;
+  transition: background 0.08s ease;
+  font-family: inherit;
+}
+.palette-item:hover {
+  background: var(--bg-tertiary);
+}
+.palette-item-selected {
+  background: var(--accent-subtle) !important;
+}
+
+.palette-item-icon {
+  color: var(--text-muted);
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  width: 18px;
+  justify-content: center;
+}
+.palette-item-selected .palette-item-icon {
+  color: var(--accent-hover);
+}
+
+.palette-item-body {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  flex: 1;
+  min-width: 0;
+}
+
+.palette-item-title {
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--text-primary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.palette-item-subtitle {
+  font-size: 11px;
+  color: var(--text-muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.palette-item-enter {
+  color: var(--accent-hover);
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  opacity: 0.7;
+}
+
+.palette-highlight {
+  background: rgba(99, 102, 241, 0.25);
+  color: var(--accent-hover);
+  border-radius: 2px;
+  padding: 0 1px;
+}
+
+.palette-footer {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 8px 16px;
+  border-top: 1px solid var(--border);
+  background: var(--bg-primary);
+}
+
+.palette-footer-hint {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 11px;
+  color: var(--text-muted);
+}
+
+.palette-footer kbd {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  padding: 1px 5px;
+  font-size: 10px;
+  font-family: inherit;
+  color: var(--text-secondary);
+  min-width: 18px;
+}

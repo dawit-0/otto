@@ -7,6 +7,7 @@ import ConnectModal from './components/ConnectModal';
 import VisualizationDashboard from './components/VisualizationDashboard';
 import AskOtto from './components/AskOtto';
 import OverviewTab from './components/OverviewTab';
+import CommandPalette from './components/CommandPalette';
 import { type ChartType } from './components/charts/ChartRenderer';
 
 type View = 'overview' | 'schema' | 'data' | 'query' | 'visualize' | 'ask';
@@ -23,6 +24,7 @@ export default function App() {
   } | null>(null);
   const [askSeedSql, setAskSeedSql] = useState<string | null>(null);
   const [queryKey, setQueryKey] = useState(0);
+  const [showPalette, setShowPalette] = useState(false);
 
   useEffect(() => {
     api.listDatabases().then((dbs) => {
@@ -33,6 +35,17 @@ export default function App() {
       }
     }).catch(() => {});
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if ((e.metaKey || e.ctrlKey) && e.key === 'k') {
+        e.preventDefault();
+        setShowPalette((open) => !open);
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, []);
 
   const loadSchema = useCallback(async (db: Database) => {
     try {
@@ -84,6 +97,12 @@ export default function App() {
     setView('visualize');
   };
 
+  const handlePaletteLoadQuery = useCallback((sql: string) => {
+    setAskSeedSql(sql);
+    setQueryKey((k) => k + 1);
+    setView('query');
+  }, []);
+
   return (
     <div className="app-layout">
       {/* Sidebar */}
@@ -92,6 +111,15 @@ export default function App() {
           <div className="sidebar-logo">
             <span>&#9672;</span> Otto
           </div>
+          <button
+            className="btn-icon sidebar-search-btn"
+            onClick={() => setShowPalette(true)}
+            title="Command Palette (⌘K)"
+          >
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <circle cx="11" cy="11" r="8" /><line x1="21" y1="21" x2="16.65" y2="16.65" />
+            </svg>
+          </button>
         </div>
 
         <div className="sidebar-section">
@@ -228,6 +256,18 @@ export default function App() {
       </div>
 
       {showConnect && <ConnectModal onConnect={handleConnect} onClose={() => setShowConnect(false)} />}
+
+      <CommandPalette
+        isOpen={showPalette}
+        onClose={() => setShowPalette(false)}
+        databases={databases}
+        activeDb={activeDb}
+        tables={tables}
+        onSelectTable={(name) => { handleSelectTable(name); }}
+        onSelectDb={(db) => { selectDb(db); }}
+        onNavigate={(v) => setView(v)}
+        onLoadQuery={handlePaletteLoadQuery}
+      />
     </div>
   );
 }
