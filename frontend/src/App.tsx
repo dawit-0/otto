@@ -7,6 +7,7 @@ import ConnectModal from './components/ConnectModal';
 import VisualizationDashboard from './components/VisualizationDashboard';
 import AskOtto from './components/AskOtto';
 import OverviewTab from './components/OverviewTab';
+import CommandPalette from './components/CommandPalette';
 import { type ChartType } from './components/charts/ChartRenderer';
 
 type View = 'overview' | 'schema' | 'data' | 'query' | 'visualize' | 'ask';
@@ -23,6 +24,7 @@ export default function App() {
   } | null>(null);
   const [askSeedSql, setAskSeedSql] = useState<string | null>(null);
   const [queryKey, setQueryKey] = useState(0);
+  const [showCommandPalette, setShowCommandPalette] = useState(false);
 
   useEffect(() => {
     api.listDatabases().then((dbs) => {
@@ -33,6 +35,17 @@ export default function App() {
       }
     }).catch(() => {});
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      if ((e.metaKey || e.ctrlKey) && e.key === 'k') {
+        e.preventDefault();
+        if (activeDb) setShowCommandPalette((v) => !v);
+      }
+    };
+    window.addEventListener('keydown', handler);
+    return () => window.removeEventListener('keydown', handler);
+  }, [activeDb]);
 
   const loadSchema = useCallback(async (db: Database) => {
     try {
@@ -83,6 +96,16 @@ export default function App() {
     setPendingVisualization({ sql, chartType, xColumn, yColumns });
     setView('visualize');
   };
+
+  const handleCommandNavigate = useCallback((navView: View, table?: string, sql?: string) => {
+    if (sql) {
+      setAskSeedSql(sql);
+      setQueryKey((k) => k + 1);
+    }
+    if (table) setSelectedTable(table);
+    setView(navView);
+    setShowCommandPalette(false);
+  }, []);
 
   return (
     <div className="app-layout">
@@ -151,6 +174,16 @@ export default function App() {
               </button>
               <button className={`header-tab header-tab-ask${view === 'ask' ? ' active' : ''}`} onClick={() => setView('ask')}>
                 ◆ Ask Otto
+              </button>
+              <button
+                className="header-search-btn"
+                onClick={() => setShowCommandPalette(true)}
+                title="Command palette (⌘K)"
+              >
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <circle cx="11" cy="11" r="8" /><line x1="21" y1="21" x2="16.65" y2="16.65" />
+                </svg>
+                <kbd className="header-search-kbd">⌘K</kbd>
               </button>
             </div>
 
@@ -228,6 +261,14 @@ export default function App() {
       </div>
 
       {showConnect && <ConnectModal onConnect={handleConnect} onClose={() => setShowConnect(false)} />}
+      {showCommandPalette && activeDb && (
+        <CommandPalette
+          dbId={activeDb.id}
+          tables={tables}
+          onNavigate={handleCommandNavigate}
+          onClose={() => setShowCommandPalette(false)}
+        />
+      )}
     </div>
   );
 }
