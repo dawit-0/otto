@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
-import { api, type Database, type TableInfo } from './api';
+import { api, type Database, type TableInfo, type SavedQueryEntry } from './api';
 import SchemaGraph from './components/SchemaGraph';
 import DataView from './components/DataView';
 import QueryEditor from './components/QueryEditor';
@@ -7,6 +7,7 @@ import ConnectModal from './components/ConnectModal';
 import VisualizationDashboard from './components/VisualizationDashboard';
 import AskOtto from './components/AskOtto';
 import OverviewTab from './components/OverviewTab';
+import CommandPalette from './components/CommandPalette';
 import { type ChartType } from './components/charts/ChartRenderer';
 
 type View = 'overview' | 'schema' | 'data' | 'query' | 'visualize' | 'ask';
@@ -23,6 +24,8 @@ export default function App() {
   } | null>(null);
   const [askSeedSql, setAskSeedSql] = useState<string | null>(null);
   const [queryKey, setQueryKey] = useState(0);
+  const [paletteOpen, setPaletteOpen] = useState(false);
+  const [savedQueries, setSavedQueries] = useState<SavedQueryEntry[]>([]);
 
   useEffect(() => {
     api.listDatabases().then((dbs) => {
@@ -32,7 +35,19 @@ export default function App() {
         loadSchema(dbs[0]);
       }
     }).catch(() => {});
+    api.listSavedQueries().then(setSavedQueries).catch(() => {});
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if ((e.metaKey || e.ctrlKey) && e.key === 'k') {
+        e.preventDefault();
+        setPaletteOpen((o) => !o);
+      }
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, []);
 
   const loadSchema = useCallback(async (db: Database) => {
     try {
@@ -84,6 +99,19 @@ export default function App() {
     setView('visualize');
   };
 
+  const handlePaletteNavigate = useCallback((targetView: View, tableName?: string, sql?: string) => {
+    if (tableName) {
+      setSelectedTable(tableName);
+      setView('data');
+    } else if (sql) {
+      setAskSeedSql(sql);
+      setQueryKey((k) => k + 1);
+      setView('query');
+    } else {
+      setView(targetView);
+    }
+  }, []);
+
   return (
     <div className="app-layout">
       {/* Sidebar */}
@@ -92,6 +120,18 @@ export default function App() {
           <div className="sidebar-logo">
             <span>&#9672;</span> Otto
           </div>
+        </div>
+
+        <div className="sidebar-section" style={{ paddingBottom: 4 }}>
+          <button className="sidebar-cmd-hint" onClick={() => setPaletteOpen(true)}>
+            <span className="sidebar-cmd-hint-text">
+              <span className="sidebar-cmd-hint-icon">⌕</span>
+              Search…
+            </span>
+            <span className="sidebar-cmd-kbd">
+              <kbd>⌘</kbd><kbd>K</kbd>
+            </span>
+          </button>
         </div>
 
         <div className="sidebar-section">
@@ -228,6 +268,16 @@ export default function App() {
       </div>
 
       {showConnect && <ConnectModal onConnect={handleConnect} onClose={() => setShowConnect(false)} />}
+
+      <CommandPalette
+        open={paletteOpen}
+        onClose={() => setPaletteOpen(false)}
+        activeDb={activeDb}
+        tables={tables}
+        savedQueries={savedQueries}
+        onNavigate={handlePaletteNavigate}
+        onSelectDb={selectDb}
+      />
     </div>
   );
 }
