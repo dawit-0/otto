@@ -7,6 +7,7 @@ import ConnectModal from './components/ConnectModal';
 import VisualizationDashboard from './components/VisualizationDashboard';
 import AskOtto from './components/AskOtto';
 import OverviewTab from './components/OverviewTab';
+import CommandPalette from './components/CommandPalette';
 import { type ChartType } from './components/charts/ChartRenderer';
 
 type View = 'overview' | 'schema' | 'data' | 'query' | 'visualize' | 'ask';
@@ -23,6 +24,7 @@ export default function App() {
   } | null>(null);
   const [askSeedSql, setAskSeedSql] = useState<string | null>(null);
   const [queryKey, setQueryKey] = useState(0);
+  const [showPalette, setShowPalette] = useState(false);
 
   useEffect(() => {
     api.listDatabases().then((dbs) => {
@@ -33,6 +35,17 @@ export default function App() {
       }
     }).catch(() => {});
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      if ((e.metaKey || e.ctrlKey) && e.key === 'k') {
+        e.preventDefault();
+        if (activeDb) setShowPalette(p => !p);
+      }
+    };
+    window.addEventListener('keydown', handler);
+    return () => window.removeEventListener('keydown', handler);
+  }, [activeDb]);
 
   const loadSchema = useCallback(async (db: Database) => {
     try {
@@ -83,6 +96,12 @@ export default function App() {
     setPendingVisualization({ sql, chartType, xColumn, yColumns });
     setView('visualize');
   };
+
+  const handlePaletteLoadQuery = useCallback((sql: string) => {
+    setAskSeedSql(sql);
+    setQueryKey(k => k + 1);
+    setView('query');
+  }, []);
 
   return (
     <div className="app-layout">
@@ -151,6 +170,15 @@ export default function App() {
               </button>
               <button className={`header-tab header-tab-ask${view === 'ask' ? ' active' : ''}`} onClick={() => setView('ask')}>
                 ◆ Ask Otto
+              </button>
+              <div style={{ flex: 1 }} />
+              <button className="cmd-palette-trigger-btn" onClick={() => setShowPalette(true)} title="Quick search (⌘K)">
+                <svg width="13" height="13" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+                  <circle cx="7" cy="7" r="4.5" stroke="currentColor" strokeWidth="1.6" />
+                  <path d="M10.5 10.5L13.5 13.5" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" />
+                </svg>
+                <span>Search</span>
+                <kbd>⌘K</kbd>
               </button>
             </div>
 
@@ -228,6 +256,16 @@ export default function App() {
       </div>
 
       {showConnect && <ConnectModal onConnect={handleConnect} onClose={() => setShowConnect(false)} />}
+
+      <CommandPalette
+        isOpen={showPalette}
+        onClose={() => setShowPalette(false)}
+        dbId={activeDb?.id ?? null}
+        tables={tables}
+        onSelectTable={(name) => { setShowPalette(false); handleSelectTable(name); }}
+        onLoadQuery={(sql) => { setShowPalette(false); handlePaletteLoadQuery(sql); }}
+        onGoVisualize={() => { setShowPalette(false); setView('visualize'); }}
+      />
     </div>
   );
 }
