@@ -3,10 +3,18 @@ import { api, type FilterRule, type FilterOp, type Column } from '../api';
 import DataTable from './DataTable';
 import ColumnProfilePanel from './ColumnProfilePanel';
 
+interface FkTarget {
+  toTable: string;
+  toColumn: string;
+}
+
 interface Props {
   dbId: string;
   tableName: string;
   columnDefs: Column[];
+  initialFilters?: FilterRule[];
+  fkMap?: Record<string, FkTarget>;
+  onFkNavigate?: (toTable: string, toColumn: string, value: string) => void;
 }
 
 interface SortState {
@@ -31,7 +39,7 @@ const VALUE_OPS: FilterOp[] = ['contains', 'equals', 'not_equals', 'starts_with'
 
 const LIMIT = 100;
 
-export default function TableBrowser({ dbId, tableName, columnDefs }: Props) {
+export default function TableBrowser({ dbId, tableName, columnDefs, initialFilters, fkMap, onFkNavigate }: Props) {
   const [rows, setRows] = useState<Record<string, unknown>[]>([]);
   const [columns, setColumns] = useState<string[]>([]);
   const [total, setTotal] = useState(0);
@@ -40,7 +48,7 @@ export default function TableBrowser({ dbId, tableName, columnDefs }: Props) {
   const [error, setError] = useState<string | null>(null);
 
   const [sort, setSort] = useState<SortState | null>(null);
-  const [filters, setFilters] = useState<FilterRule[]>([]);
+  const [filters, setFilters] = useState<FilterRule[]>(initialFilters ?? []);
 
   const [showAddFilter, setShowAddFilter] = useState(false);
   const [newCol, setNewCol] = useState('');
@@ -286,6 +294,8 @@ export default function TableBrowser({ dbId, tableName, columnDefs }: Props) {
           sortColumn={sort?.column}
           sortDirection={sort?.direction}
           onSort={handleSort}
+          fkMap={fkMap}
+          onFkClick={onFkNavigate}
         />
       )}
       </div>

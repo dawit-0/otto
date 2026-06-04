@@ -1,5 +1,10 @@
 import { useState, useRef } from 'react';
 
+interface FkTarget {
+  toTable: string;
+  toColumn: string;
+}
+
 interface Props {
   columns: string[];
   rows: Record<string, unknown>[];
@@ -11,6 +16,8 @@ interface Props {
   sortColumn?: string;
   sortDirection?: 'asc' | 'desc';
   onSort?: (column: string) => void;
+  fkMap?: Record<string, FkTarget>;
+  onFkClick?: (toTable: string, toColumn: string, value: string) => void;
 }
 
 function toCSV(columns: string[], rows: Record<string, unknown>[]): string {
@@ -48,7 +55,7 @@ function downloadFile(filename: string, content: string, mimeType: string) {
   URL.revokeObjectURL(url);
 }
 
-export default function DataTable({ columns, rows, total, limit = 100, offset = 0, onPageChange, exportFilename = 'export', sortColumn, sortDirection, onSort }: Props) {
+export default function DataTable({ columns, rows, total, limit = 100, offset = 0, onPageChange, exportFilename = 'export', sortColumn, sortDirection, onSort, fkMap, onFkClick }: Props) {
   const [copyState, setCopyState] = useState<null | 'csv' | 'json'>(null);
   const copyTimeout = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -111,6 +118,25 @@ export default function DataTable({ columns, rows, total, limit = 100, offset = 
                 {columns.map((col) => {
                   const val = row[col];
                   const isNull = val === null || val === undefined;
+                  const fk = fkMap?.[col];
+                  if (!isNull && fk && onFkClick) {
+                    return (
+                      <td key={col} className="fk-cell">
+                        <button
+                          className="fk-link"
+                          onClick={() => onFkClick(fk.toTable, fk.toColumn, String(val))}
+                          title={`Go to ${fk.toTable} where ${fk.toColumn} = ${String(val)}`}
+                        >
+                          {String(val)}
+                          <svg className="fk-link-icon" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                            <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6" />
+                            <polyline points="15 3 21 3 21 9" />
+                            <line x1="10" y1="14" x2="21" y2="3" />
+                          </svg>
+                        </button>
+                      </td>
+                    );
+                  }
                   return (
                     <td key={col} className={isNull ? 'null-value' : ''}>
                       {isNull ? 'NULL' : String(val)}

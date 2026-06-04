@@ -754,6 +754,82 @@ body {
   font-size: 12px;
   color: var(--text-muted);
 }
+.data-view-header-right {
+  display: flex;
+  align-items: center;
+}
+
+/* ─── Breadcrumb Navigation ─── */
+.breadcrumb-segment {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+.breadcrumb-link {
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--text-secondary);
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  padding: 2px 4px;
+  border-radius: var(--radius-sm);
+  font-family: inherit;
+  transition: color 0.15s ease, background 0.15s ease;
+}
+.breadcrumb-link:hover {
+  color: var(--accent-hover);
+  background: var(--accent-subtle);
+}
+.fk-nav-hint {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 11px;
+  color: var(--text-muted);
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border);
+  border-radius: 9999px;
+  padding: 3px 10px;
+  font-family: var(--font-mono);
+}
+.fk-nav-hint svg {
+  color: var(--info);
+  flex-shrink: 0;
+}
+
+/* ─── FK Link Cells ─── */
+.fk-cell {
+  padding: 0 !important;
+}
+.fk-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  width: 100%;
+  padding: 6px 12px;
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  font-family: var(--font-mono);
+  font-size: 12px;
+  color: var(--info);
+  text-align: left;
+  transition: background 0.12s ease, color 0.12s ease;
+  border-radius: 0;
+}
+.fk-link:hover {
+  background: rgba(59, 130, 246, 0.08);
+  color: #60a5fa;
+}
+.fk-link-icon {
+  opacity: 0;
+  flex-shrink: 0;
+  transition: opacity 0.12s ease;
+}
+.fk-link:hover .fk-link-icon {
+  opacity: 0.7;
+}
 
 /* ─── Table Picker ─── */
 .data-picker {
