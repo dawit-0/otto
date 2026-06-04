@@ -64,6 +64,14 @@ export interface QueryResponse {
   message?: string;
 }
 
+export interface ExplainPlanResponse {
+  command: string;
+  format: 'text' | 'tree';
+  summary: Record<string, string>;
+  text: string;
+  rows: Record<string, unknown>[];
+}
+
 export interface QueryHistoryEntry {
   id: number;
   db_id: string;
@@ -247,6 +255,12 @@ export const api = {
 
   executeQuery: (dbId: string, sql: string) =>
     request<QueryResponse>('/query', {
+      method: 'POST',
+      body: JSON.stringify({ db_id: dbId, sql }),
+    }),
+
+  explainQuery: (dbId: string, sql: string) =>
+    request<ExplainPlanResponse>('/query/explain', {
       method: 'POST',
       body: JSON.stringify({ db_id: dbId, sql }),
     }),

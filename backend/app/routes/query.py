@@ -19,6 +19,11 @@ class QueryRequest(BaseModel):
     sql: str
 
 
+class ExplainRequest(BaseModel):
+    db_id: str
+    sql: str
+
+
 @router.post("/query")
 def execute_query(req: QueryRequest, db: Session = Depends(get_db)):
     driver = get_driver_for_db(req.db_id, db)
@@ -75,6 +80,25 @@ def execute_query(req: QueryRequest, db: Session = Depends(get_db)):
             duration_ms=duration_ms,
         ))
         db.commit()
+        raise HTTPException(status_code=400, detail=str(e))
+    finally:
+        driver.close(conn)
+
+
+@router.post("/query/explain")
+def explain_query(req: ExplainRequest, db: Session = Depends(get_db)):
+    """Return the query plan for `sql` using the database's EXPLAIN ANALYZE
+    equivalent. The driver picks the dialect-appropriate command, so this route
+    stays database-agnostic."""
+    driver = get_driver_for_db(req.db_id, db)
+    db_name = get_db_name(req.db_id, db)
+    logger.info("Explaining query on '%s': %.100s", db_name, req.sql)
+
+    conn = driver.connect()
+    try:
+        return driver.explain_analyze(conn, req.sql)
+    except Exception as e:
+        logger.error("Explain failed on '%s': %s", db_name, e)
         raise HTTPException(status_code=400, detail=str(e))
     finally:
         driver.close(conn)

@@ -1418,6 +1418,97 @@ body {
   gap: 10px;
   flex-shrink: 0;
 }
+
+/* ── Query plan (EXPLAIN ANALYZE) ── */
+.query-plan {
+  border-bottom: 1px solid var(--border);
+  background: var(--bg-secondary);
+  flex-shrink: 0;
+}
+.query-plan-header {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  padding: 10px 14px;
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  text-align: left;
+  color: var(--text-primary);
+  font-family: inherit;
+}
+.query-plan-header:hover {
+  background: var(--bg-hover);
+}
+.query-plan-chevron {
+  font-size: 10px;
+  color: var(--text-muted);
+  transition: transform 0.15s ease;
+}
+.query-plan-chevron.expanded {
+  transform: rotate(90deg);
+}
+.query-plan-title {
+  font-size: 10px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--text-muted);
+}
+.query-plan-command {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--accent-hover);
+  background: var(--accent-subtle);
+  padding: 1px 7px;
+  border-radius: var(--radius-sm);
+}
+.query-plan-engine {
+  font-size: 10px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--text-muted);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: 1px 6px;
+}
+.query-plan-summary {
+  display: flex;
+  gap: 12px;
+  margin-left: auto;
+}
+.query-plan-metric {
+  display: flex;
+  align-items: baseline;
+  gap: 5px;
+}
+.query-plan-metric-label {
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--text-muted);
+}
+.query-plan-metric-value {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+.query-plan-body {
+  margin: 0;
+  padding: 12px 14px;
+  border-top: 1px solid var(--border);
+  background: var(--bg-primary);
+  font-family: var(--font-mono);
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--text-secondary);
+  white-space: pre;
+  overflow-x: auto;
+  max-height: 320px;
+}
 .query-insights-header {
   display: flex;
   align-items: center;
