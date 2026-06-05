@@ -5,7 +5,7 @@ import sqlite3
 import tempfile
 from hashlib import sha256
 from pathlib import Path
-from typing import Any, Optional
+from typing import Any, Literal, Optional
 
 _NUMERIC_BASE_TYPES = frozenset({
     "int", "integer", "bigint", "smallint", "tinyint", "mediumint",
@@ -32,6 +32,17 @@ from app.models.connection import ConnectedDatabase
 logger = get_logger("databases")
 
 router = APIRouter(prefix="/api/databases", tags=["databases"])
+
+
+class RowMutationItem(BaseModel):
+    type: Literal["insert", "update", "delete"]
+    pk_col: Optional[str] = None
+    pk_value: Optional[Any] = None
+    values: Optional[dict[str, Any]] = None
+
+
+class MutateRowsRequest(BaseModel):
+    mutations: list[RowMutationItem]
 
 
 class ConnectRequest(BaseModel):
@@ -313,6 +324,78 @@ def get_table_data(
         raise HTTPException(status_code=status, detail=str(e))
     except Exception as e:
         logger.error("Error reading table '%s' from db_id=%s: %s", table_name, db_id, e)
+        raise HTTPException(status_code=400, detail=str(e))
+    finally:
+        driver.close(conn)
+
+
+@router.post("/{db_id}/tables/{table_name}/mutate")
+def mutate_rows(
+    db_id: str,
+    table_name: str,
+    req: MutateRowsRequest,
+    db: Session = Depends(get_db),
+):
+    if not req.mutations:
+        return {"ok": True, "affected_rows": 0}
+
+    driver = get_driver_for_db(db_id, db)
+    conn = driver.connect()
+    try:
+        try:
+            driver.assert_valid_table(conn, table_name)
+        except ValueError as e:
+            raise HTTPException(status_code=404, detail=str(e))
+
+        valid_columns = set(driver.get_column_names(conn, table_name))
+        tq = driver.quote_identifier(table_name)
+        ph = driver.placeholder
+        affected = 0
+
+        for mut in req.mutations:
+            if mut.type == "insert":
+                if not mut.values:
+                    continue
+                cols = [c for c in mut.values if c in valid_columns]
+                if not cols:
+                    continue
+                vals = [mut.values[c] for c in cols]
+                col_sql = ", ".join(driver.quote_identifier(c) for c in cols)
+                ph_sql = ", ".join([ph] * len(cols))
+                driver.execute_params(conn, f"INSERT INTO {tq} ({col_sql}) VALUES ({ph_sql})", vals)
+                affected += 1
+
+            elif mut.type == "update":
+                if not mut.values or not mut.pk_col or mut.pk_value is None:
+                    continue
+                if mut.pk_col not in valid_columns:
+                    raise HTTPException(status_code=400, detail=f"Unknown column: {mut.pk_col!r}")
+                cols = [c for c in mut.values if c in valid_columns and c != mut.pk_col]
+                if not cols:
+                    continue
+                set_sql = ", ".join(f"{driver.quote_identifier(c)} = {ph}" for c in cols)
+                vals = [mut.values[c] for c in cols] + [mut.pk_value]
+                pk_q = driver.quote_identifier(mut.pk_col)
+                driver.execute_params(conn, f"UPDATE {tq} SET {set_sql} WHERE {pk_q} = {ph}", vals)
+                affected += 1
+
+            elif mut.type == "delete":
+                if not mut.pk_col or mut.pk_value is None:
+                    continue
+                if mut.pk_col not in valid_columns:
+                    raise HTTPException(status_code=400, detail=f"Unknown column: {mut.pk_col!r}")
+                pk_q = driver.quote_identifier(mut.pk_col)
+                driver.execute_params(conn, f"DELETE FROM {tq} WHERE {pk_q} = {ph}", [mut.pk_value])
+                affected += 1
+
+        return {"ok": True, "affected_rows": affected}
+
+    except HTTPException:
+        raise
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        logger.error("Error mutating table '%s' in db_id=%s: %s", table_name, db_id, e)
         raise HTTPException(status_code=400, detail=str(e))
     finally:
         driver.close(conn)

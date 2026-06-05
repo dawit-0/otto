@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
-import { api, type FilterRule, type FilterOp, type Column } from '../api';
-import DataTable from './DataTable';
+import { api, type FilterRule, type FilterOp, type Column, type RowMutation } from '../api';
+import DataTable, { type EditSaveData } from './DataTable';
 import ColumnProfilePanel from './ColumnProfilePanel';
 
 interface Props {
@@ -49,9 +49,14 @@ export default function TableBrowser({ dbId, tableName, columnDefs }: Props) {
 
   const [showProfile, setShowProfile] = useState(false);
 
+  // Edit mode
+  const [editMode, setEditMode] = useState(false);
+  const [editError, setEditError] = useState<string | null>(null);
+
   const addFilterRef = useRef<HTMLDivElement>(null);
 
   const colNames = columnDefs.map((c) => c.name);
+  const pkColumn = columnDefs.find((c) => c.pk)?.name ?? null;
 
   const loadData = useCallback(async (nextOffset: number, currentSort: SortState | null, currentFilters: FilterRule[]) => {
     setLoading(true);
@@ -77,12 +82,10 @@ export default function TableBrowser({ dbId, tableName, columnDefs }: Props) {
     }
   }, [dbId, tableName]);
 
-  // Reload from page 1 whenever sort or filters change
   useEffect(() => {
     loadData(0, sort, filters);
   }, [dbId, tableName, sort, filters, loadData]);
 
-  // Close add-filter popover on outside click
   useEffect(() => {
     if (!showAddFilter) return;
     const handler = (e: MouseEvent) => {
@@ -128,169 +131,257 @@ export default function TableBrowser({ dbId, tableName, columnDefs }: Props) {
     setSort(null);
   };
 
+  const toggleEditMode = () => {
+    setEditMode((v) => !v);
+    setEditError(null);
+  };
+
+  const handleSave = async (data: EditSaveData) => {
+    setEditError(null);
+    const mutations: RowMutation[] = [];
+
+    for (const { pk, changes } of data.updates) {
+      if (!pkColumn) continue;
+      mutations.push({
+        type: 'update',
+        pk_col: pkColumn,
+        pk_value: pk,
+        values: changes,
+      });
+    }
+
+    for (const pk of data.deletes) {
+      if (!pkColumn) continue;
+      mutations.push({
+        type: 'delete',
+        pk_col: pkColumn,
+        pk_value: pk,
+      });
+    }
+
+    for (const values of data.inserts) {
+      // Strip null-valued pk fields (let DB assign them)
+      const cleanValues: Record<string, unknown> = {};
+      for (const [k, v] of Object.entries(values)) {
+        if (pkColumn && k === pkColumn && (v === null || v === undefined || v === '')) continue;
+        if (v !== null && v !== undefined) cleanValues[k] = v;
+      }
+      mutations.push({ type: 'insert', values: cleanValues });
+    }
+
+    if (mutations.length === 0) return;
+
+    try {
+      await api.mutateRows(dbId, tableName, mutations);
+      // Reload data after successful save
+      await loadData(offset, sort, filters);
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : 'Save failed';
+      setEditError(msg);
+      throw new Error(msg);
+    }
+  };
+
   const hasActiveState = filters.length > 0 || sort !== null;
   const needsValueInput = VALUE_OPS.includes(newOp);
 
   return (
     <div className={`table-browser-wrapper${showProfile ? ' profile-open' : ''}`}>
       <div className="table-browser-main">
-      {/* ── Toolbar ── */}
-      <div className="filter-toolbar">
-        <div className="filter-toolbar-controls">
-          <div className="filter-toolbar-left">
-            <button
-              className={`btn btn-sm${showAddFilter ? ' active' : ''}`}
-              onClick={openAddFilter}
-            >
-              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-                <line x1="12" y1="5" x2="12" y2="19" /><line x1="5" y1="12" x2="19" y2="12" />
+        {/* ── Edit mode banner ── */}
+        {editMode && (
+          <div className="edit-mode-banner">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" />
+              <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z" />
+            </svg>
+            <span>Edit mode — click any cell to edit. Changes are applied directly to your database.</span>
+            {editError && <span className="edit-banner-error">{editError}</span>}
+            <button className="btn-icon edit-mode-close" onClick={toggleEditMode} title="Exit edit mode">
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                <line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" />
               </svg>
-              Filter
-              {filters.length > 0 && <span className="filter-count-badge">{filters.length}</span>}
-            </button>
-
-            {/* Active filter chips */}
-            {filters.map((f) => (
-              <div key={f.id} className="filter-chip">
-                <span className="filter-chip-text">
-                  <span className="filter-chip-col">{f.column}</span>
-                  <span className="filter-chip-op">{OP_LABELS[f.op]}</span>
-                  {VALUE_OPS.includes(f.op) && f.value && (
-                    <span className="filter-chip-val">&ldquo;{f.value}&rdquo;</span>
-                  )}
-                </span>
-                <button className="filter-chip-remove" onClick={() => removeFilter(f.id)} title="Remove filter">
-                  ×
-                </button>
-              </div>
-            ))}
-
-            {/* Active sort chip */}
-            {sort && (
-              <div className="filter-chip sort-chip">
-                <span className="filter-chip-text">
-                  <span className="filter-chip-col">{sort.column}</span>
-                  <span className="filter-chip-op">{sort.direction === 'asc' ? '↑ asc' : '↓ desc'}</span>
-                </span>
-                <button className="filter-chip-remove" onClick={() => setSort(null)} title="Remove sort">
-                  ×
-                </button>
-              </div>
-            )}
-
-            {hasActiveState && (
-              <button className="btn btn-sm btn-ghost-muted" onClick={clearAll}>
-                Clear all
-              </button>
-            )}
-          </div>
-
-          <div className="filter-toolbar-right">
-            {loading && <span className="filter-loading-indicator">Loading…</span>}
-            <span className="filter-row-count">
-              {total.toLocaleString()} {hasActiveState ? 'matching ' : ''}row{total !== 1 ? 's' : ''}
-            </span>
-            <button
-              className={`btn btn-sm${showProfile ? ' btn-profile-active' : ''}`}
-              onClick={() => setShowProfile((v) => !v)}
-              title="Show column profile"
-            >
-              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-                <rect x="3" y="3" width="18" height="18" rx="2" />
-                <path d="M3 9h18M3 15h18M9 3v18" />
-              </svg>
-              Profile
-            </button>
-          </div>
-        </div>
-
-        {/* ── Add-filter inline form ── */}
-        {showAddFilter && (
-          <div className="add-filter-form" ref={addFilterRef}>
-            <select
-              className="filter-select"
-              value={newCol}
-              onChange={(e) => setNewCol(e.target.value)}
-            >
-              {colNames.map((c) => (
-                <option key={c} value={c}>{c}</option>
-              ))}
-            </select>
-
-            <select
-              className="filter-select"
-              value={newOp}
-              onChange={(e) => {
-                const op = e.target.value as FilterOp;
-                setNewOp(op);
-                if (!VALUE_OPS.includes(op)) setNewVal('');
-              }}
-            >
-              <option value="contains">contains</option>
-              <option value="equals">equals</option>
-              <option value="not_equals">not equals</option>
-              <option value="starts_with">starts with</option>
-              <option value="gt">&gt; greater than</option>
-              <option value="lt">&lt; less than</option>
-              <option value="gte">≥ at least</option>
-              <option value="lte">≤ at most</option>
-              <option value="is_null">is null</option>
-              <option value="is_not_null">is not null</option>
-            </select>
-
-            {needsValueInput && (
-              <input
-                className="filter-value-input"
-                type="text"
-                placeholder="value…"
-                value={newVal}
-                onChange={(e) => setNewVal(e.target.value)}
-                onKeyDown={(e) => {
-                  if (e.key === 'Enter') commitAddFilter();
-                  if (e.key === 'Escape') setShowAddFilter(false);
-                }}
-                autoFocus
-              />
-            )}
-
-            <button className="btn btn-sm btn-primary" onClick={commitAddFilter} disabled={!newCol}>
-              Add
-            </button>
-            <button className="btn btn-sm" onClick={() => setShowAddFilter(false)}>
-              Cancel
             </button>
           </div>
         )}
-      </div>
 
-      {/* ── Error ── */}
-      {error && (
-        <div className="filter-error">
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-            <circle cx="12" cy="12" r="10" /><line x1="12" y1="8" x2="12" y2="12" /><line x1="12" y1="16" x2="12.01" y2="16" />
-          </svg>
-          {error}
+        {/* ── Toolbar ── */}
+        <div className="filter-toolbar">
+          <div className="filter-toolbar-controls">
+            <div className="filter-toolbar-left">
+              {!editMode && (
+                <>
+                  <button
+                    className={`btn btn-sm${showAddFilter ? ' active' : ''}`}
+                    onClick={openAddFilter}
+                  >
+                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                      <line x1="12" y1="5" x2="12" y2="19" /><line x1="5" y1="12" x2="19" y2="12" />
+                    </svg>
+                    Filter
+                    {filters.length > 0 && <span className="filter-count-badge">{filters.length}</span>}
+                  </button>
+
+                  {filters.map((f) => (
+                    <div key={f.id} className="filter-chip">
+                      <span className="filter-chip-text">
+                        <span className="filter-chip-col">{f.column}</span>
+                        <span className="filter-chip-op">{OP_LABELS[f.op]}</span>
+                        {VALUE_OPS.includes(f.op) && f.value && (
+                          <span className="filter-chip-val">&ldquo;{f.value}&rdquo;</span>
+                        )}
+                      </span>
+                      <button className="filter-chip-remove" onClick={() => removeFilter(f.id)} title="Remove filter">
+                        ×
+                      </button>
+                    </div>
+                  ))}
+
+                  {sort && (
+                    <div className="filter-chip sort-chip">
+                      <span className="filter-chip-text">
+                        <span className="filter-chip-col">{sort.column}</span>
+                        <span className="filter-chip-op">{sort.direction === 'asc' ? '↑ asc' : '↓ desc'}</span>
+                      </span>
+                      <button className="filter-chip-remove" onClick={() => setSort(null)} title="Remove sort">
+                        ×
+                      </button>
+                    </div>
+                  )}
+
+                  {hasActiveState && (
+                    <button className="btn btn-sm btn-ghost-muted" onClick={clearAll}>
+                      Clear all
+                    </button>
+                  )}
+                </>
+              )}
+            </div>
+
+            <div className="filter-toolbar-right">
+              {loading && <span className="filter-loading-indicator">Loading…</span>}
+              {!editMode && (
+                <span className="filter-row-count">
+                  {total.toLocaleString()} {hasActiveState ? 'matching ' : ''}row{total !== 1 ? 's' : ''}
+                </span>
+              )}
+              <button
+                className={`btn btn-sm btn-edit-toggle${editMode ? ' btn-edit-active' : ''}`}
+                onClick={toggleEditMode}
+                title={editMode ? 'Exit edit mode' : pkColumn ? 'Edit table data' : 'Edit table data (insert only — no primary key)'}
+              >
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" />
+                  <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z" />
+                </svg>
+                {editMode ? 'Exit Edit' : 'Edit'}
+              </button>
+              {!editMode && (
+                <button
+                  className={`btn btn-sm${showProfile ? ' btn-profile-active' : ''}`}
+                  onClick={() => setShowProfile((v) => !v)}
+                  title="Show column profile"
+                >
+                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                    <rect x="3" y="3" width="18" height="18" rx="2" />
+                    <path d="M3 9h18M3 15h18M9 3v18" />
+                  </svg>
+                  Profile
+                </button>
+              )}
+            </div>
+          </div>
+
+          {/* ── Add-filter inline form ── */}
+          {showAddFilter && !editMode && (
+            <div className="add-filter-form" ref={addFilterRef}>
+              <select
+                className="filter-select"
+                value={newCol}
+                onChange={(e) => setNewCol(e.target.value)}
+              >
+                {colNames.map((c) => (
+                  <option key={c} value={c}>{c}</option>
+                ))}
+              </select>
+
+              <select
+                className="filter-select"
+                value={newOp}
+                onChange={(e) => {
+                  const op = e.target.value as FilterOp;
+                  setNewOp(op);
+                  if (!VALUE_OPS.includes(op)) setNewVal('');
+                }}
+              >
+                <option value="contains">contains</option>
+                <option value="equals">equals</option>
+                <option value="not_equals">not equals</option>
+                <option value="starts_with">starts with</option>
+                <option value="gt">&gt; greater than</option>
+                <option value="lt">&lt; less than</option>
+                <option value="gte">≥ at least</option>
+                <option value="lte">≤ at most</option>
+                <option value="is_null">is null</option>
+                <option value="is_not_null">is not null</option>
+              </select>
+
+              {needsValueInput && (
+                <input
+                  className="filter-value-input"
+                  type="text"
+                  placeholder="value…"
+                  value={newVal}
+                  onChange={(e) => setNewVal(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') commitAddFilter();
+                    if (e.key === 'Escape') setShowAddFilter(false);
+                  }}
+                  autoFocus
+                />
+              )}
+
+              <button className="btn btn-sm btn-primary" onClick={commitAddFilter} disabled={!newCol}>
+                Add
+              </button>
+              <button className="btn btn-sm" onClick={() => setShowAddFilter(false)}>
+                Cancel
+              </button>
+            </div>
+          )}
         </div>
-      )}
 
-      {/* ── Data table ── */}
-      {!error && (
-        <DataTable
-          columns={columns}
-          rows={rows}
-          total={total}
-          limit={LIMIT}
-          offset={offset}
-          onPageChange={(nextOffset) => loadData(nextOffset, sort, filters)}
-          exportFilename={tableName}
-          sortColumn={sort?.column}
-          sortDirection={sort?.direction}
-          onSort={handleSort}
-        />
-      )}
+        {/* ── Error ── */}
+        {error && (
+          <div className="filter-error">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <circle cx="12" cy="12" r="10" /><line x1="12" y1="8" x2="12" y2="12" /><line x1="12" y1="16" x2="12.01" y2="16" />
+            </svg>
+            {error}
+          </div>
+        )}
+
+        {/* ── Data table ── */}
+        {!error && (
+          <DataTable
+            columns={columns}
+            rows={rows}
+            total={total}
+            limit={LIMIT}
+            offset={offset}
+            onPageChange={(nextOffset) => loadData(nextOffset, sort, filters)}
+            exportFilename={tableName}
+            sortColumn={sort?.column}
+            sortDirection={sort?.direction}
+            onSort={handleSort}
+            editMode={editMode}
+            pkColumn={pkColumn}
+            onSave={handleSave}
+          />
+        )}
       </div>
 
-      {showProfile && (
+      {showProfile && !editMode && (
         <ColumnProfilePanel
           dbId={dbId}
           tableName={tableName}

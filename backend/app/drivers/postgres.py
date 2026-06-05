@@ -110,6 +110,19 @@ class PostgresDriver(DatabaseDriver):
             "offset": offset,
         }
 
+    def execute_params(self, conn: Any, sql: str, params: list) -> tuple[list[str], list[dict]]:
+        cur = conn.cursor()
+        cur.execute(sql, params)
+        if cur.description:
+            columns = [desc[0] for desc in cur.description]
+            rows = [dict(zip(columns, row)) for row in cur.fetchall()]
+            cur.close()
+            return columns, rows
+        conn.commit()
+        rowcount = cur.rowcount
+        cur.close()
+        return [], [{"affected_rows": rowcount}]
+
     # ── Private helpers ──
 
     def _get_columns(self, conn: Any, table: str) -> list[dict]:

@@ -151,6 +151,13 @@ export interface ColumnProfile {
   top_values: ColumnTopValue[];
 }
 
+export interface RowMutation {
+  type: 'insert' | 'update' | 'delete';
+  pk_col?: string;
+  pk_value?: unknown;
+  values?: Record<string, unknown>;
+}
+
 export interface TableProfileResponse {
   table: string;
   row_count: number;
@@ -349,6 +356,12 @@ export const api = {
 
   getTableProfile: (dbId: string, table: string) =>
     request<TableProfileResponse>(`/databases/${dbId}/tables/${table}/profile`),
+
+  mutateRows: (dbId: string, table: string, mutations: RowMutation[]) =>
+    request<{ ok: boolean; affected_rows: number }>(`/databases/${dbId}/tables/${table}/mutate`, {
+      method: 'POST',
+      body: JSON.stringify({ mutations }),
+    }),
 
   // ── AI ──
 

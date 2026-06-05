@@ -63,6 +63,10 @@ class DatabaseDriver(ABC):
         """Test connectivity. Raise on failure."""
         ...
 
+    def execute_params(self, conn: Any, sql: str, params: list) -> tuple[list[str], list[dict]]:
+        """Execute a parameterized SQL statement and commit if DML."""
+        raise NotImplementedError
+
     def quote_identifier(self, name: str) -> str:
         if not isinstance(name, str) or name == "":
             raise ValueError("Identifier must be a non-empty string")

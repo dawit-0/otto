@@ -91,6 +91,15 @@ class SQLiteDriver(DatabaseDriver):
             })
         return tables
 
+    def execute_params(self, conn: Any, sql: str, params: list) -> tuple[list[str], list[dict]]:
+        cursor = conn.execute(sql, params)
+        if cursor.description:
+            columns = [desc[0] for desc in cursor.description]
+            rows = [dict(zip(columns, row)) for row in cursor.fetchall()]
+            return columns, rows
+        conn.commit()
+        return [], [{"affected_rows": cursor.rowcount}]
+
     def get_column_names(self, conn: Any, table: str) -> list[str]:
         quoted = self.quote_identifier(table)
         cursor = conn.execute(f"PRAGMA table_info({quoted})")
