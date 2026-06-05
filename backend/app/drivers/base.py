@@ -33,6 +33,24 @@ class DatabaseDriver(ABC):
         ...
 
     @abstractmethod
+    def explain_analyze(self, conn: Any, sql: str) -> dict:
+        """Run the database's EXPLAIN ANALYZE equivalent for ``sql``.
+
+        Each driver implements this against its own dialect (PostgreSQL's
+        ``EXPLAIN ANALYZE`` vs SQLite's ``EXPLAIN QUERY PLAN``) but normalizes
+        the result into a common shape::
+
+            {
+                "command": str,   # the SQL command actually issued
+                "format": str,    # "text" or "tree" (hint for the UI)
+                "summary": dict,  # high-level metrics, e.g. timing (may be empty)
+                "text": str,      # human-readable plan for display
+                "rows": list,     # the raw plan rows, dialect-specific
+            }
+        """
+        ...
+
+    @abstractmethod
     def get_table_info(self, conn: Any) -> list[dict]:
         """Return schema in standard format:
         [{name, columns, row_count, foreign_keys, indexes}]

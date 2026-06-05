@@ -1,7 +1,8 @@
 import { useState, useEffect, useCallback } from 'react';
-import { api, type QueryResponse, type QueryHistoryEntry, type SavedQueryEntry, type QueryParam } from '../api';
+import { api, type QueryResponse, type QueryHistoryEntry, type SavedQueryEntry, type QueryParam, type ExplainPlanResponse } from '../api';
 import DataTable from './DataTable';
 import QueryInsights from './QueryInsights';
+import QueryPlan from './QueryPlan';
 import SQLEditor from './SQLEditor';
 import { type ChartType } from './charts/ChartRenderer';
 
@@ -29,6 +30,9 @@ export default function QueryEditor({ dbId, dbName, dbType, initialSql, onVisual
   const [result, setResult] = useState<QueryResponse | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+  const [plan, setPlan] = useState<ExplainPlanResponse | null>(null);
+  const [planLoading, setPlanLoading] = useState(false);
+  const [planError, setPlanError] = useState<string | null>(null);
   const [showHistory, setShowHistory] = useState(false);
   const [history, setHistory] = useState<QueryHistoryEntry[]>([]);
   const [showAiInput, setShowAiInput] = useState(false);
@@ -172,6 +176,8 @@ export default function QueryEditor({ dbId, dbName, dbType, initialSql, onVisual
     if (!sql.trim()) return;
     setLoading(true);
     setError(null);
+    setPlan(null);
+    setPlanError(null);
     try {
       const res = await api.executeQuery(dbId, sql);
       setResult(res);
@@ -181,6 +187,21 @@ export default function QueryEditor({ dbId, dbName, dbType, initialSql, onVisual
     } finally {
       setLoading(false);
       if (showHistory) fetchHistory();
+    }
+  };
+
+  const explain = async () => {
+    if (!sql.trim()) return;
+    setPlanLoading(true);
+    setPlanError(null);
+    try {
+      const res = await api.explainQuery(dbId, sql);
+      setPlan(res);
+    } catch (e: any) {
+      setPlanError(e.message);
+      setPlan(null);
+    } finally {
+      setPlanLoading(false);
     }
   };
 
@@ -275,6 +296,14 @@ export default function QueryEditor({ dbId, dbName, dbType, initialSql, onVisual
             {loading ? 'Running...' : 'Run Query'}
           </button>
           <button
+            className="btn"
+            onClick={explain}
+            disabled={planLoading || !sql.trim()}
+            title="Run EXPLAIN ANALYZE (PostgreSQL) / EXPLAIN QUERY PLAN (SQLite) on this query"
+          >
+            {planLoading ? 'Explaining...' : 'Explain Analyze'}
+          </button>
+          <button
             className={`btn btn-ai${showAiInput ? ' btn-ai-active' : ''}`}
             onClick={() => setShowAiInput(!showAiInput)}
           >
@@ -301,6 +330,7 @@ export default function QueryEditor({ dbId, dbName, dbType, initialSql, onVisual
             History
           </button>
           <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>Cmd+Enter to execute</span>
+          {planError && <span className="query-status error">{planError}</span>}
           {error && <span className="query-status error">{error}</span>}
           {result && !error && (
             <span className="query-status success">
@@ -551,6 +581,8 @@ export default function QueryEditor({ dbId, dbName, dbType, initialSql, onVisual
           </div>
         </div>
       )}
+
+      {plan && <QueryPlan plan={plan} dbType={dbType} />}
 
       {result && result.columns.length > 0 && (
         <>

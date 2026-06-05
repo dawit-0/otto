@@ -37,6 +37,41 @@ class SQLiteDriver(DatabaseDriver):
         finally:
             conn.close()
 
+    def explain_analyze(self, conn: Any, sql: str) -> dict:
+        # SQLite has no runtime "ANALYZE" like PostgreSQL; EXPLAIN QUERY PLAN
+        # is the equivalent the optimizer exposes. It is read-only and never
+        # executes the underlying statement, so it is safe for any SQL.
+        cursor = conn.execute(f"EXPLAIN QUERY PLAN {sql}")
+        rows = [dict(row) for row in cursor.fetchall()]
+        return {
+            "command": "EXPLAIN QUERY PLAN",
+            "format": "tree",
+            "summary": {},
+            "text": self._format_query_plan(rows),
+            "rows": rows,
+        }
+
+    @staticmethod
+    def _format_query_plan(rows: list[dict]) -> str:
+        """Render EXPLAIN QUERY PLAN rows as an indented tree.
+
+        Each row carries (id, parent, detail); children reference their parent's
+        id, and top-level nodes have parent 0.
+        """
+        children: dict[int, list[dict]] = {}
+        for row in rows:
+            children.setdefault(row.get("parent", 0), []).append(row)
+
+        lines: list[str] = []
+
+        def walk(parent_id: int, depth: int) -> None:
+            for row in children.get(parent_id, []):
+                lines.append("  " * depth + str(row.get("detail", "")))
+                walk(row["id"], depth + 1)
+
+        walk(0, 0)
+        return "\n".join(lines)
+
     def list_table_names(self, conn: Any) -> set[str]:
         cursor = conn.execute("SELECT name FROM sqlite_master WHERE type='table'")
         return {row[0] for row in cursor.fetchall()}

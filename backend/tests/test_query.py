@@ -70,3 +70,56 @@ def test_failed_query_records_history(client, sample_db):
     assert len(history) >= 1
     assert history[0]["status"] == "error"
     assert history[0]["error_message"] is not None
+
+
+# ── EXPLAIN ANALYZE (query plan) ──
+
+def test_explain_query_sqlite(client, sample_db):
+    db_id = _setup(client, sample_db)
+    resp = client.post("/api/query/explain", json={
+        "db_id": db_id,
+        "sql": "SELECT * FROM books WHERE author_id = 1",
+    })
+    assert resp.status_code == 200
+    data = resp.json()
+    # SQLite's equivalent is EXPLAIN QUERY PLAN
+    assert data["command"] == "EXPLAIN QUERY PLAN"
+    assert data["format"] == "tree"
+    assert isinstance(data["rows"], list) and len(data["rows"]) >= 1
+    # The plan text should mention the scanned table
+    assert "books" in data["text"].lower()
+
+
+def test_explain_invalid_sql(client, sample_db):
+    db_id = _setup(client, sample_db)
+    resp = client.post("/api/query/explain", json={
+        "db_id": db_id,
+        "sql": "SELEKT * FROM nope",
+    })
+    assert resp.status_code == 400
+
+
+def test_explain_unknown_db(client):
+    resp = client.post("/api/query/explain", json={
+        "db_id": "nonexistent_12345678",
+        "sql": "SELECT 1",
+    })
+    assert resp.status_code == 404
+
+
+def test_explain_does_not_run_dml(client, sample_db):
+    """EXPLAIN QUERY PLAN must not actually execute the statement."""
+    db_id = _setup(client, sample_db)
+    before = client.post("/api/query", json={
+        "db_id": db_id, "sql": "SELECT COUNT(*) AS c FROM authors",
+    }).json()["rows"][0]["c"]
+
+    client.post("/api/query/explain", json={
+        "db_id": db_id,
+        "sql": "INSERT INTO authors VALUES (99, 'Mallory', 'm@example.com')",
+    })
+
+    after = client.post("/api/query", json={
+        "db_id": db_id, "sql": "SELECT COUNT(*) AS c FROM authors",
+    }).json()["rows"][0]["c"]
+    assert before == after

@@ -40,6 +40,33 @@ class PostgresDriver(DatabaseDriver):
         finally:
             conn.close()
 
+    def explain_analyze(self, conn: Any, sql: str) -> dict:
+        # EXPLAIN ANALYZE genuinely runs the statement, so for INSERT/UPDATE/
+        # DELETE it would otherwise persist changes. Run it inside a transaction
+        # and always roll back so explaining a query never mutates data.
+        cur = conn.cursor()
+        try:
+            cur.execute(f"EXPLAIN (ANALYZE, VERBOSE, BUFFERS, FORMAT TEXT) {sql}")
+            lines = [row[0] for row in cur.fetchall()]
+        finally:
+            conn.rollback()
+            cur.close()
+
+        summary: dict[str, str] = {}
+        for line in lines:
+            stripped = line.strip()
+            for label in ("Planning Time", "Execution Time"):
+                if stripped.startswith(label + ":"):
+                    summary[label] = stripped.split(":", 1)[1].strip()
+
+        return {
+            "command": "EXPLAIN (ANALYZE, BUFFERS)",
+            "format": "text",
+            "summary": summary,
+            "text": "\n".join(lines),
+            "rows": [{"plan": line} for line in lines],
+        }
+
     def list_table_names(self, conn: Any) -> set[str]:
         cur = conn.cursor()
         cur.execute(
