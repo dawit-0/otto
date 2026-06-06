@@ -1,4 +1,5 @@
 import { useState, useRef } from 'react';
+import type { ForeignKey } from '../api';
 
 interface Props {
   columns: string[];
@@ -11,6 +12,8 @@ interface Props {
   sortColumn?: string;
   sortDirection?: 'asc' | 'desc';
   onSort?: (column: string) => void;
+  foreignKeys?: ForeignKey[];
+  onFkClick?: (toTable: string, toColumn: string, value: string) => void;
 }
 
 function toCSV(columns: string[], rows: Record<string, unknown>[]): string {
@@ -48,7 +51,8 @@ function downloadFile(filename: string, content: string, mimeType: string) {
   URL.revokeObjectURL(url);
 }
 
-export default function DataTable({ columns, rows, total, limit = 100, offset = 0, onPageChange, exportFilename = 'export', sortColumn, sortDirection, onSort }: Props) {
+export default function DataTable({ columns, rows, total, limit = 100, offset = 0, onPageChange, exportFilename = 'export', sortColumn, sortDirection, onSort, foreignKeys = [], onFkClick }: Props) {
+  const fkMap = new Map<string, ForeignKey>(foreignKeys.map((fk) => [fk.from_column, fk]));
   const [copyState, setCopyState] = useState<null | 'csv' | 'json'>(null);
   const copyTimeout = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -111,9 +115,24 @@ export default function DataTable({ columns, rows, total, limit = 100, offset = 
                 {columns.map((col) => {
                   const val = row[col];
                   const isNull = val === null || val === undefined;
+                  const fk = fkMap.get(col);
+                  const isFkLink = fk && !isNull && onFkClick;
                   return (
                     <td key={col} className={isNull ? 'null-value' : ''}>
-                      {isNull ? 'NULL' : String(val)}
+                      {isNull ? 'NULL' : isFkLink ? (
+                        <button
+                          className="fk-link"
+                          onClick={() => onFkClick(fk.to_table, fk.to_column, String(val))}
+                          title={`View in ${fk.to_table}`}
+                        >
+                          {String(val)}
+                          <svg className="fk-link-icon" width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                            <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6" />
+                            <polyline points="15 3 21 3 21 9" />
+                            <line x1="10" y1="14" x2="21" y2="3" />
+                          </svg>
+                        </button>
+                      ) : String(val)}
                     </td>
                   );
                 })}

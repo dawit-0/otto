@@ -25,6 +25,7 @@ export default function App() {
   const [askSeedSql, setAskSeedSql] = useState<string | null>(null);
   const [queryKey, setQueryKey] = useState(0);
   const [showPalette, setShowPalette] = useState(false);
+  const [fkNavFilter, setFkNavFilter] = useState<{ column: string; value: string } | null>(null);
 
   useEffect(() => {
     api.listDatabases().then((dbs) => {
@@ -85,11 +86,19 @@ export default function App() {
 
   const handleSelectTable = useCallback((name: string) => {
     setSelectedTable(name);
+    setFkNavFilter(null);
     setView('data');
   }, []);
 
   const handleClearTable = useCallback(() => {
     setSelectedTable(null);
+    setFkNavFilter(null);
+  }, []);
+
+  const handleFkNavigate = useCallback((toTable: string, toColumn: string, value: string) => {
+    setSelectedTable(toTable);
+    setFkNavFilter({ column: toColumn, value });
+    setView('data');
   }, []);
 
   const handleVisualizeQuery = (sql: string, chartType: ChartType, xColumn: string, yColumns: string[]) => {
@@ -204,6 +213,8 @@ export default function App() {
                 selectedTable={selectedTable}
                 onSelectTable={handleSelectTable}
                 onClearTable={handleClearTable}
+                onFkNavigate={handleFkNavigate}
+                initialFilter={fkNavFilter}
               />
             )}
 

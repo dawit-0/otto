@@ -7,6 +7,8 @@ interface DataViewProps {
   selectedTable: string | null;
   onSelectTable: (name: string) => void;
   onClearTable: () => void;
+  onFkNavigate?: (toTable: string, toColumn: string, value: string) => void;
+  initialFilter?: { column: string; value: string } | null;
 }
 
 // ── TablePicker ───────────────────────────────────────────────────────────────
@@ -54,9 +56,10 @@ function TablePicker({ tables, onSelect }: TablePickerProps) {
 interface DataViewHeaderProps {
   tableName: string;
   onBack: () => void;
+  fkCrumb?: { column: string; value: string } | null;
 }
 
-function DataViewHeader({ tableName, onBack }: DataViewHeaderProps) {
+function DataViewHeader({ tableName, onBack, fkCrumb }: DataViewHeaderProps) {
   return (
     <div className="data-view-header">
       <div className="data-view-header-left">
@@ -68,6 +71,14 @@ function DataViewHeader({ tableName, onBack }: DataViewHeaderProps) {
         </button>
         <span className="data-view-header-sep">/</span>
         <span className="data-view-header-table">{tableName}</span>
+        {fkCrumb && (
+          <span className="fk-nav-crumb">
+            <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+              <polyline points="9 18 15 12 9 6" />
+            </svg>
+            {fkCrumb.column} = {fkCrumb.value}
+          </span>
+        )}
       </div>
     </div>
   );
@@ -81,21 +92,28 @@ export default function DataView({
   selectedTable,
   onSelectTable,
   onClearTable,
+  onFkNavigate,
+  initialFilter,
 }: DataViewProps) {
   if (!selectedTable) {
     return <TablePicker tables={tables} onSelect={onSelectTable} />;
   }
 
-  const columnDefs = tables.find((t) => t.name === selectedTable)?.columns ?? [];
+  const tableInfo = tables.find((t) => t.name === selectedTable);
+  const columnDefs = tableInfo?.columns ?? [];
+  const foreignKeys = tableInfo?.foreign_keys ?? [];
 
   return (
     <div className="data-view">
-      <DataViewHeader tableName={selectedTable} onBack={onClearTable} />
+      <DataViewHeader tableName={selectedTable} onBack={onClearTable} fkCrumb={initialFilter} />
       <TableBrowser
-        key={`${dbId}/${selectedTable}`}
+        key={`${dbId}/${selectedTable}/${initialFilter?.column ?? ''}/${initialFilter?.value ?? ''}`}
         dbId={dbId}
         tableName={selectedTable}
         columnDefs={columnDefs}
+        foreignKeys={foreignKeys}
+        initialFilter={initialFilter}
+        onFkNavigate={onFkNavigate}
       />
     </div>
   );
