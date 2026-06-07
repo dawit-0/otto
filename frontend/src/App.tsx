@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
-import { api, type Database, type TableInfo } from './api';
+import { api, type Database, type TableInfo, type FilterRule } from './api';
 import SchemaGraph from './components/SchemaGraph';
 import DataView from './components/DataView';
 import QueryEditor from './components/QueryEditor';
@@ -25,6 +25,7 @@ export default function App() {
   const [askSeedSql, setAskSeedSql] = useState<string | null>(null);
   const [queryKey, setQueryKey] = useState(0);
   const [showPalette, setShowPalette] = useState(false);
+  const [fkInitialFilter, setFkInitialFilter] = useState<FilterRule | null>(null);
 
   useEffect(() => {
     api.listDatabases().then((dbs) => {
@@ -84,12 +85,26 @@ export default function App() {
   };
 
   const handleSelectTable = useCallback((name: string) => {
+    setFkInitialFilter(null);
     setSelectedTable(name);
     setView('data');
   }, []);
 
   const handleClearTable = useCallback(() => {
+    setFkInitialFilter(null);
     setSelectedTable(null);
+  }, []);
+
+  const handleFKNavigate = useCallback((toTable: string, toColumn: string, value: unknown) => {
+    const filter: FilterRule = {
+      id: `fk-${Date.now()}`,
+      column: toColumn,
+      op: 'equals',
+      value: String(value),
+    };
+    setFkInitialFilter(filter);
+    setSelectedTable(toTable);
+    setView('data');
   }, []);
 
   const handleVisualizeQuery = (sql: string, chartType: ChartType, xColumn: string, yColumns: string[]) => {
@@ -204,6 +219,8 @@ export default function App() {
                 selectedTable={selectedTable}
                 onSelectTable={handleSelectTable}
                 onClearTable={handleClearTable}
+                fkInitialFilter={fkInitialFilter}
+                onFKNavigate={handleFKNavigate}
               />
             )}
 

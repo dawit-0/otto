@@ -1,4 +1,4 @@
-import { type TableInfo } from '../api';
+import { type TableInfo, type FilterRule } from '../api';
 import TableBrowser from './TableBrowser';
 
 interface DataViewProps {
@@ -7,6 +7,8 @@ interface DataViewProps {
   selectedTable: string | null;
   onSelectTable: (name: string) => void;
   onClearTable: () => void;
+  fkInitialFilter?: FilterRule | null;
+  onFKNavigate?: (toTable: string, toColumn: string, value: unknown) => void;
 }
 
 // ── TablePicker ───────────────────────────────────────────────────────────────
@@ -81,12 +83,16 @@ export default function DataView({
   selectedTable,
   onSelectTable,
   onClearTable,
+  fkInitialFilter,
+  onFKNavigate,
 }: DataViewProps) {
   if (!selectedTable) {
     return <TablePicker tables={tables} onSelect={onSelectTable} />;
   }
 
-  const columnDefs = tables.find((t) => t.name === selectedTable)?.columns ?? [];
+  const tableInfo = tables.find((t) => t.name === selectedTable);
+  const columnDefs = tableInfo?.columns ?? [];
+  const foreignKeys = tableInfo?.foreign_keys ?? [];
 
   return (
     <div className="data-view">
@@ -96,6 +102,9 @@ export default function DataView({
         dbId={dbId}
         tableName={selectedTable}
         columnDefs={columnDefs}
+        foreignKeys={foreignKeys}
+        initialFilters={fkInitialFilter ? [fkInitialFilter] : []}
+        onFKNavigate={onFKNavigate}
       />
     </div>
   );

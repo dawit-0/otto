@@ -1,4 +1,5 @@
 import { useState, useRef } from 'react';
+import { type ForeignKey } from '../api';
 
 interface Props {
   columns: string[];
@@ -11,6 +12,8 @@ interface Props {
   sortColumn?: string;
   sortDirection?: 'asc' | 'desc';
   onSort?: (column: string) => void;
+  foreignKeys?: ForeignKey[];
+  onFKNavigate?: (toTable: string, toColumn: string, value: unknown) => void;
 }
 
 function toCSV(columns: string[], rows: Record<string, unknown>[]): string {
@@ -48,9 +51,13 @@ function downloadFile(filename: string, content: string, mimeType: string) {
   URL.revokeObjectURL(url);
 }
 
-export default function DataTable({ columns, rows, total, limit = 100, offset = 0, onPageChange, exportFilename = 'export', sortColumn, sortDirection, onSort }: Props) {
+export default function DataTable({ columns, rows, total, limit = 100, offset = 0, onPageChange, exportFilename = 'export', sortColumn, sortDirection, onSort, foreignKeys = [], onFKNavigate }: Props) {
   const [copyState, setCopyState] = useState<null | 'csv' | 'json'>(null);
   const copyTimeout = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const fkMap = Object.fromEntries(
+    foreignKeys.map((fk) => [fk.from_column, { toTable: fk.to_table, toColumn: fk.to_column }])
+  );
 
   if (columns.length === 0) {
     return (
@@ -96,6 +103,11 @@ export default function DataTable({ columns, rows, total, limit = 100, offset = 
                   onClick={onSort ? () => onSort(col) : undefined}
                 >
                   {col}
+                  {fkMap[col] && (
+                    <span className="fk-header-badge" title={`Foreign key → ${fkMap[col].toTable}.${fkMap[col].toColumn}`}>
+                      FK
+                    </span>
+                  )}
                   {onSort && (
                     <span className="sort-arrow">
                       {sortColumn === col ? (sortDirection === 'asc' ? '↑' : '↓') : '⇅'}
@@ -111,9 +123,24 @@ export default function DataTable({ columns, rows, total, limit = 100, offset = 
                 {columns.map((col) => {
                   const val = row[col];
                   const isNull = val === null || val === undefined;
+                  const fk = fkMap[col];
+                  const isFKClickable = !isNull && fk && onFKNavigate;
                   return (
                     <td key={col} className={isNull ? 'null-value' : ''}>
-                      {isNull ? 'NULL' : String(val)}
+                      {isNull ? (
+                        'NULL'
+                      ) : isFKClickable ? (
+                        <button
+                          className="fk-link"
+                          onClick={() => onFKNavigate(fk.toTable, fk.toColumn, val)}
+                          title={`View in ${fk.toTable} → ${fk.toColumn}`}
+                        >
+                          {String(val)}
+                          <span className="fk-link-arrow" aria-hidden="true">↗</span>
+                        </button>
+                      ) : (
+                        String(val)
+                      )}
                     </td>
                   );
                 })}
