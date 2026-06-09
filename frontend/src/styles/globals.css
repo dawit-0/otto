@@ -755,6 +755,103 @@ body {
   color: var(--text-muted);
 }
 
+/* ─── FK Navigation Breadcrumb ─── */
+.nav-breadcrumb {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  padding: 8px 14px;
+  border-bottom: 1px solid var(--border);
+  flex-shrink: 0;
+  background: var(--bg-primary);
+  flex-wrap: wrap;
+}
+.nav-breadcrumb-segment {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+}
+.nav-breadcrumb-sep {
+  color: var(--text-muted);
+  font-size: 12px;
+  padding: 0 1px;
+  user-select: none;
+}
+.nav-breadcrumb-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 3px 7px;
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--text-secondary);
+  background: none;
+  border: none;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  font-family: inherit;
+  transition: all 0.12s ease;
+}
+.nav-breadcrumb-item:hover:not(.nav-breadcrumb-current) {
+  color: var(--text-primary);
+  background: var(--bg-tertiary);
+}
+.nav-breadcrumb-root {
+  color: var(--text-muted);
+}
+.nav-breadcrumb-root:hover {
+  color: var(--text-secondary) !important;
+}
+.nav-breadcrumb-current {
+  color: var(--text-primary);
+  font-weight: 600;
+  cursor: default;
+  pointer-events: none;
+}
+
+/* ─── FK Cells & Headers ─── */
+.fk-header-badge {
+  display: inline-flex;
+  align-items: center;
+  margin-left: 5px;
+  color: var(--accent);
+  opacity: 0.7;
+  vertical-align: middle;
+  position: relative;
+  top: -1px;
+}
+.fk-cell {
+  padding: 0 !important;
+}
+.fk-cell-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 7px 14px;
+  width: 100%;
+  background: none;
+  border: none;
+  cursor: pointer;
+  font-family: var(--font-mono);
+  font-size: 12px;
+  color: var(--accent);
+  text-align: left;
+  transition: color 0.12s ease;
+}
+.fk-cell-btn:hover {
+  color: var(--accent-hover);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+.fk-cell-icon {
+  opacity: 0;
+  flex-shrink: 0;
+  transition: opacity 0.12s ease;
+}
+.fk-cell-btn:hover .fk-cell-icon {
+  opacity: 0.7;
+}
+
 /* ─── Table Picker ─── */
 .data-picker {
   flex: 1;

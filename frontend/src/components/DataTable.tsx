@@ -1,4 +1,5 @@
 import { useState, useRef } from 'react';
+import type { ForeignKey } from '../api';
 
 interface Props {
   columns: string[];
@@ -11,6 +12,8 @@ interface Props {
   sortColumn?: string;
   sortDirection?: 'asc' | 'desc';
   onSort?: (column: string) => void;
+  foreignKeys?: ForeignKey[];
+  onFkClick?: (toTable: string, toColumn: string, value: unknown) => void;
 }
 
 function toCSV(columns: string[], rows: Record<string, unknown>[]): string {
@@ -48,9 +51,12 @@ function downloadFile(filename: string, content: string, mimeType: string) {
   URL.revokeObjectURL(url);
 }
 
-export default function DataTable({ columns, rows, total, limit = 100, offset = 0, onPageChange, exportFilename = 'export', sortColumn, sortDirection, onSort }: Props) {
+export default function DataTable({ columns, rows, total, limit = 100, offset = 0, onPageChange, exportFilename = 'export', sortColumn, sortDirection, onSort, foreignKeys, onFkClick }: Props) {
   const [copyState, setCopyState] = useState<null | 'csv' | 'json'>(null);
   const copyTimeout = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const fkMap = new Map<string, ForeignKey>();
+  (foreignKeys ?? []).forEach((fk) => fkMap.set(fk.from_column, fk));
 
   if (columns.length === 0) {
     return (
@@ -89,20 +95,31 @@ export default function DataTable({ columns, rows, total, limit = 100, offset = 
         <table className="data-table">
           <thead>
             <tr>
-              {columns.map((col) => (
-                <th
-                  key={col}
-                  className={onSort ? 'sortable-th' : ''}
-                  onClick={onSort ? () => onSort(col) : undefined}
-                >
-                  {col}
-                  {onSort && (
-                    <span className="sort-arrow">
-                      {sortColumn === col ? (sortDirection === 'asc' ? '↑' : '↓') : '⇅'}
-                    </span>
-                  )}
-                </th>
-              ))}
+              {columns.map((col) => {
+                const fk = fkMap.get(col);
+                return (
+                  <th
+                    key={col}
+                    className={onSort ? 'sortable-th' : ''}
+                    onClick={onSort ? () => onSort(col) : undefined}
+                  >
+                    {col}
+                    {fk && (
+                      <span className="fk-header-badge" title={`Foreign key → ${fk.to_table}.${fk.to_column}`}>
+                        <svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                          <path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71" />
+                          <path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71" />
+                        </svg>
+                      </span>
+                    )}
+                    {onSort && (
+                      <span className="sort-arrow">
+                        {sortColumn === col ? (sortDirection === 'asc' ? '↑' : '↓') : '⇅'}
+                      </span>
+                    )}
+                  </th>
+                );
+              })}
             </tr>
           </thead>
           <tbody>
@@ -111,9 +128,28 @@ export default function DataTable({ columns, rows, total, limit = 100, offset = 
                 {columns.map((col) => {
                   const val = row[col];
                   const isNull = val === null || val === undefined;
+                  const fk = fkMap.get(col);
+                  const canNavigate = fk && !isNull && onFkClick;
                   return (
-                    <td key={col} className={isNull ? 'null-value' : ''}>
-                      {isNull ? 'NULL' : String(val)}
+                    <td key={col} className={isNull ? 'null-value' : canNavigate ? 'fk-cell' : ''}>
+                      {isNull ? (
+                        'NULL'
+                      ) : canNavigate ? (
+                        <button
+                          className="fk-cell-btn"
+                          onClick={() => onFkClick(fk.to_table, fk.to_column, val)}
+                          title={`View in ${fk.to_table} where ${fk.to_column} = ${String(val)}`}
+                        >
+                          {String(val)}
+                          <svg className="fk-cell-icon" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                            <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6" />
+                            <polyline points="15 3 21 3 21 9" />
+                            <line x1="10" y1="14" x2="21" y2="3" />
+                          </svg>
+                        </button>
+                      ) : (
+                        String(val)
+                      )}
                     </td>
                   );
                 })}
