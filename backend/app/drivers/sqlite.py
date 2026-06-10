@@ -131,6 +131,34 @@ class SQLiteDriver(DatabaseDriver):
         cursor = conn.execute(f"PRAGMA table_info({quoted})")
         return [row["name"] for row in cursor.fetchall()]
 
+    def get_primary_key_columns(self, conn: Any, table: str) -> list[str]:
+        self.assert_valid_table(conn, table)
+        quoted = self.quote_identifier(table)
+        cursor = conn.execute(f"PRAGMA table_info({quoted})")
+        pk_cols = [(row["pk"], row["name"]) for row in cursor.fetchall() if row["pk"] > 0]
+        pk_cols.sort(key=lambda entry: entry[0])
+        return [name for _, name in pk_cols]
+
+    def insert_row(self, conn: Any, table: str, values: dict[str, Any]) -> dict:
+        self.assert_valid_table(conn, table)
+        valid_columns = set(self.get_column_names(conn, table))
+        self._assert_known_columns(values, valid_columns)
+
+        quoted = self.quote_identifier(table)
+        if values:
+            col_sql = ", ".join(self.quote_identifier(c) for c in values)
+            placeholders = ", ".join(["?"] * len(values))
+            sql = f"INSERT INTO {quoted} ({col_sql}) VALUES ({placeholders})"
+            params = list(values.values())
+        else:
+            sql = f"INSERT INTO {quoted} DEFAULT VALUES"
+            params = []
+
+        cursor = conn.execute(sql, params)
+        row = conn.execute(f"SELECT * FROM {quoted} WHERE rowid = ?", (cursor.lastrowid,)).fetchone()
+        conn.commit()
+        return dict(row) if row is not None else dict(values)
+
     def get_table_data(
         self, conn: Any, table: str, limit: int, offset: int,
         sort_column: str | None = None,

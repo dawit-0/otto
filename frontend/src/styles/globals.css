@@ -3395,3 +3395,87 @@ body {
   font-family: inherit;
   color: var(--text-muted);
 }
+
+/* ─── Editable Data Table ─── */
+.row-actions-th {
+  width: 1%;
+  background: var(--bg-tertiary);
+  border-bottom: 1px solid var(--border);
+}
+.row-actions-td {
+  white-space: nowrap;
+  padding: 4px 6px !important;
+  width: 1%;
+}
+.row-delete-btn {
+  opacity: 0;
+  color: var(--text-muted);
+}
+.data-table tr:hover .row-delete-btn {
+  opacity: 1;
+}
+.row-delete-btn:hover {
+  color: var(--danger) !important;
+  background: rgba(239, 68, 68, 0.1) !important;
+}
+.row-delete-confirm {
+  display: inline-flex;
+  gap: 2px;
+}
+.btn-icon-confirm {
+  color: var(--accent) !important;
+}
+.btn-icon-confirm:hover {
+  background: var(--accent-subtle) !important;
+}
+.btn-icon-danger {
+  color: var(--danger) !important;
+}
+.btn-icon-danger:hover {
+  background: rgba(239, 68, 68, 0.1) !important;
+}
+
+.data-table td.cell-editable {
+  cursor: text;
+}
+.data-table td.cell-editable:hover {
+  outline: 1px solid var(--accent);
+  outline-offset: -1px;
+}
+.data-table td.cell-saving {
+  color: var(--text-muted);
+  font-style: italic;
+}
+.data-table td.cell-editing {
+  padding: 0;
+}
+.cell-input {
+  width: 100%;
+  box-sizing: border-box;
+  padding: 6px 13px;
+  background: var(--bg-secondary);
+  border: 1px solid var(--accent);
+  outline: none;
+  color: var(--text-primary);
+  font-family: var(--font-mono);
+  font-size: 12px;
+  border-radius: 0;
+}
+.cell-input::placeholder {
+  color: var(--text-muted);
+  font-style: italic;
+}
+
+.data-table tr.new-row td {
+  background: var(--accent-subtle);
+}
+.row-message-row td.row-message-cell {
+  background: transparent;
+  border-bottom: 1px solid var(--border);
+}
+.row-message-cell.error {
+  color: var(--danger);
+  font-size: 12px;
+  padding: 6px 14px !important;
+  white-space: normal;
+}

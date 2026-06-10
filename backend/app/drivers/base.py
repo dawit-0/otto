@@ -77,6 +77,16 @@ class DatabaseDriver(ABC):
         ...
 
     @abstractmethod
+    def get_primary_key_columns(self, conn: Any, table: str) -> list[str]:
+        """Return the ordered primary-key column names for a table (empty if none)."""
+        ...
+
+    @abstractmethod
+    def insert_row(self, conn: Any, table: str, values: dict[str, Any]) -> dict:
+        """Insert a new row and return it (including generated defaults)."""
+        ...
+
+    @abstractmethod
     def validate(self) -> None:
         """Test connectivity. Raise on failure."""
         ...
@@ -163,3 +173,81 @@ class DatabaseDriver(ABC):
             raise ValueError(f"Unknown column: {sort_column!r}")
         direction = "DESC" if (sort_direction or "asc").lower() == "desc" else "ASC"
         return f"ORDER BY {self.quote_identifier(sort_column)} {direction}"
+
+    def _assert_known_columns(self, columns: Any, valid_columns: set[str]) -> None:
+        for col in columns:
+            if col not in valid_columns:
+                raise ValueError(f"Unknown column: {col!r}")
+
+    def _fetch_row_by_pk(self, conn: Any, table: str, pk_values: dict[str, Any]) -> dict | None:
+        ph = self.placeholder
+        where_clause = " AND ".join(f"{self.quote_identifier(c)} = {ph}" for c in pk_values)
+        sql = f"SELECT * FROM {self.quote_identifier(table)} WHERE {where_clause}"
+        cursor = conn.cursor()
+        cursor.execute(sql, list(pk_values.values()))
+        row = cursor.fetchone()
+        if row is None:
+            cursor.close()
+            return None
+        columns = [d[0] for d in cursor.description]
+        result = dict(zip(columns, row))
+        cursor.close()
+        return result
+
+    def update_row(
+        self, conn: Any, table: str, pk_values: dict[str, Any], updates: dict[str, Any],
+    ) -> dict | None:
+        """Update a single row identified by ``pk_values`` and return the updated row."""
+        self.assert_valid_table(conn, table)
+        valid_columns = set(self.get_column_names(conn, table))
+        pk_cols = self.get_primary_key_columns(conn, table)
+        if not pk_cols:
+            raise ValueError(f"Table '{table}' has no primary key; row editing is not supported")
+        if set(pk_values.keys()) != set(pk_cols):
+            raise ValueError(f"Primary key values required for: {', '.join(pk_cols)}")
+        if not updates:
+            raise ValueError("No columns to update")
+        self._assert_known_columns(pk_values, valid_columns)
+        self._assert_known_columns(updates, valid_columns)
+
+        ph = self.placeholder
+        set_clause = ", ".join(f"{self.quote_identifier(c)} = {ph}" for c in updates)
+        where_clause = " AND ".join(f"{self.quote_identifier(c)} = {ph}" for c in pk_cols)
+        params = [*updates.values(), *(pk_values[c] for c in pk_cols)]
+        sql = f"UPDATE {self.quote_identifier(table)} SET {set_clause} WHERE {where_clause}"
+
+        cursor = conn.cursor()
+        cursor.execute(sql, params)
+        if cursor.rowcount == 0:
+            conn.rollback()
+            cursor.close()
+            raise ValueError("Row not found (it may have been modified or deleted)")
+        conn.commit()
+        cursor.close()
+
+        new_pk = {c: updates.get(c, pk_values[c]) for c in pk_cols}
+        return self._fetch_row_by_pk(conn, table, new_pk)
+
+    def delete_row(self, conn: Any, table: str, pk_values: dict[str, Any]) -> None:
+        """Delete a single row identified by ``pk_values``."""
+        self.assert_valid_table(conn, table)
+        valid_columns = set(self.get_column_names(conn, table))
+        pk_cols = self.get_primary_key_columns(conn, table)
+        if not pk_cols:
+            raise ValueError(f"Table '{table}' has no primary key; row deletion is not supported")
+        if set(pk_values.keys()) != set(pk_cols):
+            raise ValueError(f"Primary key values required for: {', '.join(pk_cols)}")
+        self._assert_known_columns(pk_values, valid_columns)
+
+        ph = self.placeholder
+        where_clause = " AND ".join(f"{self.quote_identifier(c)} = {ph}" for c in pk_cols)
+        sql = f"DELETE FROM {self.quote_identifier(table)} WHERE {where_clause}"
+
+        cursor = conn.cursor()
+        cursor.execute(sql, [pk_values[c] for c in pk_cols])
+        if cursor.rowcount == 0:
+            conn.rollback()
+            cursor.close()
+            raise ValueError("Row not found (it may have already been deleted)")
+        conn.commit()
+        cursor.close()

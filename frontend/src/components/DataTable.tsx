@@ -1,4 +1,4 @@
-import { useState, useRef } from 'react';
+import { useState, useRef, Fragment } from 'react';
 
 interface Props {
   columns: string[];
@@ -11,6 +11,20 @@ interface Props {
   sortColumn?: string;
   sortDirection?: 'asc' | 'desc';
   onSort?: (column: string) => void;
+  editable?: boolean;
+  onUpdateCell?: (row: Record<string, unknown>, column: string, value: unknown) => Promise<void>;
+  onDeleteRow?: (row: Record<string, unknown>) => Promise<void>;
+  onInsertRow?: (values: Record<string, unknown>) => Promise<void>;
+}
+
+interface EditingCell {
+  row: number;
+  col: string;
+}
+
+interface RowMessage {
+  row: number;
+  message: string;
 }
 
 function toCSV(columns: string[], rows: Record<string, unknown>[]): string {
@@ -48,9 +62,27 @@ function downloadFile(filename: string, content: string, mimeType: string) {
   URL.revokeObjectURL(url);
 }
 
-export default function DataTable({ columns, rows, total, limit = 100, offset = 0, onPageChange, exportFilename = 'export', sortColumn, sortDirection, onSort }: Props) {
+export default function DataTable({
+  columns, rows, total, limit = 100, offset = 0, onPageChange, exportFilename = 'export',
+  sortColumn, sortDirection, onSort,
+  editable = false, onUpdateCell, onDeleteRow, onInsertRow,
+}: Props) {
   const [copyState, setCopyState] = useState<null | 'csv' | 'json'>(null);
   const copyTimeout = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const [editingCell, setEditingCell] = useState<EditingCell | null>(null);
+  const [editValue, setEditValue] = useState('');
+  const [savingCell, setSavingCell] = useState<EditingCell | null>(null);
+  const [cellError, setCellError] = useState<RowMessage | null>(null);
+
+  const [confirmDeleteRow, setConfirmDeleteRow] = useState<number | null>(null);
+  const [deletingRow, setDeletingRow] = useState<number | null>(null);
+  const [deleteError, setDeleteError] = useState<RowMessage | null>(null);
+
+  const [addingRow, setAddingRow] = useState(false);
+  const [newRowValues, setNewRowValues] = useState<Record<string, string>>({});
+  const [savingNewRow, setSavingNewRow] = useState(false);
+  const [addRowError, setAddRowError] = useState<string | null>(null);
 
   if (columns.length === 0) {
     return (
@@ -83,12 +115,110 @@ export default function DataTable({ columns, rows, total, limit = 100, offset = 
   const handleCopyJSON = () =>
     triggerCopy('json', toJSON(columns, rows));
 
+  const startEdit = (rowIndex: number, col: string, value: unknown) => {
+    if (!editable || !onUpdateCell) return;
+    if (savingCell || addingRow) return;
+    setCellError(null);
+    setEditingCell({ row: rowIndex, col });
+    setEditValue(value === null || value === undefined ? '' : String(value));
+  };
+
+  const cancelEdit = () => setEditingCell(null);
+
+  const commitEdit = async () => {
+    if (!editingCell || !onUpdateCell) return;
+    const { row: rowIndex, col } = editingCell;
+    const row = rows[rowIndex];
+    const original = row[col];
+    const originalStr = original === null || original === undefined ? '' : String(original);
+
+    if (editValue === originalStr) {
+      setEditingCell(null);
+      return;
+    }
+
+    const value: unknown = editValue.trim() === '' ? null : editValue;
+    setSavingCell({ row: rowIndex, col });
+    setEditingCell(null);
+    try {
+      await onUpdateCell(row, col, value);
+      setCellError(null);
+    } catch (e) {
+      setCellError({ row: rowIndex, message: e instanceof Error ? e.message : 'Failed to update cell' });
+    } finally {
+      setSavingCell(null);
+    }
+  };
+
+  const handleEditKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === 'Enter') { e.preventDefault(); commitEdit(); }
+    if (e.key === 'Escape') { e.preventDefault(); cancelEdit(); }
+  };
+
+  const requestDelete = (rowIndex: number) => {
+    setDeleteError(null);
+    setConfirmDeleteRow(rowIndex);
+  };
+
+  const confirmDelete = async (rowIndex: number) => {
+    if (!onDeleteRow) return;
+    setDeletingRow(rowIndex);
+    try {
+      await onDeleteRow(rows[rowIndex]);
+      setConfirmDeleteRow(null);
+    } catch (e) {
+      setDeleteError({ row: rowIndex, message: e instanceof Error ? e.message : 'Failed to delete row' });
+    } finally {
+      setDeletingRow(null);
+    }
+  };
+
+  const openAddRow = () => {
+    setAddingRow(true);
+    setNewRowValues({});
+    setAddRowError(null);
+  };
+
+  const cancelAddRow = () => {
+    setAddingRow(false);
+    setNewRowValues({});
+    setAddRowError(null);
+  };
+
+  const saveNewRow = async () => {
+    if (!onInsertRow) return;
+    setSavingNewRow(true);
+    setAddRowError(null);
+    try {
+      const values: Record<string, unknown> = {};
+      for (const col of columns) {
+        const v = newRowValues[col];
+        if (v !== undefined && v.trim() !== '') values[col] = v;
+      }
+      await onInsertRow(values);
+      setAddingRow(false);
+      setNewRowValues({});
+    } catch (e) {
+      setAddRowError(e instanceof Error ? e.message : 'Failed to add row');
+    } finally {
+      setSavingNewRow(false);
+    }
+  };
+
+  const handleNewRowKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === 'Enter') { e.preventDefault(); saveNewRow(); }
+    if (e.key === 'Escape') { e.preventDefault(); cancelAddRow(); }
+  };
+
+  const colSpan = columns.length + (editable ? 1 : 0);
+
   return (
     <div className="table-browser">
       <div className="data-table-container">
         <table className="data-table">
           <thead>
             <tr>
+              {editable && <th className="row-actions-th"></th>}
               {columns.map((col) => (
                 <th
                   key={col}
@@ -106,18 +236,132 @@ export default function DataTable({ columns, rows, total, limit = 100, offset = 
             </tr>
           </thead>
           <tbody>
-            {rows.map((row, i) => (
-              <tr key={i}>
-                {columns.map((col) => {
-                  const val = row[col];
-                  const isNull = val === null || val === undefined;
-                  return (
-                    <td key={col} className={isNull ? 'null-value' : ''}>
-                      {isNull ? 'NULL' : String(val)}
+            {addingRow && (
+              <Fragment>
+                <tr className="new-row">
+                  <td className="row-actions-td">
+                    <button
+                      className="btn-icon btn-icon-confirm"
+                      onClick={saveNewRow}
+                      disabled={savingNewRow}
+                      title="Save row"
+                    >
+                      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                        <polyline points="20 6 9 17 4 12" />
+                      </svg>
+                    </button>
+                    <button className="btn-icon" onClick={cancelAddRow} disabled={savingNewRow} title="Cancel">
+                      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                        <line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" />
+                      </svg>
+                    </button>
+                  </td>
+                  {columns.map((col) => (
+                    <td key={col} className="cell-editing">
+                      <input
+                        className="cell-input"
+                        value={newRowValues[col] ?? ''}
+                        placeholder="NULL"
+                        onChange={(e) => setNewRowValues((prev) => ({ ...prev, [col]: e.target.value }))}
+                        onKeyDown={handleNewRowKeyDown}
+                        disabled={savingNewRow}
+                      />
                     </td>
-                  );
-                })}
-              </tr>
+                  ))}
+                </tr>
+                {addRowError && (
+                  <tr className="row-message-row">
+                    <td colSpan={colSpan} className="row-message-cell error">{addRowError}</td>
+                  </tr>
+                )}
+              </Fragment>
+            )}
+            {rows.map((row, i) => (
+              <Fragment key={i}>
+                <tr>
+                  {editable && (
+                    <td className="row-actions-td">
+                      {confirmDeleteRow === i ? (
+                        <span className="row-delete-confirm">
+                          <button
+                            className="btn-icon btn-icon-danger"
+                            onClick={() => confirmDelete(i)}
+                            disabled={deletingRow === i}
+                            title="Confirm delete"
+                          >
+                            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                              <polyline points="20 6 9 17 4 12" />
+                            </svg>
+                          </button>
+                          <button
+                            className="btn-icon"
+                            onClick={() => setConfirmDeleteRow(null)}
+                            disabled={deletingRow === i}
+                            title="Cancel"
+                          >
+                            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                              <line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" />
+                            </svg>
+                          </button>
+                        </span>
+                      ) : (
+                        <button
+                          className="btn-icon row-delete-btn"
+                          onClick={() => requestDelete(i)}
+                          title="Delete row"
+                        >
+                          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                            <polyline points="3 6 5 6 21 6" /><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
+                          </svg>
+                        </button>
+                      )}
+                    </td>
+                  )}
+                  {columns.map((col) => {
+                    const val = row[col];
+                    const isNull = val === null || val === undefined;
+                    const isEditing = editingCell?.row === i && editingCell.col === col;
+                    const isSaving = savingCell?.row === i && savingCell.col === col;
+
+                    if (isEditing) {
+                      return (
+                        <td key={col} className="cell-editing">
+                          <input
+                            className="cell-input"
+                            value={editValue}
+                            placeholder="NULL"
+                            autoFocus
+                            onChange={(e) => setEditValue(e.target.value)}
+                            onBlur={commitEdit}
+                            onKeyDown={handleEditKeyDown}
+                          />
+                        </td>
+                      );
+                    }
+
+                    return (
+                      <td
+                        key={col}
+                        className={`${isNull ? 'null-value' : ''}${editable ? ' cell-editable' : ''}${isSaving ? ' cell-saving' : ''}`}
+                        onDoubleClick={() => startEdit(i, col, val)}
+                        title={editable ? 'Double-click to edit' : undefined}
+                      >
+                        {isSaving ? 'Saving…' : (isNull ? 'NULL' : String(val))}
+                      </td>
+                    );
+                  })}
+                </tr>
+                {cellError?.row === i && (
+                  <tr className="row-message-row">
+                    <td colSpan={colSpan} className="row-message-cell error">{cellError.message}</td>
+                  </tr>
+                )}
+                {deleteError?.row === i && (
+                  <tr className="row-message-row">
+                    <td colSpan={colSpan} className="row-message-cell error">{deleteError.message}</td>
+                  </tr>
+                )}
+              </Fragment>
             ))}
           </tbody>
         </table>
@@ -157,6 +401,19 @@ export default function DataTable({ columns, rows, total, limit = 100, offset = 
         </div>
 
         <div className="table-footer-right">
+          {editable && onInsertRow && (
+            <button
+              className="btn btn-sm"
+              onClick={openAddRow}
+              disabled={addingRow}
+              title="Insert a new row"
+            >
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                <line x1="12" y1="5" x2="12" y2="19" /><line x1="5" y1="12" x2="19" y2="12" />
+              </svg>
+              Add Row
+            </button>
+          )}
           <button
             className="btn btn-sm"
             onClick={handleDownloadCSV}

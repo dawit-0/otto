@@ -98,6 +98,33 @@ class PostgresDriver(DatabaseDriver):
     def get_column_names(self, conn: Any, table: str) -> list[str]:
         return [c["name"] for c in self._get_columns(conn, table)]
 
+    def get_primary_key_columns(self, conn: Any, table: str) -> list[str]:
+        self.assert_valid_table(conn, table)
+        return self._get_pk_columns(conn, table)
+
+    def insert_row(self, conn: Any, table: str, values: dict[str, Any]) -> dict:
+        self.assert_valid_table(conn, table)
+        valid_columns = set(self.get_column_names(conn, table))
+        self._assert_known_columns(values, valid_columns)
+
+        quoted = self.quote_identifier(table)
+        if values:
+            col_sql = ", ".join(self.quote_identifier(c) for c in values)
+            placeholders = ", ".join(["%s"] * len(values))
+            sql = f"INSERT INTO {quoted} ({col_sql}) VALUES ({placeholders}) RETURNING *"
+            params = list(values.values())
+        else:
+            sql = f"INSERT INTO {quoted} DEFAULT VALUES RETURNING *"
+            params = []
+
+        cursor = conn.cursor()
+        cursor.execute(sql, params)
+        columns = [d[0] for d in cursor.description]
+        row = cursor.fetchone()
+        conn.commit()
+        cursor.close()
+        return dict(zip(columns, row))
+
     def get_table_data(
         self, conn: Any, table: str, limit: int, offset: int,
         sort_column: str | None = None,

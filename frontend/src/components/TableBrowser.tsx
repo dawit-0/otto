@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { api, type FilterRule, type FilterOp, type Column } from '../api';
 import DataTable from './DataTable';
 import ColumnProfilePanel from './ColumnProfilePanel';
@@ -121,6 +121,38 @@ export default function TableBrowser({ dbId, tableName, columnDefs }: Props) {
     setShowAddFilter(false);
   };
 
+  const primaryKeyColumns = useMemo(
+    () => columnDefs.filter((c) => c.pk).map((c) => c.name),
+    [columnDefs],
+  );
+  const editable = primaryKeyColumns.length > 0;
+
+  const matchesPk = useCallback((row: Record<string, unknown>, target: Record<string, unknown>) =>
+    primaryKeyColumns.every((c) => row[c] === target[c]), [primaryKeyColumns]);
+
+  const handleUpdateCell = useCallback(async (row: Record<string, unknown>, column: string, value: unknown) => {
+    const pk: Record<string, unknown> = {};
+    for (const c of primaryKeyColumns) pk[c] = row[c];
+    const res = await api.updateRow(dbId, tableName, pk, { [column]: value });
+    if (res.row) {
+      const updated = res.row;
+      setRows((prev) => prev.map((r) => (matchesPk(r, row) ? updated : r)));
+    }
+  }, [dbId, tableName, primaryKeyColumns, matchesPk]);
+
+  const handleDeleteRow = useCallback(async (row: Record<string, unknown>) => {
+    const pk: Record<string, unknown> = {};
+    for (const c of primaryKeyColumns) pk[c] = row[c];
+    await api.deleteRow(dbId, tableName, pk);
+    setRows((prev) => prev.filter((r) => !matchesPk(r, row)));
+    setTotal((t) => Math.max(0, t - 1));
+  }, [dbId, tableName, primaryKeyColumns, matchesPk]);
+
+  const handleInsertRow = useCallback(async (values: Record<string, unknown>) => {
+    await api.insertRow(dbId, tableName, values);
+    await loadData(offset, sort, filters);
+  }, [dbId, tableName, offset, sort, filters, loadData]);
+
   const removeFilter = (id: string) => setFilters((prev) => prev.filter((f) => f.id !== id));
 
   const clearAll = () => {
@@ -187,6 +219,11 @@ export default function TableBrowser({ dbId, tableName, columnDefs }: Props) {
 
           <div className="filter-toolbar-right">
             {loading && <span className="filter-loading-indicator">Loading…</span>}
+            {!editable && (
+              <span className="filter-row-count" title="This table has no primary key, so inline editing is unavailable">
+                Read-only
+              </span>
+            )}
             <span className="filter-row-count">
               {total.toLocaleString()} {hasActiveState ? 'matching ' : ''}row{total !== 1 ? 's' : ''}
             </span>
@@ -286,6 +323,10 @@ export default function TableBrowser({ dbId, tableName, columnDefs }: Props) {
           sortColumn={sort?.column}
           sortDirection={sort?.direction}
           onSort={handleSort}
+          editable={editable}
+          onUpdateCell={handleUpdateCell}
+          onDeleteRow={handleDeleteRow}
+          onInsertRow={handleInsertRow}
         />
       )}
       </div>
