@@ -77,6 +77,33 @@ class DatabaseDriver(ABC):
         ...
 
     @abstractmethod
+    def get_editable_row_id_columns(self, conn: Any, table: str) -> list[str] | None:
+        """Return the column(s) that uniquely identify a row for editing.
+
+        For SQLite this is ``["rowid"]`` (when available); for PostgreSQL it is
+        the table's primary key column(s). Returns ``None`` if the table has no
+        usable row identifier, in which case row-level editing is unsupported.
+        """
+        ...
+
+    @abstractmethod
+    def insert_row(self, conn: Any, table: str, values: dict[str, Any]) -> dict:
+        """Insert a row with the given column values and return the full row
+        as stored (including columns left to their defaults)."""
+        ...
+
+    @abstractmethod
+    def update_row(self, conn: Any, table: str, row_id: dict[str, Any], values: dict[str, Any]) -> dict:
+        """Update the row identified by ``row_id`` with ``values`` and return
+        the row as it exists after the update."""
+        ...
+
+    @abstractmethod
+    def delete_row(self, conn: Any, table: str, row_id: dict[str, Any]) -> None:
+        """Delete the row identified by ``row_id``."""
+        ...
+
+    @abstractmethod
     def validate(self) -> None:
         """Test connectivity. Raise on failure."""
         ...

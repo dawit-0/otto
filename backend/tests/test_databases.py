@@ -195,6 +195,160 @@ def test_get_table_profile_unknown_db(client):
     assert resp.status_code == 404
 
 
+# ── Row CRUD ──
+
+
+def test_get_table_data_includes_row_id_columns(client, sample_db):
+    info = _connect(client, sample_db)
+    resp = client.get(f"/api/databases/{info['id']}/tables/books/data")
+    data = resp.json()
+    assert data["row_id_columns"] == ["__row_id__"]
+
+
+def test_insert_row(client, sample_db):
+    info = _connect(client, sample_db)
+    resp = client.post(
+        f"/api/databases/{info['id']}/tables/books/rows",
+        json={"values": {"title": "Delta", "author_id": 1, "pages": 99}},
+    )
+    assert resp.status_code == 200
+    row = resp.json()["row"]
+    assert row["title"] == "Delta"
+    assert row["author_id"] == 1
+    assert row["pages"] == 99
+    assert row["id"] == 4  # auto-incremented rowid alias
+
+    # Confirm it shows up in the table
+    data = client.get(f"/api/databases/{info['id']}/tables/books/data").json()
+    assert data["total"] == 4
+
+
+def test_insert_row_uses_defaults_for_missing_columns(client, sample_db):
+    info = _connect(client, sample_db)
+    resp = client.post(
+        f"/api/databases/{info['id']}/tables/books/rows",
+        json={"values": {"title": "Epsilon", "author_id": 2}},
+    )
+    assert resp.status_code == 200
+    row = resp.json()["row"]
+    assert row["pages"] == 0  # column default
+
+
+def test_insert_row_unknown_column(client, sample_db):
+    info = _connect(client, sample_db)
+    resp = client.post(
+        f"/api/databases/{info['id']}/tables/books/rows",
+        json={"values": {"nope": "x"}},
+    )
+    assert resp.status_code == 400
+    assert "unknown column" in resp.json()["detail"].lower()
+
+
+def test_insert_row_constraint_violation(client, sample_db):
+    info = _connect(client, sample_db)
+    resp = client.post(
+        f"/api/databases/{info['id']}/tables/books/rows",
+        json={"values": {"title": "NoAuthor"}},  # author_id is NOT NULL
+    )
+    assert resp.status_code == 400
+
+
+def test_update_row(client, sample_db):
+    info = _connect(client, sample_db)
+    resp = client.patch(
+        f"/api/databases/{info['id']}/tables/books/rows",
+        json={"row_id": {"__row_id__": 1}, "values": {"pages": 250}},
+    )
+    assert resp.status_code == 200
+    row = resp.json()["row"]
+    assert row["id"] == 1
+    assert row["pages"] == 250
+
+
+def test_update_row_not_found(client, sample_db):
+    info = _connect(client, sample_db)
+    resp = client.patch(
+        f"/api/databases/{info['id']}/tables/books/rows",
+        json={"row_id": {"__row_id__": 9999}, "values": {"pages": 1}},
+    )
+    assert resp.status_code == 404
+
+
+def test_update_row_unknown_column(client, sample_db):
+    info = _connect(client, sample_db)
+    resp = client.patch(
+        f"/api/databases/{info['id']}/tables/books/rows",
+        json={"row_id": {"__row_id__": 1}, "values": {"nope": 1}},
+    )
+    assert resp.status_code == 400
+
+
+def test_update_row_bad_row_id(client, sample_db):
+    info = _connect(client, sample_db)
+    resp = client.patch(
+        f"/api/databases/{info['id']}/tables/books/rows",
+        json={"row_id": {"id": 1}, "values": {"pages": 1}},
+    )
+    assert resp.status_code == 400
+
+
+def test_delete_row(client, sample_db):
+    info = _connect(client, sample_db)
+    resp = client.request(
+        "DELETE",
+        f"/api/databases/{info['id']}/tables/books/rows",
+        json={"row_id": {"__row_id__": 1}},
+    )
+    assert resp.status_code == 200
+
+    data = client.get(f"/api/databases/{info['id']}/tables/books/data").json()
+    assert data["total"] == 2
+
+
+def test_delete_row_not_found(client, sample_db):
+    info = _connect(client, sample_db)
+    resp = client.request(
+        "DELETE",
+        f"/api/databases/{info['id']}/tables/books/rows",
+        json={"row_id": {"__row_id__": 9999}},
+    )
+    assert resp.status_code == 404
+
+
+def test_without_rowid_table_is_not_editable(client, tmp_path):
+    import sqlite3
+
+    db_path = str(tmp_path / "norowid.db")
+    conn = sqlite3.connect(db_path)
+    conn.executescript("""
+        CREATE TABLE settings (
+            key   TEXT PRIMARY KEY,
+            value TEXT
+        ) WITHOUT ROWID;
+        INSERT INTO settings VALUES ('theme', 'dark');
+    """)
+    conn.close()
+
+    info = _connect(client, db_path)
+
+    data = client.get(f"/api/databases/{info['id']}/tables/settings/data").json()
+    assert data["row_id_columns"] is None
+
+    # Insert is still possible without a row identifier...
+    resp = client.post(
+        f"/api/databases/{info['id']}/tables/settings/rows",
+        json={"values": {"key": "lang", "value": "en"}},
+    )
+    assert resp.status_code == 200
+
+    # ...but updating/deleting requires one.
+    resp = client.patch(
+        f"/api/databases/{info['id']}/tables/settings/rows",
+        json={"row_id": {"key": "theme"}, "values": {"value": "light"}},
+    )
+    assert resp.status_code == 400
+
+
 # ── Upload ──
 
 

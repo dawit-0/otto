@@ -34,6 +34,7 @@ const LIMIT = 100;
 export default function TableBrowser({ dbId, tableName, columnDefs }: Props) {
   const [rows, setRows] = useState<Record<string, unknown>[]>([]);
   const [columns, setColumns] = useState<string[]>([]);
+  const [rowIdColumns, setRowIdColumns] = useState<string[] | null>(null);
   const [total, setTotal] = useState(0);
   const [offset, setOffset] = useState(0);
   const [loading, setLoading] = useState(false);
@@ -68,6 +69,7 @@ export default function TableBrowser({ dbId, tableName, columnDefs }: Props) {
       );
       setColumns(result.columns);
       setRows(result.rows);
+      setRowIdColumns(result.row_id_columns);
       setTotal(result.total);
       setOffset(nextOffset);
     } catch (e) {
@@ -120,6 +122,25 @@ export default function TableBrowser({ dbId, tableName, columnDefs }: Props) {
     setFilters((prev) => [...prev, rule]);
     setShowAddFilter(false);
   };
+
+  const rowMatchesId = (row: Record<string, unknown>, rowId: Record<string, unknown>) =>
+    Object.entries(rowId).every(([k, v]) => row[k] === v);
+
+  const handleUpdateCell = useCallback(async (rowId: Record<string, unknown>, column: string, value: string | null) => {
+    const result = await api.updateRow(dbId, tableName, rowId, { [column]: value });
+    setRows((prev) => prev.map((r) => (rowMatchesId(r, rowId) ? result.row : r)));
+  }, [dbId, tableName]);
+
+  const handleDeleteRow = useCallback(async (rowId: Record<string, unknown>) => {
+    await api.deleteRow(dbId, tableName, rowId);
+    setRows((prev) => prev.filter((r) => !rowMatchesId(r, rowId)));
+    setTotal((t) => Math.max(0, t - 1));
+  }, [dbId, tableName]);
+
+  const handleAddRow = useCallback(async (values: Record<string, unknown>) => {
+    await api.insertRow(dbId, tableName, values);
+    await loadData(0, sort, filters);
+  }, [dbId, tableName, sort, filters, loadData]);
 
   const removeFilter = (id: string) => setFilters((prev) => prev.filter((f) => f.id !== id));
 
@@ -286,6 +307,11 @@ export default function TableBrowser({ dbId, tableName, columnDefs }: Props) {
           sortColumn={sort?.column}
           sortDirection={sort?.direction}
           onSort={handleSort}
+          rowIdColumns={rowIdColumns}
+          columnDefs={columnDefs}
+          onUpdateCell={handleUpdateCell}
+          onDeleteRow={handleDeleteRow}
+          onAddRow={handleAddRow}
         />
       )}
       </div>

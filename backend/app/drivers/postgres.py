@@ -98,6 +98,11 @@ class PostgresDriver(DatabaseDriver):
     def get_column_names(self, conn: Any, table: str) -> list[str]:
         return [c["name"] for c in self._get_columns(conn, table)]
 
+    def get_editable_row_id_columns(self, conn: Any, table: str) -> list[str] | None:
+        self.assert_valid_table(conn, table)
+        pk_cols = self._get_pk_columns(conn, table)
+        return pk_cols or None
+
     def get_table_data(
         self, conn: Any, table: str, limit: int, offset: int,
         sort_column: str | None = None,
@@ -110,12 +115,11 @@ class PostgresDriver(DatabaseDriver):
 
         where_sql, where_params = self.build_filter_clause(filters or [], valid_columns)
         order_sql = self.build_order_by(sort_column, sort_direction, valid_columns)
-        if not order_sql:
-            pk_cols = self._get_pk_columns(conn, table)
-            if pk_cols:
-                order_sql = "ORDER BY " + ", ".join(
-                    self.quote_identifier(c) + " DESC" for c in pk_cols
-                )
+        pk_cols = self._get_pk_columns(conn, table)
+        if not order_sql and pk_cols:
+            order_sql = "ORDER BY " + ", ".join(
+                self.quote_identifier(c) + " DESC" for c in pk_cols
+            )
 
         cur = conn.cursor()
         cur.execute(
@@ -135,7 +139,86 @@ class PostgresDriver(DatabaseDriver):
             "total": total,
             "limit": limit,
             "offset": offset,
+            "row_id_columns": pk_cols or None,
         }
+
+    def insert_row(self, conn: Any, table: str, values: dict[str, Any]) -> dict:
+        self.assert_valid_table(conn, table)
+        valid_columns = set(self.get_column_names(conn, table))
+        unknown = set(values) - valid_columns
+        if unknown:
+            raise ValueError(f"Unknown column(s): {', '.join(sorted(unknown))}")
+
+        quoted = self.quote_identifier(table)
+        cur = conn.cursor()
+        try:
+            if values:
+                cols_sql = ", ".join(self.quote_identifier(c) for c in values)
+                placeholders = ", ".join(["%s"] * len(values))
+                sql = f"INSERT INTO {quoted} ({cols_sql}) VALUES ({placeholders}) RETURNING *"
+                params = list(values.values())
+            else:
+                sql = f"INSERT INTO {quoted} DEFAULT VALUES RETURNING *"
+                params = []
+            cur.execute(sql, params)
+            columns = [desc[0] for desc in cur.description]
+            row = cur.fetchone()
+            conn.commit()
+            return dict(zip(columns, row)) if row else {}
+        finally:
+            cur.close()
+
+    def update_row(self, conn: Any, table: str, row_id: dict[str, Any], values: dict[str, Any]) -> dict:
+        self.assert_valid_table(conn, table)
+        id_cols = self.get_editable_row_id_columns(conn, table)
+        if id_cols is None:
+            raise ValueError(f"Table '{table}' has no primary key and cannot be edited")
+        if set(row_id) != set(id_cols):
+            raise ValueError("row_id must match the table's primary key columns")
+        if not values:
+            raise ValueError("No values to update")
+        valid_columns = set(self.get_column_names(conn, table))
+        unknown = set(values) - valid_columns
+        if unknown:
+            raise ValueError(f"Unknown column(s): {', '.join(sorted(unknown))}")
+
+        quoted = self.quote_identifier(table)
+        set_sql = ", ".join(f"{self.quote_identifier(c)} = %s" for c in values)
+        where_sql = " AND ".join(f"{self.quote_identifier(c)} = %s" for c in id_cols)
+        params = [*values.values(), *(row_id[c] for c in id_cols)]
+
+        cur = conn.cursor()
+        try:
+            cur.execute(f"UPDATE {quoted} SET {set_sql} WHERE {where_sql} RETURNING *", params)
+            row = cur.fetchone()
+            if row is None:
+                conn.rollback()
+                raise ValueError("Row not found")
+            columns = [desc[0] for desc in cur.description]
+            conn.commit()
+            return dict(zip(columns, row))
+        finally:
+            cur.close()
+
+    def delete_row(self, conn: Any, table: str, row_id: dict[str, Any]) -> None:
+        self.assert_valid_table(conn, table)
+        id_cols = self.get_editable_row_id_columns(conn, table)
+        if id_cols is None:
+            raise ValueError(f"Table '{table}' has no primary key and cannot be edited")
+        if set(row_id) != set(id_cols):
+            raise ValueError("row_id must match the table's primary key columns")
+
+        quoted = self.quote_identifier(table)
+        where_sql = " AND ".join(f"{self.quote_identifier(c)} = %s" for c in id_cols)
+        cur = conn.cursor()
+        try:
+            cur.execute(f"DELETE FROM {quoted} WHERE {where_sql}", [row_id[c] for c in id_cols])
+            if cur.rowcount == 0:
+                conn.rollback()
+                raise ValueError("Row not found")
+            conn.commit()
+        finally:
+            cur.close()
 
     # ── Private helpers ──
 

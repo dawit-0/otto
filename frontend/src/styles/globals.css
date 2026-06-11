@@ -2308,6 +2308,129 @@ body {
   color: var(--accent-hover);
 }
 
+/* ─── Editable data table ─── */
+.data-table td[title="Double-click to edit"] {
+  cursor: text;
+}
+.data-table td.cell-editing {
+  padding: 4px 8px;
+  position: relative;
+  overflow: visible;
+  white-space: nowrap;
+}
+.cell-edit-wrapper {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+.cell-edit-input {
+  flex: 1;
+  width: 100%;
+  min-width: 60px;
+  padding: 4px 6px;
+  font-family: var(--font-mono);
+  font-size: 12px;
+  background: var(--bg-primary);
+  border: 1px solid var(--accent);
+  border-radius: var(--radius-sm);
+  color: var(--text-primary);
+  outline: none;
+}
+.cell-edit-input:focus {
+  box-shadow: 0 0 0 2px var(--ring-color);
+}
+.cell-edit-input:disabled {
+  color: var(--text-muted);
+  font-style: italic;
+}
+.cell-null-toggle {
+  flex-shrink: 0;
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--bg-tertiary);
+  color: var(--text-muted);
+  font-size: 12px;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+.cell-null-toggle:hover {
+  border-color: var(--border-strong);
+  color: var(--text-secondary);
+}
+.cell-null-toggle.active {
+  background: var(--accent-subtle);
+  border-color: var(--accent);
+  color: var(--accent-hover);
+}
+.cell-edit-error {
+  position: absolute;
+  top: 100%;
+  left: 0;
+  right: 0;
+  z-index: 2;
+  margin-top: 2px;
+  padding: 4px 8px;
+  font-size: 11px;
+  font-family: var(--font-mono);
+  color: #fff;
+  background: var(--danger);
+  border-radius: var(--radius-sm);
+  white-space: normal;
+  box-shadow: var(--shadow-md);
+}
+
+/* Row action column (delete button) */
+.row-actions-header {
+  width: 36px;
+  background: var(--bg-tertiary);
+  border-bottom: 1px solid var(--border);
+}
+.row-actions-cell {
+  width: 36px;
+  text-align: center;
+  white-space: nowrap;
+  padding: 4px 6px !important;
+}
+.row-delete-btn {
+  color: var(--text-muted);
+}
+.row-delete-btn:hover {
+  color: var(--danger);
+  background: rgba(239, 68, 68, 0.1);
+}
+.row-delete-btn.confirm {
+  width: auto;
+  padding: 4px 8px;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--danger);
+  background: rgba(239, 68, 68, 0.1);
+  border: 1px solid rgba(239, 68, 68, 0.3);
+}
+
+/* Add-row form */
+.add-row-row td {
+  background: var(--accent-subtle);
+  padding: 4px 8px;
+}
+.add-row-input {
+  border-color: var(--border-strong);
+}
+.add-row-input::placeholder {
+  color: var(--text-muted);
+  font-style: italic;
+}
+.add-row-error-row td {
+  padding: 6px 14px;
+  font-size: 12px;
+  color: var(--danger);
+  background: rgba(239, 68, 68, 0.07);
+  border-bottom: 1px solid rgba(239, 68, 68, 0.2);
+}
+
 /* ─── Messages area ─── */
 .ask-otto-messages {
   flex: 1;
