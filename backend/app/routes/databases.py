@@ -44,6 +44,19 @@ class ConnectRequest(BaseModel):
     password: str | None = None
 
 
+class RowUpdateRequest(BaseModel):
+    pk: dict[str, Any]
+    values: dict[str, Any]
+
+
+class RowInsertRequest(BaseModel):
+    values: dict[str, Any]
+
+
+class RowDeleteRequest(BaseModel):
+    pk: dict[str, Any]
+
+
 def _resolve_record(db_id: str, db: Session) -> ConnectedDatabase:
     record = db.query(ConnectedDatabase).filter(ConnectedDatabase.db_id == db_id).first()
     if not record:
@@ -313,6 +326,65 @@ def get_table_data(
         raise HTTPException(status_code=status, detail=str(e))
     except Exception as e:
         logger.error("Error reading table '%s' from db_id=%s: %s", table_name, db_id, e)
+        raise HTTPException(status_code=400, detail=str(e))
+    finally:
+        driver.close(conn)
+
+
+@router.put("/{db_id}/tables/{table_name}/rows")
+def update_table_row(db_id: str, table_name: str, req: RowUpdateRequest, db: Session = Depends(get_db)):
+    driver = get_driver_for_db(db_id, db)
+    db_name = get_db_name(db_id, db)
+    conn = driver.connect()
+    try:
+        row = driver.update_row(conn, table_name, req.pk, req.values)
+        logger.info("Updated row in '%s'.%s (db_id=%s)", db_name, table_name, db_id)
+        return {"row": row}
+    except ValueError as e:
+        msg = str(e).lower()
+        status = 404 if "not found" in msg or "unknown table" in msg else 400
+        raise HTTPException(status_code=status, detail=str(e))
+    except Exception as e:
+        logger.error("Failed to update row in '%s'.%s: %s", db_name, table_name, e)
+        raise HTTPException(status_code=400, detail=str(e))
+    finally:
+        driver.close(conn)
+
+
+@router.post("/{db_id}/tables/{table_name}/rows")
+def insert_table_row(db_id: str, table_name: str, req: RowInsertRequest, db: Session = Depends(get_db)):
+    driver = get_driver_for_db(db_id, db)
+    db_name = get_db_name(db_id, db)
+    conn = driver.connect()
+    try:
+        row = driver.insert_row(conn, table_name, req.values)
+        logger.info("Inserted row into '%s'.%s (db_id=%s)", db_name, table_name, db_id)
+        return {"row": row}
+    except ValueError as e:
+        status = 404 if "unknown table" in str(e).lower() else 400
+        raise HTTPException(status_code=status, detail=str(e))
+    except Exception as e:
+        logger.error("Failed to insert row into '%s'.%s: %s", db_name, table_name, e)
+        raise HTTPException(status_code=400, detail=str(e))
+    finally:
+        driver.close(conn)
+
+
+@router.delete("/{db_id}/tables/{table_name}/rows")
+def delete_table_row(db_id: str, table_name: str, req: RowDeleteRequest, db: Session = Depends(get_db)):
+    driver = get_driver_for_db(db_id, db)
+    db_name = get_db_name(db_id, db)
+    conn = driver.connect()
+    try:
+        driver.delete_row(conn, table_name, req.pk)
+        logger.info("Deleted row from '%s'.%s (db_id=%s)", db_name, table_name, db_id)
+        return {"ok": True}
+    except ValueError as e:
+        msg = str(e).lower()
+        status = 404 if "not found" in msg or "unknown table" in msg else 400
+        raise HTTPException(status_code=status, detail=str(e))
+    except Exception as e:
+        logger.error("Failed to delete row from '%s'.%s: %s", db_name, table_name, e)
         raise HTTPException(status_code=400, detail=str(e))
     finally:
         driver.close(conn)

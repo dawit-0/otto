@@ -81,6 +81,33 @@ class DatabaseDriver(ABC):
         """Test connectivity. Raise on failure."""
         ...
 
+    @abstractmethod
+    def update_row(self, conn: Any, table: str, pk: dict, values: dict) -> dict:
+        """Update the single row matched by ``pk`` (column -> value) with
+        ``values`` (column -> value). Returns the updated row.
+
+        Raises ``ValueError`` if the table/columns are invalid, ``pk`` or
+        ``values`` is empty, or no row matches ``pk``.
+        """
+        ...
+
+    @abstractmethod
+    def insert_row(self, conn: Any, table: str, values: dict) -> dict:
+        """Insert a new row with ``values`` (column -> value). Columns not
+        present in ``values`` are left to the database's default. Returns
+        the inserted row.
+        """
+        ...
+
+    @abstractmethod
+    def delete_row(self, conn: Any, table: str, pk: dict) -> None:
+        """Delete the single row matched by ``pk`` (column -> value).
+
+        Raises ``ValueError`` if the table/columns are invalid, ``pk`` is
+        empty, or no row matches ``pk``.
+        """
+        ...
+
     def quote_identifier(self, name: str) -> str:
         if not isinstance(name, str) or name == "":
             raise ValueError("Identifier must be a non-empty string")
@@ -163,3 +190,32 @@ class DatabaseDriver(ABC):
             raise ValueError(f"Unknown column: {sort_column!r}")
         direction = "DESC" if (sort_direction or "asc").lower() == "desc" else "ASC"
         return f"ORDER BY {self.quote_identifier(sort_column)} {direction}"
+
+    def check_row_columns(self, conn: Any, table: str, *column_dicts: dict) -> None:
+        """Validate ``table`` and that every key in ``column_dicts`` is a real column."""
+        self.assert_valid_table(conn, table)
+        valid_columns = set(self.get_column_names(conn, table))
+        for d in column_dicts:
+            for col in d:
+                if col not in valid_columns:
+                    raise ValueError(f"Unknown column: {col!r}")
+
+    def build_update_sql(self, table: str, pk: dict, values: dict) -> tuple[str, list]:
+        ph = self.placeholder
+        set_clause = ", ".join(f"{self.quote_identifier(c)} = {ph}" for c in values)
+        where_clause = " AND ".join(f"{self.quote_identifier(c)} = {ph}" for c in pk)
+        sql = f"UPDATE {self.quote_identifier(table)} SET {set_clause} WHERE {where_clause}"
+        return sql, [*values.values(), *pk.values()]
+
+    def build_insert_sql(self, table: str, values: dict) -> tuple[str, list]:
+        ph = self.placeholder
+        cols = ", ".join(self.quote_identifier(c) for c in values)
+        placeholders = ", ".join([ph] * len(values))
+        sql = f"INSERT INTO {self.quote_identifier(table)} ({cols}) VALUES ({placeholders})"
+        return sql, list(values.values())
+
+    def build_delete_sql(self, table: str, pk: dict) -> tuple[str, list]:
+        ph = self.placeholder
+        where_clause = " AND ".join(f"{self.quote_identifier(c)} = {ph}" for c in pk)
+        sql = f"DELETE FROM {self.quote_identifier(table)} WHERE {where_clause}"
+        return sql, list(pk.values())

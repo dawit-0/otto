@@ -161,3 +161,46 @@ class SQLiteDriver(DatabaseDriver):
             "limit": limit,
             "offset": offset,
         }
+
+    def update_row(self, conn: Any, table: str, pk: dict, values: dict) -> dict:
+        if not pk:
+            raise ValueError("Primary key required to update a row")
+        if not values:
+            raise ValueError("No values to update")
+        self.check_row_columns(conn, table, pk, values)
+        sql, params = self.build_update_sql(table, pk, values)
+        cursor = conn.execute(sql, params)
+        if cursor.rowcount == 0:
+            conn.rollback()
+            raise ValueError("Row not found")
+        conn.commit()
+        new_pk = {**pk, **{k: v for k, v in values.items() if k in pk}}
+        return self._fetch_row(conn, table, new_pk)
+
+    def insert_row(self, conn: Any, table: str, values: dict) -> dict:
+        if not values:
+            raise ValueError("No values to insert")
+        self.check_row_columns(conn, table, values)
+        sql, params = self.build_insert_sql(table, values)
+        cursor = conn.execute(sql, params)
+        conn.commit()
+        quoted = self.quote_identifier(table)
+        row = conn.execute(f"SELECT * FROM {quoted} WHERE rowid = ?", (cursor.lastrowid,)).fetchone()
+        return dict(row) if row else {}
+
+    def delete_row(self, conn: Any, table: str, pk: dict) -> None:
+        if not pk:
+            raise ValueError("Primary key required to delete a row")
+        self.check_row_columns(conn, table, pk)
+        sql, params = self.build_delete_sql(table, pk)
+        cursor = conn.execute(sql, params)
+        if cursor.rowcount == 0:
+            conn.rollback()
+            raise ValueError("Row not found")
+        conn.commit()
+
+    def _fetch_row(self, conn: Any, table: str, pk: dict) -> dict:
+        quoted = self.quote_identifier(table)
+        where_clause = " AND ".join(f"{self.quote_identifier(c)} = ?" for c in pk)
+        row = conn.execute(f"SELECT * FROM {quoted} WHERE {where_clause}", list(pk.values())).fetchone()
+        return dict(row) if row else {}

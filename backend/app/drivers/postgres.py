@@ -137,6 +137,63 @@ class PostgresDriver(DatabaseDriver):
             "offset": offset,
         }
 
+    def update_row(self, conn: Any, table: str, pk: dict, values: dict) -> dict:
+        if not pk:
+            raise ValueError("Primary key required to update a row")
+        if not values:
+            raise ValueError("No values to update")
+        self.check_row_columns(conn, table, pk, values)
+        sql, params = self.build_update_sql(table, pk, values)
+        cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+        try:
+            cur.execute(sql + " RETURNING *", params)
+            row = cur.fetchone()
+            if row is None:
+                conn.rollback()
+                raise ValueError("Row not found")
+            conn.commit()
+            return dict(row)
+        except Exception:
+            conn.rollback()
+            raise
+        finally:
+            cur.close()
+
+    def insert_row(self, conn: Any, table: str, values: dict) -> dict:
+        if not values:
+            raise ValueError("No values to insert")
+        self.check_row_columns(conn, table, values)
+        sql, params = self.build_insert_sql(table, values)
+        cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+        try:
+            cur.execute(sql + " RETURNING *", params)
+            row = cur.fetchone()
+            conn.commit()
+            return dict(row) if row else {}
+        except Exception:
+            conn.rollback()
+            raise
+        finally:
+            cur.close()
+
+    def delete_row(self, conn: Any, table: str, pk: dict) -> None:
+        if not pk:
+            raise ValueError("Primary key required to delete a row")
+        self.check_row_columns(conn, table, pk)
+        sql, params = self.build_delete_sql(table, pk)
+        cur = conn.cursor()
+        try:
+            cur.execute(sql, params)
+            if cur.rowcount == 0:
+                conn.rollback()
+                raise ValueError("Row not found")
+            conn.commit()
+        except Exception:
+            conn.rollback()
+            raise
+        finally:
+            cur.close()
+
     # ── Private helpers ──
 
     def _get_columns(self, conn: Any, table: str) -> list[dict]:

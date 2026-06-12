@@ -31,6 +31,10 @@ const VALUE_OPS: FilterOp[] = ['contains', 'equals', 'not_equals', 'starts_with'
 
 const LIMIT = 100;
 
+function rowMatchesPk(row: Record<string, unknown>, pk: Record<string, unknown>): boolean {
+  return Object.entries(pk).every(([k, v]) => row[k] === v);
+}
+
 export default function TableBrowser({ dbId, tableName, columnDefs }: Props) {
   const [rows, setRows] = useState<Record<string, unknown>[]>([]);
   const [columns, setColumns] = useState<string[]>([]);
@@ -119,6 +123,22 @@ export default function TableBrowser({ dbId, tableName, columnDefs }: Props) {
     };
     setFilters((prev) => [...prev, rule]);
     setShowAddFilter(false);
+  };
+
+  const handleCellEdit = async (pk: Record<string, unknown>, column: string, value: unknown) => {
+    const result = await api.updateRow(dbId, tableName, pk, { [column]: value });
+    setRows((prev) => prev.map((r) => (rowMatchesPk(r, pk) ? { ...r, ...result.row } : r)));
+  };
+
+  const handleDeleteRow = async (pk: Record<string, unknown>) => {
+    await api.deleteRow(dbId, tableName, pk);
+    setRows((prev) => prev.filter((r) => !rowMatchesPk(r, pk)));
+    setTotal((prev) => Math.max(0, prev - 1));
+  };
+
+  const handleAddRow = async (values: Record<string, unknown>) => {
+    await api.insertRow(dbId, tableName, values);
+    await loadData(offset, sort, filters);
   };
 
   const removeFilter = (id: string) => setFilters((prev) => prev.filter((f) => f.id !== id));
@@ -286,6 +306,10 @@ export default function TableBrowser({ dbId, tableName, columnDefs }: Props) {
           sortColumn={sort?.column}
           sortDirection={sort?.direction}
           onSort={handleSort}
+          columnDefs={columnDefs}
+          onCellEdit={handleCellEdit}
+          onDeleteRow={handleDeleteRow}
+          onAddRow={handleAddRow}
         />
       )}
       </div>

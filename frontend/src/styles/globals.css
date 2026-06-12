@@ -2301,6 +2301,116 @@ body {
   color: var(--accent-hover);
 }
 
+/* ─── Inline row editing ─── */
+.pk-badge {
+  margin-left: 6px;
+  padding: 1px 4px;
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  color: var(--accent-hover);
+  border: 1px solid var(--border-strong);
+  border-radius: 3px;
+  vertical-align: middle;
+}
+.editable-cell {
+  cursor: text;
+}
+.data-table td.editing-cell {
+  padding: 3px 8px;
+}
+.cell-edit-wrapper {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+.cell-edit-input,
+.cell-edit-select {
+  flex: 1;
+  width: 100%;
+  min-width: 60px;
+  padding: 4px 6px;
+  background: var(--bg-primary);
+  border: 1px solid var(--accent);
+  border-radius: var(--radius-sm);
+  color: var(--text-primary);
+  font-family: var(--font-mono);
+  font-size: 12px;
+  box-shadow: 0 0 0 2px var(--ring-color);
+}
+.cell-edit-input:focus,
+.cell-edit-select:focus {
+  outline: none;
+}
+.cell-null-btn {
+  flex-shrink: 0;
+  padding: 2px 6px;
+  font-size: 12px;
+  line-height: 1;
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  color: var(--text-muted);
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+.cell-null-btn:hover {
+  color: var(--text-primary);
+  border-color: var(--border-strong);
+}
+.cell-null-btn.active {
+  color: var(--accent);
+  border-color: var(--accent);
+  background: var(--bg-hover);
+}
+
+/* Actions column */
+.actions-th {
+  width: 1%;
+  white-space: nowrap;
+}
+.actions-cell {
+  white-space: nowrap;
+  text-align: right;
+}
+.row-delete-btn {
+  color: var(--text-muted);
+  opacity: 0;
+  transition: opacity 0.1s ease, color 0.15s ease;
+}
+.data-table tr:hover .row-delete-btn {
+  opacity: 1;
+}
+.row-delete-btn:hover {
+  color: var(--danger);
+}
+.confirm-delete {
+  display: inline-flex;
+  gap: 6px;
+}
+
+/* Add-row form */
+.add-row-form td {
+  background: var(--bg-secondary);
+  vertical-align: middle;
+  padding: 6px 10px;
+}
+.add-row-form .actions-cell {
+  display: flex;
+  gap: 6px;
+  justify-content: flex-end;
+}
+
+/* Inline row error */
+.row-error-row td {
+  padding: 6px 14px;
+  font-size: 12px;
+  color: var(--danger);
+  background: rgba(239, 68, 68, 0.07);
+  border-bottom: 1px solid rgba(239, 68, 68, 0.2);
+  white-space: normal;
+}
+
 /* Button active state */
 .btn.active {
   background: var(--accent-subtle);

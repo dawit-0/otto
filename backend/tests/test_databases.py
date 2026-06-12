@@ -123,6 +123,142 @@ def test_get_table_data_nonexistent_table(client, sample_db):
     assert "unknown table" in resp.json()["detail"].lower()
 
 
+# ── Row editing ──
+
+
+def test_update_row(client, sample_db):
+    info = _connect(client, sample_db)
+    resp = client.put(
+        f"/api/databases/{info['id']}/tables/books/rows",
+        json={"pk": {"id": 1}, "values": {"title": "Alpha Revised", "pages": 250}},
+    )
+    assert resp.status_code == 200
+    row = resp.json()["row"]
+    assert row["title"] == "Alpha Revised"
+    assert row["pages"] == 250
+
+    # Reflected in table data
+    data = client.get(f"/api/databases/{info['id']}/tables/books/data").json()
+    updated = next(r for r in data["rows"] if r["id"] == 1)
+    assert updated["title"] == "Alpha Revised"
+    assert updated["pages"] == 250
+
+
+def test_update_row_to_null(client, sample_db):
+    info = _connect(client, sample_db)
+    resp = client.put(
+        f"/api/databases/{info['id']}/tables/books/rows",
+        json={"pk": {"id": 1}, "values": {"pages": None}},
+    )
+    assert resp.status_code == 200
+    assert resp.json()["row"]["pages"] is None
+
+
+def test_update_row_not_found(client, sample_db):
+    info = _connect(client, sample_db)
+    resp = client.put(
+        f"/api/databases/{info['id']}/tables/books/rows",
+        json={"pk": {"id": 999}, "values": {"title": "X"}},
+    )
+    assert resp.status_code == 404
+
+
+def test_update_row_unknown_column(client, sample_db):
+    info = _connect(client, sample_db)
+    resp = client.put(
+        f"/api/databases/{info['id']}/tables/books/rows",
+        json={"pk": {"id": 1}, "values": {"not_a_col": "X"}},
+    )
+    assert resp.status_code == 400
+
+
+def test_update_row_empty_values(client, sample_db):
+    info = _connect(client, sample_db)
+    resp = client.put(
+        f"/api/databases/{info['id']}/tables/books/rows",
+        json={"pk": {"id": 1}, "values": {}},
+    )
+    assert resp.status_code == 400
+
+
+def test_update_row_unknown_table(client, sample_db):
+    info = _connect(client, sample_db)
+    resp = client.put(
+        f"/api/databases/{info['id']}/tables/nope/rows",
+        json={"pk": {"id": 1}, "values": {"title": "X"}},
+    )
+    assert resp.status_code == 404
+
+
+def test_insert_row(client, sample_db):
+    info = _connect(client, sample_db)
+    resp = client.post(
+        f"/api/databases/{info['id']}/tables/authors/rows",
+        json={"values": {"name": "Carol", "email": "carol@example.com"}},
+    )
+    assert resp.status_code == 200
+    row = resp.json()["row"]
+    assert row["name"] == "Carol"
+    assert row["email"] == "carol@example.com"
+    assert row["id"] is not None
+
+    data = client.get(f"/api/databases/{info['id']}/tables/authors/data").json()
+    assert data["total"] == 3
+
+
+def test_insert_row_empty_values(client, sample_db):
+    info = _connect(client, sample_db)
+    resp = client.post(
+        f"/api/databases/{info['id']}/tables/authors/rows",
+        json={"values": {}},
+    )
+    assert resp.status_code == 400
+
+
+def test_insert_row_violates_constraint(client, sample_db):
+    info = _connect(client, sample_db)
+    resp = client.post(
+        f"/api/databases/{info['id']}/tables/authors/rows",
+        json={"values": {"name": "Dup", "email": "alice@example.com"}},
+    )
+    assert resp.status_code == 400
+
+
+def test_delete_row(client, sample_db):
+    info = _connect(client, sample_db)
+    resp = client.request(
+        "DELETE",
+        f"/api/databases/{info['id']}/tables/books/rows",
+        json={"pk": {"id": 3}},
+    )
+    assert resp.status_code == 200
+    assert resp.json()["ok"] is True
+
+    data = client.get(f"/api/databases/{info['id']}/tables/books/data").json()
+    assert data["total"] == 2
+    assert all(r["id"] != 3 for r in data["rows"])
+
+
+def test_delete_row_not_found(client, sample_db):
+    info = _connect(client, sample_db)
+    resp = client.request(
+        "DELETE",
+        f"/api/databases/{info['id']}/tables/books/rows",
+        json={"pk": {"id": 999}},
+    )
+    assert resp.status_code == 404
+
+
+def test_delete_row_empty_pk(client, sample_db):
+    info = _connect(client, sample_db)
+    resp = client.request(
+        "DELETE",
+        f"/api/databases/{info['id']}/tables/books/rows",
+        json={"pk": {}},
+    )
+    assert resp.status_code == 400
+
+
 # ── Column Profile ──
 
 
