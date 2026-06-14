@@ -49,9 +49,16 @@ export default function TableBrowser({ dbId, tableName, columnDefs }: Props) {
 
   const [showProfile, setShowProfile] = useState(false);
 
+  const [showAddRow, setShowAddRow] = useState(false);
+  const [addRowValues, setAddRowValues] = useState<Record<string, string>>({});
+  const [addRowError, setAddRowError] = useState<string | null>(null);
+  const [addRowLoading, setAddRowLoading] = useState(false);
+
   const addFilterRef = useRef<HTMLDivElement>(null);
 
   const colNames = columnDefs.map((c) => c.name);
+  const pkColumns = columnDefs.filter((c) => c.pk).map((c) => c.name);
+  const canEdit = pkColumns.length > 0;
 
   const loadData = useCallback(async (nextOffset: number, currentSort: SortState | null, currentFilters: FilterRule[]) => {
     setLoading(true);
@@ -131,6 +138,52 @@ export default function TableBrowser({ dbId, tableName, columnDefs }: Props) {
   const hasActiveState = filters.length > 0 || sort !== null;
   const needsValueInput = VALUE_OPS.includes(newOp);
 
+  const buildPk = (row: Record<string, unknown>): Record<string, unknown> => {
+    const pk: Record<string, unknown> = {};
+    for (const col of pkColumns) pk[col] = row[col];
+    return pk;
+  };
+
+  const handleUpdateCell = async (rowIndex: number, column: string, value: string | null) => {
+    const row = rows[rowIndex];
+    const { row: updated } = await api.updateRow(dbId, tableName, buildPk(row), { [column]: value });
+    setRows((prev) => prev.map((r, i) => (i === rowIndex ? { ...r, ...updated } : r)));
+  };
+
+  const handleDeleteRow = async (rowIndex: number) => {
+    const row = rows[rowIndex];
+    await api.deleteRow(dbId, tableName, buildPk(row));
+    setRows((prev) => prev.filter((_, i) => i !== rowIndex));
+    setTotal((prev) => Math.max(0, prev - 1));
+  };
+
+  const openAddRow = () => {
+    const initial: Record<string, string> = {};
+    for (const col of columnDefs) initial[col.name] = '';
+    setAddRowValues(initial);
+    setAddRowError(null);
+    setShowAddRow(true);
+  };
+
+  const handleAddRow = async () => {
+    setAddRowLoading(true);
+    setAddRowError(null);
+    try {
+      const values: Record<string, string> = {};
+      for (const [col, val] of Object.entries(addRowValues)) {
+        if (val !== '') values[col] = val;
+      }
+      const { row } = await api.insertRow(dbId, tableName, values);
+      setRows((prev) => [row, ...prev]);
+      setTotal((prev) => prev + 1);
+      setShowAddRow(false);
+    } catch (e) {
+      setAddRowError(e instanceof Error ? e.message : 'Failed to add row');
+    } finally {
+      setAddRowLoading(false);
+    }
+  };
+
   return (
     <div className={`table-browser-wrapper${showProfile ? ' profile-open' : ''}`}>
       <div className="table-browser-main">
@@ -190,6 +243,11 @@ export default function TableBrowser({ dbId, tableName, columnDefs }: Props) {
             <span className="filter-row-count">
               {total.toLocaleString()} {hasActiveState ? 'matching ' : ''}row{total !== 1 ? 's' : ''}
             </span>
+            {!canEdit && (
+              <span className="readonly-badge" title="This table has no primary key, so rows can't be edited or deleted">
+                Read-only
+              </span>
+            )}
             <button
               className={`btn btn-sm${showProfile ? ' btn-profile-active' : ''}`}
               onClick={() => setShowProfile((v) => !v)}
@@ -286,6 +344,10 @@ export default function TableBrowser({ dbId, tableName, columnDefs }: Props) {
           sortColumn={sort?.column}
           sortDirection={sort?.direction}
           onSort={handleSort}
+          editable={canEdit}
+          onUpdateCell={handleUpdateCell}
+          onDeleteRow={handleDeleteRow}
+          onAddRow={openAddRow}
         />
       )}
       </div>
@@ -296,6 +358,41 @@ export default function TableBrowser({ dbId, tableName, columnDefs }: Props) {
           tableName={tableName}
           onClose={() => setShowProfile(false)}
         />
+      )}
+
+      {/* ── Add Row Modal ── */}
+      {showAddRow && (
+        <div className="modal-overlay" onClick={() => setShowAddRow(false)}>
+          <div className="modal modal-wide" onClick={(e) => e.stopPropagation()}>
+            <div className="modal-title">Add Row to {tableName}</div>
+            <div className="add-row-fields">
+              {columnDefs.map((col, i) => (
+                <div key={col.name} className="modal-field">
+                  <label>
+                    {col.name}
+                    <span className="add-row-col-type">{col.type || 'ANY'}</span>
+                    {col.pk && <span className="add-row-col-flag">PK</span>}
+                    {col.notnull && !col.pk && <span className="add-row-col-flag">NOT NULL</span>}
+                  </label>
+                  <input
+                    value={addRowValues[col.name] ?? ''}
+                    onChange={(e) => setAddRowValues((prev) => ({ ...prev, [col.name]: e.target.value }))}
+                    placeholder={col.default ? `default: ${col.default}` : col.pk ? 'auto-generated if left blank' : 'NULL if left blank'}
+                    autoFocus={i === 0}
+                    onKeyDown={(e) => { if (e.key === 'Escape') setShowAddRow(false); }}
+                  />
+                </div>
+              ))}
+            </div>
+            {addRowError && <div className="ai-error" style={{ marginBottom: 12 }}>{addRowError}</div>}
+            <div className="modal-actions">
+              <button className="btn" onClick={() => setShowAddRow(false)}>Cancel</button>
+              <button className="btn btn-primary" onClick={handleAddRow} disabled={addRowLoading}>
+                {addRowLoading ? 'Adding…' : 'Add Row'}
+              </button>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );

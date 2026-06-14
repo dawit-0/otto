@@ -34,6 +34,19 @@ logger = get_logger("databases")
 router = APIRouter(prefix="/api/databases", tags=["databases"])
 
 
+class InsertRowRequest(BaseModel):
+    values: dict[str, Any]
+
+
+class UpdateRowRequest(BaseModel):
+    pk: dict[str, Any]
+    values: dict[str, Any]
+
+
+class DeleteRowRequest(BaseModel):
+    pk: dict[str, Any]
+
+
 class ConnectRequest(BaseModel):
     db_type: str = "sqlite"
     path: str | None = None
@@ -313,6 +326,86 @@ def get_table_data(
         raise HTTPException(status_code=status, detail=str(e))
     except Exception as e:
         logger.error("Error reading table '%s' from db_id=%s: %s", table_name, db_id, e)
+        raise HTTPException(status_code=400, detail=str(e))
+    finally:
+        driver.close(conn)
+
+
+def _get_pk_columns(driver: DatabaseDriver, conn: Any, table_name: str) -> set[str]:
+    tables = driver.get_table_info(conn)
+    table = next((t for t in tables if t["name"] == table_name), None)
+    if table is None:
+        raise HTTPException(status_code=404, detail=f"Table '{table_name}' not found")
+    return {c["name"] for c in table["columns"] if c["pk"]}
+
+
+@router.post("/{db_id}/tables/{table_name}/rows")
+def insert_row(db_id: str, table_name: str, req: InsertRowRequest, db: Session = Depends(get_db)):
+    driver = get_driver_for_db(db_id, db)
+    conn = driver.connect()
+    try:
+        driver.assert_valid_table(conn, table_name)
+        row = driver.insert_row(conn, table_name, req.values)
+        logger.info("Inserted row into '%s' (db_id=%s)", table_name, db_id)
+        return {"row": row}
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        logger.error("Insert into '%s' (db_id=%s) failed: %s", table_name, db_id, e)
+        raise HTTPException(status_code=400, detail=str(e))
+    finally:
+        driver.close(conn)
+
+
+@router.patch("/{db_id}/tables/{table_name}/rows")
+def update_row(db_id: str, table_name: str, req: UpdateRowRequest, db: Session = Depends(get_db)):
+    driver = get_driver_for_db(db_id, db)
+    conn = driver.connect()
+    try:
+        driver.assert_valid_table(conn, table_name)
+        pk_cols = _get_pk_columns(driver, conn, table_name)
+        if not pk_cols:
+            raise HTTPException(status_code=400, detail="Table has no primary key; editing is not supported")
+        if set(req.pk.keys()) != pk_cols:
+            raise HTTPException(status_code=400, detail="Primary key columns do not match table definition")
+        if not req.values:
+            raise HTTPException(status_code=400, detail="No fields to update")
+
+        row = driver.update_row(conn, table_name, req.pk, req.values)
+        logger.info("Updated row in '%s' (db_id=%s)", table_name, db_id)
+        return {"row": row}
+    except HTTPException:
+        raise
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        logger.error("Update of '%s' (db_id=%s) failed: %s", table_name, db_id, e)
+        raise HTTPException(status_code=400, detail=str(e))
+    finally:
+        driver.close(conn)
+
+
+@router.delete("/{db_id}/tables/{table_name}/rows")
+def delete_row(db_id: str, table_name: str, req: DeleteRowRequest, db: Session = Depends(get_db)):
+    driver = get_driver_for_db(db_id, db)
+    conn = driver.connect()
+    try:
+        driver.assert_valid_table(conn, table_name)
+        pk_cols = _get_pk_columns(driver, conn, table_name)
+        if not pk_cols:
+            raise HTTPException(status_code=400, detail="Table has no primary key; editing is not supported")
+        if set(req.pk.keys()) != pk_cols:
+            raise HTTPException(status_code=400, detail="Primary key columns do not match table definition")
+
+        driver.delete_row(conn, table_name, req.pk)
+        logger.info("Deleted row from '%s' (db_id=%s)", table_name, db_id)
+        return {"ok": True}
+    except HTTPException:
+        raise
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        logger.error("Delete from '%s' (db_id=%s) failed: %s", table_name, db_id, e)
         raise HTTPException(status_code=400, detail=str(e))
     finally:
         driver.close(conn)

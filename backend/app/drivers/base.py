@@ -77,6 +77,23 @@ class DatabaseDriver(ABC):
         ...
 
     @abstractmethod
+    def update_row(self, conn: Any, table: str, pk_values: dict, updates: dict) -> dict:
+        """Update the single row matched by ``pk_values`` and return it as it
+        exists after the update (reflecting defaults, triggers, etc.)."""
+        ...
+
+    @abstractmethod
+    def insert_row(self, conn: Any, table: str, values: dict) -> dict:
+        """Insert a new row with the given column values and return the row
+        as stored (including generated defaults / serial ids)."""
+        ...
+
+    @abstractmethod
+    def delete_row(self, conn: Any, table: str, pk_values: dict) -> None:
+        """Delete the single row matched by ``pk_values``."""
+        ...
+
+    @abstractmethod
     def validate(self) -> None:
         """Test connectivity. Raise on failure."""
         ...
@@ -150,6 +167,30 @@ class DatabaseDriver(ABC):
             elif op == "is_not_null":
                 clauses.append(f"{qcol} IS NOT NULL")
         return "WHERE " + " AND ".join(clauses), params
+
+    def build_pk_where(
+        self,
+        pk_values: dict,
+        valid_columns: set[str],
+    ) -> tuple[str, list]:
+        """Build a WHERE clause that matches a single row by its primary-key
+        column values, returning ``(sql, params)`` for parameter binding."""
+        if not pk_values:
+            raise ValueError("No primary key values provided")
+        ph = self.placeholder
+        clauses: list[str] = []
+        params: list = []
+        for col, val in pk_values.items():
+            if col not in valid_columns:
+                raise ValueError(f"Unknown column: {col!r}")
+            clauses.append(f"{self.quote_identifier(col)} = {ph}")
+            params.append(val)
+        return "WHERE " + " AND ".join(clauses), params
+
+    def assert_valid_columns(self, columns, valid_columns: set[str]) -> None:
+        for col in columns:
+            if col not in valid_columns:
+                raise ValueError(f"Unknown column: {col!r}")
 
     def build_order_by(
         self,

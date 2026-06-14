@@ -131,6 +131,70 @@ class SQLiteDriver(DatabaseDriver):
         cursor = conn.execute(f"PRAGMA table_info({quoted})")
         return [row["name"] for row in cursor.fetchall()]
 
+    def update_row(self, conn: Any, table: str, pk_values: dict, updates: dict) -> dict:
+        self.assert_valid_table(conn, table)
+        valid_columns = set(self.get_column_names(conn, table))
+        if not updates:
+            raise ValueError("No fields to update")
+        self.assert_valid_columns(updates.keys(), valid_columns)
+
+        quoted = self.quote_identifier(table)
+        set_sql = ", ".join(f"{self.quote_identifier(c)} = ?" for c in updates)
+        where_sql, where_params = self.build_pk_where(pk_values, valid_columns)
+
+        cursor = conn.execute(
+            f"UPDATE {quoted} SET {set_sql} {where_sql}",
+            (*updates.values(), *where_params),
+        )
+        if cursor.rowcount == 0:
+            conn.rollback()
+            raise ValueError("Row not found")
+        conn.commit()
+
+        new_pk = dict(pk_values)
+        for col in new_pk:
+            if col in updates:
+                new_pk[col] = updates[col]
+        return self._fetch_row(conn, table, new_pk, valid_columns)
+
+    def insert_row(self, conn: Any, table: str, values: dict) -> dict:
+        self.assert_valid_table(conn, table)
+        valid_columns = set(self.get_column_names(conn, table))
+        self.assert_valid_columns(values.keys(), valid_columns)
+
+        quoted = self.quote_identifier(table)
+        if values:
+            cols_sql = ", ".join(self.quote_identifier(c) for c in values)
+            placeholders = ", ".join("?" for _ in values)
+            cursor = conn.execute(
+                f"INSERT INTO {quoted} ({cols_sql}) VALUES ({placeholders})",
+                tuple(values.values()),
+            )
+        else:
+            cursor = conn.execute(f"INSERT INTO {quoted} DEFAULT VALUES")
+        conn.commit()
+
+        row = conn.execute(f"SELECT * FROM {quoted} WHERE rowid = ?", (cursor.lastrowid,)).fetchone()
+        return dict(row) if row else {}
+
+    def delete_row(self, conn: Any, table: str, pk_values: dict) -> None:
+        self.assert_valid_table(conn, table)
+        valid_columns = set(self.get_column_names(conn, table))
+        quoted = self.quote_identifier(table)
+        where_sql, where_params = self.build_pk_where(pk_values, valid_columns)
+
+        cursor = conn.execute(f"DELETE FROM {quoted} {where_sql}", tuple(where_params))
+        if cursor.rowcount == 0:
+            conn.rollback()
+            raise ValueError("Row not found")
+        conn.commit()
+
+    def _fetch_row(self, conn: Any, table: str, pk_values: dict, valid_columns: set[str]) -> dict:
+        quoted = self.quote_identifier(table)
+        where_sql, where_params = self.build_pk_where(pk_values, valid_columns)
+        row = conn.execute(f"SELECT * FROM {quoted} {where_sql}", tuple(where_params)).fetchone()
+        return dict(row) if row else {}
+
     def get_table_data(
         self, conn: Any, table: str, limit: int, offset: int,
         sort_column: str | None = None,

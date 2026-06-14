@@ -3395,3 +3395,123 @@ body {
   font-family: inherit;
   color: var(--text-muted);
 }
+
+/* ─── Editable Data Table ─── */
+.readonly-badge {
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  color: var(--text-muted);
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border);
+  border-radius: 9999px;
+  padding: 2px 8px;
+  white-space: nowrap;
+}
+.data-table td.editable-cell {
+  cursor: text;
+}
+.data-table td.editable-cell:hover {
+  outline: 1px dashed var(--border-strong);
+  outline-offset: -1px;
+}
+.data-table td.editing-cell {
+  padding: 4px 8px;
+  overflow: visible;
+}
+.cell-edit-wrapper {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+.cell-edit-input {
+  flex: 1;
+  min-width: 60px;
+  padding: 4px 6px;
+  background: var(--bg-primary);
+  border: 1px solid var(--accent);
+  border-radius: var(--radius-sm);
+  color: var(--text-primary);
+  font-size: 12px;
+  font-family: var(--font-mono);
+  outline: none;
+}
+.cell-edit-null-btn {
+  flex-shrink: 0;
+  width: 20px;
+  height: 20px;
+  padding: 0;
+  border: 1px solid var(--border);
+  background: var(--bg-tertiary);
+  color: var(--text-muted);
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  font-size: 12px;
+  line-height: 1;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+.cell-edit-null-btn:hover {
+  color: var(--text-primary);
+  border-color: var(--border-strong);
+}
+.cell-edit-error {
+  position: absolute;
+  margin-top: 4px;
+  padding: 4px 8px;
+  background: var(--danger);
+  color: #fff;
+  font-size: 11px;
+  border-radius: var(--radius-sm);
+  white-space: nowrap;
+  z-index: 2;
+  box-shadow: var(--shadow-lg);
+}
+.row-actions-th {
+  width: 36px;
+}
+.row-actions-td {
+  width: 36px;
+  text-align: center;
+  padding: 4px !important;
+}
+.row-delete-btn {
+  opacity: 0;
+  color: var(--text-muted);
+}
+.data-table tr:hover .row-delete-btn {
+  opacity: 1;
+}
+.row-delete-btn:hover {
+  color: var(--danger);
+  background: rgba(239, 68, 68, 0.1);
+}
+.row-deleting {
+  opacity: 0.4;
+  pointer-events: none;
+}
+
+/* Add row modal */
+.add-row-fields {
+  max-height: 50vh;
+  overflow-y: auto;
+  padding-right: 4px;
+}
+.add-row-col-type {
+  margin-left: 8px;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--text-muted);
+  text-transform: none;
+  letter-spacing: normal;
+  font-weight: 400;
+}
+.add-row-col-flag {
+  margin-left: 6px;
+  font-size: 10px;
+  font-weight: 700;
+  color: var(--accent-hover);
+  letter-spacing: 0.03em;
+}

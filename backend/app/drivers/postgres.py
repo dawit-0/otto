@@ -98,6 +98,73 @@ class PostgresDriver(DatabaseDriver):
     def get_column_names(self, conn: Any, table: str) -> list[str]:
         return [c["name"] for c in self._get_columns(conn, table)]
 
+    def update_row(self, conn: Any, table: str, pk_values: dict, updates: dict) -> dict:
+        self.assert_valid_table(conn, table)
+        valid_columns = set(self.get_column_names(conn, table))
+        if not updates:
+            raise ValueError("No fields to update")
+        self.assert_valid_columns(updates.keys(), valid_columns)
+
+        quoted = self.quote_identifier(table)
+        set_sql = ", ".join(f"{self.quote_identifier(c)} = %s" for c in updates)
+        where_sql, where_params = self.build_pk_where(pk_values, valid_columns)
+
+        cur = conn.cursor()
+        try:
+            cur.execute(
+                f"UPDATE {quoted} SET {set_sql} {where_sql} RETURNING *",
+                (*updates.values(), *where_params),
+            )
+            row = cur.fetchone()
+            if row is None:
+                conn.rollback()
+                raise ValueError("Row not found")
+            columns = [desc[0] for desc in cur.description]
+            conn.commit()
+            return dict(zip(columns, row))
+        finally:
+            cur.close()
+
+    def insert_row(self, conn: Any, table: str, values: dict) -> dict:
+        self.assert_valid_table(conn, table)
+        valid_columns = set(self.get_column_names(conn, table))
+        self.assert_valid_columns(values.keys(), valid_columns)
+
+        quoted = self.quote_identifier(table)
+        cur = conn.cursor()
+        try:
+            if values:
+                cols_sql = ", ".join(self.quote_identifier(c) for c in values)
+                placeholders = ", ".join(["%s"] * len(values))
+                cur.execute(
+                    f"INSERT INTO {quoted} ({cols_sql}) VALUES ({placeholders}) RETURNING *",
+                    tuple(values.values()),
+                )
+            else:
+                cur.execute(f"INSERT INTO {quoted} DEFAULT VALUES RETURNING *")
+            row = cur.fetchone()
+            columns = [desc[0] for desc in cur.description]
+            conn.commit()
+            return dict(zip(columns, row))
+        finally:
+            cur.close()
+
+    def delete_row(self, conn: Any, table: str, pk_values: dict) -> None:
+        self.assert_valid_table(conn, table)
+        valid_columns = set(self.get_column_names(conn, table))
+        quoted = self.quote_identifier(table)
+        where_sql, where_params = self.build_pk_where(pk_values, valid_columns)
+
+        cur = conn.cursor()
+        try:
+            cur.execute(f"DELETE FROM {quoted} {where_sql}", tuple(where_params))
+            if cur.rowcount == 0:
+                conn.rollback()
+                raise ValueError("Row not found")
+            conn.commit()
+        finally:
+            cur.close()
+
     def get_table_data(
         self, conn: Any, table: str, limit: int, offset: int,
         sort_column: str | None = None,
