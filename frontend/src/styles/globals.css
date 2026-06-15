@@ -651,6 +651,115 @@ body {
   font-style: italic;
 }
 
+/* ─── Editable Data Table ─── */
+.editable-cell {
+  cursor: text;
+}
+.editable-cell:hover {
+  outline: 1px solid var(--accent);
+  outline-offset: -1px;
+  background: var(--accent-subtle);
+}
+.data-table td.cell-editing {
+  padding: 3px 8px;
+}
+.cell-edit-wrap {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+.cell-edit-input {
+  flex: 1;
+  min-width: 60px;
+  width: 100%;
+  padding: 4px 6px;
+  background: var(--bg-primary);
+  border: 1px solid var(--accent);
+  border-radius: var(--radius-sm);
+  color: var(--text-primary);
+  font-size: 12px;
+  font-family: var(--font-mono);
+  outline: none;
+}
+.cell-edit-input:disabled {
+  opacity: 0.6;
+}
+.cell-null-btn {
+  flex-shrink: 0;
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  color: var(--text-muted);
+  font-size: 11px;
+  width: 22px;
+  height: 22px;
+  line-height: 1;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+.cell-null-btn:hover {
+  color: var(--text-primary);
+  border-color: var(--border-strong);
+}
+.row-actions-th,
+.row-actions-cell {
+  width: 56px;
+  min-width: 56px;
+  text-align: center;
+  white-space: nowrap;
+}
+.row-action-group {
+  display: inline-flex;
+  gap: 4px;
+}
+.btn-row-action {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: var(--radius-sm);
+  color: var(--text-muted);
+  cursor: pointer;
+  font-size: 12px;
+  transition: all 0.15s ease;
+}
+.btn-row-action:hover:not(:disabled) {
+  color: var(--text-primary);
+  background: var(--bg-tertiary);
+  border-color: var(--border);
+}
+.btn-row-action:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+.btn-row-delete:hover:not(:disabled) {
+  color: var(--danger);
+  background: rgba(239, 68, 68, 0.08);
+  border-color: rgba(239, 68, 68, 0.3);
+}
+.btn-row-confirm-delete {
+  color: var(--danger);
+}
+.btn-row-confirm-delete:hover:not(:disabled) {
+  background: rgba(239, 68, 68, 0.12);
+  border-color: rgba(239, 68, 68, 0.3);
+}
+.btn-row-confirm {
+  color: var(--success);
+}
+.btn-row-confirm:hover:not(:disabled) {
+  background: rgba(34, 197, 94, 0.12);
+  border-color: rgba(34, 197, 94, 0.3);
+}
+.add-row-form-row td {
+  padding: 4px 8px;
+  background: var(--accent-subtle);
+  border-bottom: 1px solid var(--border-strong);
+}
+
 /* ─── Empty State ─── */
 .empty-state {
   display: flex;

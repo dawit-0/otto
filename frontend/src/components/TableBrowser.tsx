@@ -82,6 +82,33 @@ export default function TableBrowser({ dbId, tableName, columnDefs }: Props) {
     loadData(0, sort, filters);
   }, [dbId, tableName, sort, filters, loadData]);
 
+  const pkColumns = columnDefs.filter((c) => c.pk).map((c) => c.name);
+
+  const handleCellEdit = useCallback(async (row: Record<string, unknown>, column: string, value: string | null) => {
+    const pk: Record<string, unknown> = {};
+    for (const col of pkColumns) pk[col] = row[col];
+    await api.updateRow(dbId, tableName, pk, { [column]: value });
+    await loadData(offset, sort, filters);
+  }, [dbId, tableName, pkColumns, offset, sort, filters, loadData]);
+
+  const handleDeleteRow = useCallback(async (row: Record<string, unknown>) => {
+    const pk: Record<string, unknown> = {};
+    for (const col of pkColumns) pk[col] = row[col];
+    await api.deleteRow(dbId, tableName, pk);
+    // If we deleted the last row on a page beyond the first, step back a page
+    const nextOffset = (rows.length === 1 && offset > 0) ? Math.max(0, offset - LIMIT) : offset;
+    await loadData(nextOffset, sort, filters);
+  }, [dbId, tableName, pkColumns, offset, rows.length, sort, filters, loadData]);
+
+  const handleAddRow = useCallback(async (values: Record<string, string>) => {
+    const payload: Record<string, unknown> = {};
+    for (const [col, val] of Object.entries(values)) {
+      if (val !== '') payload[col] = val;
+    }
+    await api.insertRow(dbId, tableName, payload);
+    await loadData(0, sort, filters);
+  }, [dbId, tableName, sort, filters, loadData]);
+
   // Close add-filter popover on outside click
   useEffect(() => {
     if (!showAddFilter) return;
@@ -286,6 +313,10 @@ export default function TableBrowser({ dbId, tableName, columnDefs }: Props) {
           sortColumn={sort?.column}
           sortDirection={sort?.direction}
           onSort={handleSort}
+          columnDefs={columnDefs}
+          onCellEdit={handleCellEdit}
+          onDeleteRow={handleDeleteRow}
+          onAddRow={handleAddRow}
         />
       )}
       </div>

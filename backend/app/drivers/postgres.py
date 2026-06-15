@@ -31,6 +31,15 @@ class PostgresDriver(DatabaseDriver):
         conn.commit()
         return [], [{"affected_rows": cursor.rowcount}]
 
+    def execute_write(self, conn: Any, sql: str, params: list) -> int:
+        cur = conn.cursor()
+        try:
+            cur.execute(sql, params)
+            conn.commit()
+            return cur.rowcount
+        finally:
+            cur.close()
+
     def validate(self) -> None:
         conn = psycopg2.connect(self._dsn)
         try:

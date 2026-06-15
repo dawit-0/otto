@@ -30,6 +30,11 @@ class SQLiteDriver(DatabaseDriver):
         conn.commit()
         return [], [{"affected_rows": cursor.rowcount}]
 
+    def execute_write(self, conn: Any, sql: str, params: list) -> int:
+        cursor = conn.execute(sql, params)
+        conn.commit()
+        return cursor.rowcount
+
     def validate(self) -> None:
         conn = sqlite3.connect(self._path)
         try:

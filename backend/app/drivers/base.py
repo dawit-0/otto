@@ -77,6 +77,12 @@ class DatabaseDriver(ABC):
         ...
 
     @abstractmethod
+    def execute_write(self, conn: Any, sql: str, params: list) -> int:
+        """Execute a parameterized INSERT/UPDATE/DELETE, commit, and return
+        the number of affected rows."""
+        ...
+
+    @abstractmethod
     def validate(self) -> None:
         """Test connectivity. Raise on failure."""
         ...
@@ -163,3 +169,52 @@ class DatabaseDriver(ABC):
             raise ValueError(f"Unknown column: {sort_column!r}")
         direction = "DESC" if (sort_direction or "asc").lower() == "desc" else "ASC"
         return f"ORDER BY {self.quote_identifier(sort_column)} {direction}"
+
+    def _assert_known_columns(self, conn: Any, table: str, columns: Any) -> None:
+        valid_columns = set(self.get_column_names(conn, table))
+        for col in columns:
+            if col not in valid_columns:
+                raise ValueError(f"Unknown column: {col!r}")
+
+    def update_row(self, conn: Any, table: str, pk: dict, values: dict) -> int:
+        """Update a single row identified by ``pk`` (column -> value) with the
+        new ``values`` (column -> value). Returns the number of rows affected."""
+        self.assert_valid_table(conn, table)
+        if not pk:
+            raise ValueError("Cannot update a row without primary key values")
+        if not values:
+            raise ValueError("No column values provided to update")
+        self._assert_known_columns(conn, table, {**pk, **values})
+
+        ph = self.placeholder
+        set_sql = ", ".join(f"{self.quote_identifier(c)} = {ph}" for c in values)
+        where_sql = " AND ".join(f"{self.quote_identifier(c)} = {ph}" for c in pk)
+        sql = f"UPDATE {self.quote_identifier(table)} SET {set_sql} WHERE {where_sql}"
+        return self.execute_write(conn, sql, [*values.values(), *pk.values()])
+
+    def insert_row(self, conn: Any, table: str, values: dict) -> int:
+        """Insert a new row with the given ``values`` (column -> value).
+        Returns the number of rows affected (always 1 on success)."""
+        self.assert_valid_table(conn, table)
+        if not values:
+            raise ValueError("No column values provided to insert")
+        self._assert_known_columns(conn, table, values)
+
+        ph = self.placeholder
+        cols_sql = ", ".join(self.quote_identifier(c) for c in values)
+        placeholders_sql = ", ".join(ph for _ in values)
+        sql = f"INSERT INTO {self.quote_identifier(table)} ({cols_sql}) VALUES ({placeholders_sql})"
+        return self.execute_write(conn, sql, list(values.values()))
+
+    def delete_row(self, conn: Any, table: str, pk: dict) -> int:
+        """Delete a single row identified by ``pk`` (column -> value).
+        Returns the number of rows affected."""
+        self.assert_valid_table(conn, table)
+        if not pk:
+            raise ValueError("Cannot delete a row without primary key values")
+        self._assert_known_columns(conn, table, pk)
+
+        ph = self.placeholder
+        where_sql = " AND ".join(f"{self.quote_identifier(c)} = {ph}" for c in pk)
+        sql = f"DELETE FROM {self.quote_identifier(table)} WHERE {where_sql}"
+        return self.execute_write(conn, sql, list(pk.values()))

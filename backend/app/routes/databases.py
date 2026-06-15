@@ -44,6 +44,19 @@ class ConnectRequest(BaseModel):
     password: str | None = None
 
 
+class RowUpdateRequest(BaseModel):
+    pk: dict[str, Any]
+    values: dict[str, Any]
+
+
+class RowInsertRequest(BaseModel):
+    values: dict[str, Any]
+
+
+class RowDeleteRequest(BaseModel):
+    pk: dict[str, Any]
+
+
 def _resolve_record(db_id: str, db: Session) -> ConnectedDatabase:
     record = db.query(ConnectedDatabase).filter(ConnectedDatabase.db_id == db_id).first()
     if not record:
@@ -313,6 +326,77 @@ def get_table_data(
         raise HTTPException(status_code=status, detail=str(e))
     except Exception as e:
         logger.error("Error reading table '%s' from db_id=%s: %s", table_name, db_id, e)
+        raise HTTPException(status_code=400, detail=str(e))
+    finally:
+        driver.close(conn)
+
+
+@router.put("/{db_id}/tables/{table_name}/rows")
+def update_row(db_id: str, table_name: str, req: RowUpdateRequest, db: Session = Depends(get_db)):
+    """Update a single row, identified by its primary key column(s)."""
+    driver = get_driver_for_db(db_id, db)
+    db_name = get_db_name(db_id, db)
+    conn = driver.connect()
+    try:
+        affected = driver.update_row(conn, table_name, req.pk, req.values)
+        if affected == 0:
+            raise HTTPException(status_code=404, detail="Row not found")
+        logger.info("Updated row in '%s'.'%s' (db_id=%s)", db_name, table_name, db_id)
+        return {"ok": True, "affected": affected}
+    except ValueError as e:
+        logger.warning("Rejected row update on '%s': %s", table_name, e)
+        status = 404 if str(e).lower().startswith("unknown table") else 400
+        raise HTTPException(status_code=status, detail=str(e))
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error("Failed to update row in '%s'.'%s': %s", db_name, table_name, e)
+        raise HTTPException(status_code=400, detail=str(e))
+    finally:
+        driver.close(conn)
+
+
+@router.post("/{db_id}/tables/{table_name}/rows")
+def insert_row(db_id: str, table_name: str, req: RowInsertRequest, db: Session = Depends(get_db)):
+    """Insert a new row into the table."""
+    driver = get_driver_for_db(db_id, db)
+    db_name = get_db_name(db_id, db)
+    conn = driver.connect()
+    try:
+        affected = driver.insert_row(conn, table_name, req.values)
+        logger.info("Inserted row into '%s'.'%s' (db_id=%s)", db_name, table_name, db_id)
+        return {"ok": True, "affected": affected}
+    except ValueError as e:
+        logger.warning("Rejected row insert on '%s': %s", table_name, e)
+        status = 404 if str(e).lower().startswith("unknown table") else 400
+        raise HTTPException(status_code=status, detail=str(e))
+    except Exception as e:
+        logger.error("Failed to insert row into '%s'.'%s': %s", db_name, table_name, e)
+        raise HTTPException(status_code=400, detail=str(e))
+    finally:
+        driver.close(conn)
+
+
+@router.delete("/{db_id}/tables/{table_name}/rows")
+def delete_row(db_id: str, table_name: str, req: RowDeleteRequest, db: Session = Depends(get_db)):
+    """Delete a single row, identified by its primary key column(s)."""
+    driver = get_driver_for_db(db_id, db)
+    db_name = get_db_name(db_id, db)
+    conn = driver.connect()
+    try:
+        affected = driver.delete_row(conn, table_name, req.pk)
+        if affected == 0:
+            raise HTTPException(status_code=404, detail="Row not found")
+        logger.info("Deleted row from '%s'.'%s' (db_id=%s)", db_name, table_name, db_id)
+        return {"ok": True, "affected": affected}
+    except ValueError as e:
+        logger.warning("Rejected row delete on '%s': %s", table_name, e)
+        status = 404 if str(e).lower().startswith("unknown table") else 400
+        raise HTTPException(status_code=status, detail=str(e))
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error("Failed to delete row from '%s'.'%s': %s", db_name, table_name, e)
         raise HTTPException(status_code=400, detail=str(e))
     finally:
         driver.close(conn)
