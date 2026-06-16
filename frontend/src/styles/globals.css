@@ -420,6 +420,111 @@ body {
   flex: 1;
   overflow: hidden;
 }
+
+/* ── Query Tab Bar ── */
+.query-tab-bar {
+  display: flex;
+  align-items: stretch;
+  overflow-x: auto;
+  scrollbar-width: none;
+  border-bottom: 1px solid var(--border);
+  background: var(--bg-secondary);
+  padding: 0 6px;
+  min-height: 36px;
+  flex-shrink: 0;
+  gap: 1px;
+}
+.query-tab-bar::-webkit-scrollbar { display: none; }
+
+.query-tab {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 0 10px;
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--text-muted);
+  background: none;
+  border: none;
+  border-bottom: 2px solid transparent;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: color 0.12s ease, background 0.12s ease, border-color 0.12s ease;
+  font-family: inherit;
+  max-width: 180px;
+  flex-shrink: 0;
+  border-radius: 0;
+  position: relative;
+}
+.query-tab:hover {
+  color: var(--text-secondary);
+  background: rgba(255, 255, 255, 0.03);
+}
+.query-tab.active {
+  color: var(--text-primary);
+  border-bottom-color: var(--accent);
+}
+
+.query-tab-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  max-width: 130px;
+}
+
+.query-tab-close {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  height: 16px;
+  border-radius: 3px;
+  font-size: 15px;
+  line-height: 1;
+  color: var(--text-muted);
+  opacity: 0;
+  transition: opacity 0.1s ease, background 0.1s ease, color 0.1s ease;
+  flex-shrink: 0;
+  cursor: pointer;
+  margin-left: 1px;
+}
+.query-tab:hover .query-tab-close,
+.query-tab.active .query-tab-close {
+  opacity: 0.6;
+}
+.query-tab-close:hover {
+  opacity: 1 !important;
+  background: var(--bg-hover);
+  color: var(--text-primary);
+}
+
+.query-tab-add {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  min-width: 30px;
+  border: none;
+  background: none;
+  color: var(--text-muted);
+  cursor: pointer;
+  border-radius: var(--radius-sm);
+  font-size: 18px;
+  line-height: 1;
+  transition: color 0.12s ease, background 0.12s ease;
+  font-family: inherit;
+  flex-shrink: 0;
+  margin-left: 4px;
+  align-self: center;
+  height: 24px;
+}
+.query-tab-add:hover {
+  background: var(--bg-tertiary);
+  color: var(--accent-hover);
+}
+
 .query-editor {
   padding: 16px;
   border-bottom: 1px solid var(--border);

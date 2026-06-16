@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { api, type QueryResponse, type QueryHistoryEntry, type SavedQueryEntry, type QueryParam, type ExplainPlanResponse } from '../api';
 import DataTable from './DataTable';
 import QueryInsights from './QueryInsights';
@@ -14,6 +14,57 @@ interface Props {
   onVisualize?: (sql: string, chartType: ChartType, xColumn: string, yColumns: string[]) => void;
 }
 
+interface QueryTab {
+  id: string;
+  sql: string;
+  result: QueryResponse | null;
+  error: string | null;
+  loading: boolean;
+  plan: ExplainPlanResponse | null;
+  planLoading: boolean;
+  planError: string | null;
+}
+
+function makeTab(sql = ''): QueryTab {
+  return {
+    id: Math.random().toString(36).slice(2, 9),
+    sql,
+    result: null,
+    error: null,
+    loading: false,
+    plan: null,
+    planLoading: false,
+    planError: null,
+  };
+}
+
+function tabLabel(tab: QueryTab, index: number): string {
+  const s = tab.sql.trim();
+  if (!s) return `Query ${index + 1}`;
+  const match = s.match(/(?:from|join|update|into)\s+[`"[]?(\w+)/i);
+  if (match) return match[1];
+  const firstWord = s.split(/\s+/)[0];
+  return firstWord.length > 12 ? firstWord.slice(0, 12) : firstWord || `Query ${index + 1}`;
+}
+
+function storageKey(dbId: string) { return `otto-tabs-${dbId}`; }
+
+function loadTabs(dbId: string): { tabs: Pick<QueryTab, 'id' | 'sql'>[]; activeId: string } | null {
+  try {
+    const raw = localStorage.getItem(storageKey(dbId));
+    return raw ? JSON.parse(raw) : null;
+  } catch { return null; }
+}
+
+function saveTabs(dbId: string, tabs: QueryTab[], activeId: string) {
+  try {
+    localStorage.setItem(storageKey(dbId), JSON.stringify({
+      tabs: tabs.map(({ id, sql }) => ({ id, sql })),
+      activeId,
+    }));
+  } catch { /* ignore */ }
+}
+
 function detectParams(sql: string): string[] {
   const matches = [...sql.matchAll(/\{\{(\w+)\}\}/g)];
   const seen = new Set<string>();
@@ -25,35 +76,68 @@ function detectParams(sql: string): string[] {
 }
 
 export default function QueryEditor({ dbId, dbName, dbType, initialSql, onVisualize }: Props) {
-  const [sql, setSql] = useState(initialSql ?? '');
+  // ── Tabs ──
+  const initState = useCallback((): { tabs: QueryTab[]; activeId: string } => {
+    const stored = loadTabs(dbId);
+    if (stored && stored.tabs.length > 0) {
+      const tabs = stored.tabs.map(({ id, sql }) => makeTab(sql.length > 0 ? sql : ''));
+      // Fix ids to match stored
+      stored.tabs.forEach((s, i) => { tabs[i].id = s.id; });
+      return { tabs, activeId: stored.activeId };
+    }
+    const first = makeTab(initialSql ?? '');
+    return { tabs: [first], activeId: first.id };
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const [tabs, setTabs] = useState<QueryTab[]>(() => initState().tabs);
+  const [activeTabId, setActiveTabId] = useState<string>(() => initState().activeId);
+
+  const activeTab = tabs.find((t) => t.id === activeTabId) ?? tabs[0];
+
+  const updateTab = useCallback((id: string, updates: Partial<QueryTab>) => {
+    setTabs((prev) => prev.map((t) => t.id === id ? { ...t, ...updates } : t));
+  }, []);
+
+  // Persist tabs whenever they change
+  const tabsRef = useRef(tabs);
+  tabsRef.current = tabs;
+  const activeIdRef = useRef(activeTabId);
+  activeIdRef.current = activeTabId;
+
+  useEffect(() => {
+    saveTabs(dbId, tabs, activeTabId);
+  }, [dbId, tabs, activeTabId]);
+
+  // If initialSql changes (e.g. loaded from Ask Otto), put it in the active tab
+  const prevInitialSql = useRef(initialSql);
+  useEffect(() => {
+    if (initialSql && initialSql !== prevInitialSql.current) {
+      prevInitialSql.current = initialSql;
+      updateTab(activeIdRef.current, { sql: initialSql, result: null, error: null, plan: null });
+    }
+  }, [initialSql, updateTab]);
+
+  const addTab = useCallback(() => {
+    const tab = makeTab('');
+    setTabs((prev) => [...prev, tab]);
+    setActiveTabId(tab.id);
+  }, []);
+
+  const closeTab = useCallback((id: string) => {
+    setTabs((prev) => {
+      if (prev.length === 1) return prev;
+      const idx = prev.findIndex((t) => t.id === id);
+      const next = prev.filter((t) => t.id !== id);
+      if (activeIdRef.current === id) {
+        const newActive = next[Math.max(0, idx - 1)];
+        setActiveTabId(newActive.id);
+      }
+      return next;
+    });
+  }, []);
+
+  // ── Schema ──
   const [schema, setSchema] = useState<Record<string, string[]>>({});
-  const [result, setResult] = useState<QueryResponse | null>(null);
-  const [error, setError] = useState<string | null>(null);
-  const [loading, setLoading] = useState(false);
-  const [plan, setPlan] = useState<ExplainPlanResponse | null>(null);
-  const [planLoading, setPlanLoading] = useState(false);
-  const [planError, setPlanError] = useState<string | null>(null);
-  const [showHistory, setShowHistory] = useState(false);
-  const [history, setHistory] = useState<QueryHistoryEntry[]>([]);
-  const [showAiInput, setShowAiInput] = useState(false);
-  const [aiPrompt, setAiPrompt] = useState('');
-  const [aiLoading, setAiLoading] = useState(false);
-  const [aiError, setAiError] = useState<string | null>(null);
-
-  // Saved queries state
-  const [showSaved, setShowSaved] = useState(false);
-  const [savedQueries, setSavedQueries] = useState<SavedQueryEntry[]>([]);
-  const [showSaveModal, setShowSaveModal] = useState(false);
-  const [saveName, setSaveName] = useState('');
-  const [saveDescription, setSaveDescription] = useState('');
-  const [saveParams, setSaveParams] = useState<QueryParam[]>([]);
-  const [editingQuery, setEditingQuery] = useState<SavedQueryEntry | null>(null);
-
-  // Parameter run modal state
-  const [runTarget, setRunTarget] = useState<SavedQueryEntry | null>(null);
-  const [runValues, setRunValues] = useState<Record<string, string>>({});
-  const [runLoading, setRunLoading] = useState(false);
-  const [runError, setRunError] = useState<string | null>(null);
 
   useEffect(() => {
     api.getSchema(dbId).then((res) => {
@@ -63,87 +147,99 @@ export default function QueryEditor({ dbId, dbName, dbType, initialSql, onVisual
     }).catch(() => {});
   }, [dbId]);
 
+  // ── History ──
+  const [showHistory, setShowHistory] = useState(false);
+  const [history, setHistory] = useState<QueryHistoryEntry[]>([]);
+
   const fetchHistory = useCallback(async () => {
-    try {
-      const entries = await api.getQueryHistory(dbId);
-      setHistory(entries);
-    } catch { /* non-critical */ }
+    try { setHistory(await api.getQueryHistory(dbId)); } catch { /* non-critical */ }
   }, [dbId]);
 
-  useEffect(() => {
-    if (showHistory) fetchHistory();
-  }, [showHistory, fetchHistory]);
+  useEffect(() => { if (showHistory) fetchHistory(); }, [showHistory, fetchHistory]);
+
+  // ── Saved queries ──
+  const [showSaved, setShowSaved] = useState(false);
+  const [savedQueries, setSavedQueries] = useState<SavedQueryEntry[]>([]);
+  const [showSaveModal, setShowSaveModal] = useState(false);
+  const [saveName, setSaveName] = useState('');
+  const [saveDescription, setSaveDescription] = useState('');
+  const [saveParams, setSaveParams] = useState<QueryParam[]>([]);
+  const [editingQuery, setEditingQuery] = useState<SavedQueryEntry | null>(null);
 
   const fetchSavedQueries = useCallback(async () => {
-    try {
-      const entries = await api.listSavedQueries(dbId);
-      setSavedQueries(entries);
-    } catch { /* non-critical */ }
+    try { setSavedQueries(await api.listSavedQueries(dbId)); } catch { /* non-critical */ }
   }, [dbId]);
 
-  useEffect(() => {
-    if (showSaved) fetchSavedQueries();
-  }, [showSaved, fetchSavedQueries]);
+  useEffect(() => { if (showSaved) fetchSavedQueries(); }, [showSaved, fetchSavedQueries]);
 
-  const openSaveModal = (existing?: SavedQueryEntry) => {
-    if (existing) {
-      setEditingQuery(existing);
-      setSaveName(existing.name);
-      setSaveDescription(existing.description || '');
-      setSaveParams(existing.parameters ?? []);
-    } else {
-      setEditingQuery(null);
-      setSaveName('');
-      setSaveDescription('');
-      // Auto-detect parameters from current SQL
-      const detected = detectParams(sql);
-      setSaveParams(detected.map((name) => ({
-        name,
-        label: name.replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase()),
-        type: 'text' as const,
-        default_value: '',
-      })));
+  // ── Parameter run modal ──
+  const [runTarget, setRunTarget] = useState<SavedQueryEntry | null>(null);
+  const [runValues, setRunValues] = useState<Record<string, string>>({});
+  const [runLoading, setRunLoading] = useState(false);
+  const [runError, setRunError] = useState<string | null>(null);
+
+  // ── AI ──
+  const [showAiInput, setShowAiInput] = useState(false);
+  const [aiPrompt, setAiPrompt] = useState('');
+  const [aiLoading, setAiLoading] = useState(false);
+  const [aiError, setAiError] = useState<string | null>(null);
+
+  // ── Handlers ──
+  const sql = activeTab.sql;
+  const result = activeTab.result;
+  const error = activeTab.error;
+  const loading = activeTab.loading;
+  const plan = activeTab.plan;
+  const planLoading = activeTab.planLoading;
+  const planError = activeTab.planError;
+  const tabId = activeTab.id;
+
+  const handleSqlChange = (newSql: string) => {
+    updateTab(tabId, { sql: newSql });
+    if (showSaveModal && !editingQuery) {
+      const detected = detectParams(newSql);
+      setSaveParams((prev) => {
+        const existing = new Map(prev.map((p) => [p.name, p]));
+        return detected.map((name) => existing.get(name) ?? {
+          name,
+          label: name.replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase()),
+          type: 'text' as const,
+          default_value: '',
+        });
+      });
     }
-    setShowSaveModal(true);
   };
 
-  const handleSaveQuery = async () => {
-    if (!saveName.trim() || !sql.trim()) return;
+  const run = async () => {
+    if (!sql.trim()) return;
+    updateTab(tabId, { loading: true, error: null, plan: null, planError: null });
     try {
-      if (editingQuery) {
-        const updated = await api.updateSavedQuery(editingQuery.id, {
-          name: saveName,
-          sql,
-          description: saveDescription || undefined,
-          parameters: saveParams,
-        });
-        setSavedQueries((prev) => prev.map((q) => q.id === updated.id ? updated : q));
-      } else {
-        const saved = await api.saveQuery({
-          db_id: dbId,
-          db_name: dbName,
-          name: saveName,
-          sql,
-          description: saveDescription || undefined,
-          parameters: saveParams,
-        });
-        setSavedQueries((prev) => [saved, ...prev]);
-      }
-      setShowSaveModal(false);
-      setSaveName('');
-      setSaveDescription('');
-      setSaveParams([]);
-      setEditingQuery(null);
-    } catch { /* keep modal open on error */ }
+      const res = await api.executeQuery(dbId, sql);
+      updateTab(tabId, { result: res, loading: false });
+    } catch (e: any) {
+      updateTab(tabId, { error: e.message, result: null, loading: false });
+    }
+    if (showHistory) fetchHistory();
   };
 
-  const handleDeleteSavedQuery = async (id: number) => {
-    await api.deleteSavedQuery(id);
-    setSavedQueries((prev) => prev.filter((q) => q.id !== id));
+  const explain = async () => {
+    if (!sql.trim()) return;
+    updateTab(tabId, { planLoading: true, planError: null });
+    try {
+      const res = await api.explainQuery(dbId, sql);
+      updateTab(tabId, { plan: res, planLoading: false });
+    } catch (e: any) {
+      updateTab(tabId, { planError: e.message, plan: null, planLoading: false });
+    }
+  };
+
+  const loadFromHistory = (entry: QueryHistoryEntry) => {
+    updateTab(tabId, { sql: entry.sql });
+    setShowHistory(false);
   };
 
   const loadFromSaved = (entry: SavedQueryEntry) => {
-    setSql(entry.sql);
+    updateTab(tabId, { sql: entry.sql });
     setShowSaved(false);
   };
 
@@ -161,8 +257,7 @@ export default function QueryEditor({ dbId, dbName, dbType, initialSql, onVisual
     setRunError(null);
     try {
       const res = await api.runSavedQuery(runTarget.id, dbId, runValues);
-      setResult(res);
-      setError(null);
+      updateTab(tabId, { result: res, error: null });
       setRunTarget(null);
       setShowSaved(false);
     } catch (e: any) {
@@ -172,51 +267,13 @@ export default function QueryEditor({ dbId, dbName, dbType, initialSql, onVisual
     }
   };
 
-  const run = async () => {
-    if (!sql.trim()) return;
-    setLoading(true);
-    setError(null);
-    setPlan(null);
-    setPlanError(null);
-    try {
-      const res = await api.executeQuery(dbId, sql);
-      setResult(res);
-    } catch (e: any) {
-      setError(e.message);
-      setResult(null);
-    } finally {
-      setLoading(false);
-      if (showHistory) fetchHistory();
-    }
-  };
-
-  const explain = async () => {
-    if (!sql.trim()) return;
-    setPlanLoading(true);
-    setPlanError(null);
-    try {
-      const res = await api.explainQuery(dbId, sql);
-      setPlan(res);
-    } catch (e: any) {
-      setPlanError(e.message);
-      setPlan(null);
-    } finally {
-      setPlanLoading(false);
-    }
-  };
-
-  const loadFromHistory = (entry: QueryHistoryEntry) => {
-    setSql(entry.sql);
-    setShowHistory(false);
-  };
-
   const generateWithAi = async () => {
     if (!aiPrompt.trim()) return;
     setAiLoading(true);
     setAiError(null);
     try {
       const res = await api.generateAiQuery(dbId, aiPrompt);
-      setSql(res.sql);
+      updateTab(tabId, { sql: res.sql });
       setAiPrompt('');
       setShowAiInput(false);
     } catch (e: any) {
@@ -236,6 +293,59 @@ export default function QueryEditor({ dbId, dbName, dbType, initialSql, onVisual
     setHistory([]);
   };
 
+  const openSaveModal = (existing?: SavedQueryEntry) => {
+    if (existing) {
+      setEditingQuery(existing);
+      setSaveName(existing.name);
+      setSaveDescription(existing.description || '');
+      setSaveParams(existing.parameters ?? []);
+    } else {
+      setEditingQuery(null);
+      setSaveName('');
+      setSaveDescription('');
+      const detected = detectParams(sql);
+      setSaveParams(detected.map((name) => ({
+        name,
+        label: name.replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase()),
+        type: 'text' as const,
+        default_value: '',
+      })));
+    }
+    setShowSaveModal(true);
+  };
+
+  const handleSaveQuery = async () => {
+    if (!saveName.trim() || !sql.trim()) return;
+    try {
+      if (editingQuery) {
+        const updated = await api.updateSavedQuery(editingQuery.id, {
+          name: saveName, sql, description: saveDescription || undefined, parameters: saveParams,
+        });
+        setSavedQueries((prev) => prev.map((q) => q.id === updated.id ? updated : q));
+      } else {
+        const saved = await api.saveQuery({
+          db_id: dbId, db_name: dbName, name: saveName, sql,
+          description: saveDescription || undefined, parameters: saveParams,
+        });
+        setSavedQueries((prev) => [saved, ...prev]);
+      }
+      setShowSaveModal(false);
+      setSaveName('');
+      setSaveDescription('');
+      setSaveParams([]);
+      setEditingQuery(null);
+    } catch { /* keep modal open on error */ }
+  };
+
+  const handleDeleteSavedQuery = async (id: number) => {
+    await api.deleteSavedQuery(id);
+    setSavedQueries((prev) => prev.filter((q) => q.id !== id));
+  };
+
+  const updateSaveParam = (index: number, field: keyof QueryParam, value: string) => {
+    setSaveParams((prev) => prev.map((p, i) => i === index ? { ...p, [field]: value } : p));
+  };
+
   const formatTime = (iso: string) => {
     const d = new Date(iso);
     return d.toLocaleString(undefined, { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
@@ -248,32 +358,38 @@ export default function QueryEditor({ dbId, dbName, dbType, initialSql, onVisual
     return `${(ms / 1000).toFixed(2)}s`;
   };
 
-  const updateSaveParam = (index: number, field: keyof QueryParam, value: string) => {
-    setSaveParams((prev) => prev.map((p, i) => i === index ? { ...p, [field]: value } : p));
-  };
-
-  // Sync save params when SQL changes in edit mode (detect new/removed params)
-  const handleSqlChange = (newSql: string) => {
-    setSql(newSql);
-    if (showSaveModal && !editingQuery) {
-      const detected = detectParams(newSql);
-      setSaveParams((prev) => {
-        const existing = new Map(prev.map((p) => [p.name, p]));
-        return detected.map((name) => existing.get(name) ?? {
-          name,
-          label: name.replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase()),
-          type: 'text' as const,
-          default_value: '',
-        });
-      });
-    }
-  };
-
   const detectedParamNames = detectParams(sql);
   const hasTemplateParams = detectedParamNames.length > 0;
 
   return (
     <div className="query-panel">
+      {/* ── Tab Bar ── */}
+      <div className="query-tab-bar">
+        {tabs.map((tab, i) => (
+          <button
+            key={tab.id}
+            className={`query-tab${tab.id === activeTabId ? ' active' : ''}`}
+            onClick={() => setActiveTabId(tab.id)}
+            title={tab.sql || `Query ${i + 1}`}
+          >
+            <span className="query-tab-name">{tabLabel(tab, i)}</span>
+            {tabs.length > 1 && (
+              <span
+                className="query-tab-close"
+                role="button"
+                onClick={(e) => { e.stopPropagation(); closeTab(tab.id); }}
+              >
+                ×
+              </span>
+            )}
+          </button>
+        ))}
+        <button className="query-tab-add" onClick={addTab} title="New query tab">
+          +
+        </button>
+      </div>
+
+      {/* ── Editor ── */}
       <div className="query-editor">
         <SQLEditor
           value={sql}
@@ -439,7 +555,7 @@ export default function QueryEditor({ dbId, dbName, dbType, initialSql, onVisual
                     )}
                     <button
                       className="btn-icon"
-                      onClick={() => { setSql(entry.sql); openSaveModal(entry); }}
+                      onClick={() => { updateTab(tabId, { sql: entry.sql }); openSaveModal(entry); }}
                       title="Edit"
                     >
                       <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
