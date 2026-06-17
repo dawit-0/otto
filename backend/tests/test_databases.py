@@ -195,6 +195,118 @@ def test_get_table_profile_unknown_db(client):
     assert resp.status_code == 404
 
 
+# ── Row editing ──
+
+
+def test_update_row(client, sample_db):
+    info = _connect(client, sample_db)
+    resp = client.patch(
+        f"/api/databases/{info['id']}/tables/books/rows",
+        json={"pk": {"id": 1}, "updates": {"pages": 999}},
+    )
+    assert resp.status_code == 200
+    assert resp.json()["row"]["pages"] == 999
+
+    data = client.get(f"/api/databases/{info['id']}/tables/books/data").json()
+    row = next(r for r in data["rows"] if r["id"] == 1)
+    assert row["pages"] == 999
+
+
+def test_update_row_changing_pk(client, sample_db):
+    info = _connect(client, sample_db)
+    resp = client.patch(
+        f"/api/databases/{info['id']}/tables/authors/rows",
+        json={"pk": {"id": 1}, "updates": {"id": 10}},
+    )
+    assert resp.status_code == 200
+    assert resp.json()["row"]["id"] == 10
+
+
+def test_update_row_not_found(client, sample_db):
+    info = _connect(client, sample_db)
+    resp = client.patch(
+        f"/api/databases/{info['id']}/tables/books/rows",
+        json={"pk": {"id": 9999}, "updates": {"pages": 1}},
+    )
+    assert resp.status_code == 404
+
+
+def test_update_row_unknown_column(client, sample_db):
+    info = _connect(client, sample_db)
+    resp = client.patch(
+        f"/api/databases/{info['id']}/tables/books/rows",
+        json={"pk": {"id": 1}, "updates": {"nope": 1}},
+    )
+    assert resp.status_code == 400
+
+
+def test_update_row_constraint_violation(client, sample_db):
+    info = _connect(client, sample_db)
+    resp = client.patch(
+        f"/api/databases/{info['id']}/tables/books/rows",
+        json={"pk": {"id": 1}, "updates": {"title": None}},
+    )
+    assert resp.status_code == 400
+
+
+def test_insert_row(client, sample_db):
+    info = _connect(client, sample_db)
+    resp = client.post(
+        f"/api/databases/{info['id']}/tables/authors/rows",
+        json={"values": {"name": "Carol", "email": "carol@example.com"}},
+    )
+    assert resp.status_code == 200
+    row = resp.json()["row"]
+    assert row["name"] == "Carol"
+    assert row["id"] is not None
+
+    data = client.get(f"/api/databases/{info['id']}/tables/authors/data").json()
+    assert data["total"] == 3
+
+
+def test_insert_row_missing_required_column(client, sample_db):
+    info = _connect(client, sample_db)
+    resp = client.post(
+        f"/api/databases/{info['id']}/tables/authors/rows",
+        json={"values": {"email": "noone@example.com"}},
+    )
+    assert resp.status_code == 400
+
+
+def test_delete_row(client, sample_db):
+    info = _connect(client, sample_db)
+    resp = client.request(
+        "DELETE",
+        f"/api/databases/{info['id']}/tables/books/rows",
+        json={"pk": {"id": 3}},
+    )
+    assert resp.status_code == 200
+    assert resp.json()["ok"] is True
+
+    data = client.get(f"/api/databases/{info['id']}/tables/books/data").json()
+    assert data["total"] == 2
+    assert all(r["id"] != 3 for r in data["rows"])
+
+
+def test_delete_row_not_found(client, sample_db):
+    info = _connect(client, sample_db)
+    resp = client.request(
+        "DELETE",
+        f"/api/databases/{info['id']}/tables/books/rows",
+        json={"pk": {"id": 9999}},
+    )
+    assert resp.status_code == 404
+
+
+def test_update_row_unknown_table(client, sample_db):
+    info = _connect(client, sample_db)
+    resp = client.patch(
+        f"/api/databases/{info['id']}/tables/nope/rows",
+        json={"pk": {"id": 1}, "updates": {"x": 1}},
+    )
+    assert resp.status_code == 404
+
+
 # ── Upload ──
 
 

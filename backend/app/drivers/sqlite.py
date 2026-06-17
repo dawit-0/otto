@@ -131,6 +131,96 @@ class SQLiteDriver(DatabaseDriver):
         cursor = conn.execute(f"PRAGMA table_info({quoted})")
         return [row["name"] for row in cursor.fetchall()]
 
+    def get_primary_key_columns(self, conn: Any, table: str) -> list[str]:
+        quoted = self.quote_identifier(table)
+        cursor = conn.execute(f"PRAGMA table_info({quoted})")
+        # PRAGMA table_info's "pk" column is the 1-based position within the
+        # primary key (0 = not part of it), so sorting by it preserves order
+        # for composite keys.
+        pk_cols = sorted(
+            ((row["pk"], row["name"]) for row in cursor.fetchall() if row["pk"]),
+        )
+        return [name for _, name in pk_cols]
+
+    def update_row(self, conn: Any, table: str, pk_values: dict, updates: dict) -> dict:
+        self.assert_valid_table(conn, table)
+        if not pk_values:
+            raise ValueError("Primary key values are required to update a row")
+        if not updates:
+            raise ValueError("No columns to update")
+        valid_columns = set(self.get_column_names(conn, table))
+        self.assert_valid_columns([*updates, *pk_values], valid_columns)
+
+        quoted = self.quote_identifier(table)
+        set_clause = ", ".join(f"{self.quote_identifier(c)} = ?" for c in updates)
+        where_clause = " AND ".join(f"{self.quote_identifier(c)} = ?" for c in pk_values)
+        params = [*updates.values(), *pk_values.values()]
+        cursor = conn.execute(
+            f"UPDATE {quoted} SET {set_clause} WHERE {where_clause}", params
+        )
+        if cursor.rowcount == 0:
+            conn.rollback()
+            raise ValueError("Row not found")
+        conn.commit()
+
+        new_pk = {col: updates.get(col, val) for col, val in pk_values.items()}
+        return self._fetch_one(conn, table, new_pk)
+
+    def insert_row(self, conn: Any, table: str, values: dict) -> dict:
+        self.assert_valid_table(conn, table)
+        valid_columns = set(self.get_column_names(conn, table))
+        self.assert_valid_columns(list(values), valid_columns)
+
+        quoted = self.quote_identifier(table)
+        if values:
+            cols = ", ".join(self.quote_identifier(c) for c in values)
+            placeholders = ", ".join("?" for _ in values)
+            cursor = conn.execute(
+                f"INSERT INTO {quoted} ({cols}) VALUES ({placeholders})",
+                list(values.values()),
+            )
+        else:
+            cursor = conn.execute(f"INSERT INTO {quoted} DEFAULT VALUES")
+        conn.commit()
+
+        pk_cols = self.get_primary_key_columns(conn, table)
+        if pk_cols and all(c in values for c in pk_cols):
+            return self._fetch_one(conn, table, {c: values[c] for c in pk_cols})
+        if len(pk_cols) == 1:
+            return self._fetch_one(conn, table, {pk_cols[0]: cursor.lastrowid})
+
+        # No usable primary key (composite or absent) — fall back to the
+        # implicit rowid SQLite assigns every row in a rowid table.
+        row = conn.execute(
+            f"SELECT * FROM {quoted} WHERE rowid = ?", (cursor.lastrowid,)
+        ).fetchone()
+        return dict(row) if row else dict(values)
+
+    def delete_row(self, conn: Any, table: str, pk_values: dict) -> None:
+        self.assert_valid_table(conn, table)
+        if not pk_values:
+            raise ValueError("Primary key values are required to delete a row")
+        valid_columns = set(self.get_column_names(conn, table))
+        self.assert_valid_columns(list(pk_values), valid_columns)
+
+        quoted = self.quote_identifier(table)
+        where_clause = " AND ".join(f"{self.quote_identifier(c)} = ?" for c in pk_values)
+        cursor = conn.execute(
+            f"DELETE FROM {quoted} WHERE {where_clause}", list(pk_values.values())
+        )
+        if cursor.rowcount == 0:
+            conn.rollback()
+            raise ValueError("Row not found")
+        conn.commit()
+
+    def _fetch_one(self, conn: Any, table: str, pk_values: dict) -> dict:
+        quoted = self.quote_identifier(table)
+        where_clause = " AND ".join(f"{self.quote_identifier(c)} = ?" for c in pk_values)
+        row = conn.execute(
+            f"SELECT * FROM {quoted} WHERE {where_clause}", list(pk_values.values())
+        ).fetchone()
+        return dict(row) if row else {}
+
     def get_table_data(
         self, conn: Any, table: str, limit: int, offset: int,
         sort_column: str | None = None,

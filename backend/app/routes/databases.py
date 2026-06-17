@@ -44,6 +44,19 @@ class ConnectRequest(BaseModel):
     password: str | None = None
 
 
+class UpdateRowRequest(BaseModel):
+    pk: dict[str, Any]
+    updates: dict[str, Any]
+
+
+class InsertRowRequest(BaseModel):
+    values: dict[str, Any]
+
+
+class DeleteRowRequest(BaseModel):
+    pk: dict[str, Any]
+
+
 def _resolve_record(db_id: str, db: Session) -> ConnectedDatabase:
     record = db.query(ConnectedDatabase).filter(ConnectedDatabase.db_id == db_id).first()
     if not record:
@@ -313,6 +326,73 @@ def get_table_data(
         raise HTTPException(status_code=status, detail=str(e))
     except Exception as e:
         logger.error("Error reading table '%s' from db_id=%s: %s", table_name, db_id, e)
+        raise HTTPException(status_code=400, detail=str(e))
+    finally:
+        driver.close(conn)
+
+
+@router.patch("/{db_id}/tables/{table_name}/rows")
+def update_row(db_id: str, table_name: str, req: UpdateRowRequest, db: Session = Depends(get_db)):
+    driver = get_driver_for_db(db_id, db)
+    conn = driver.connect()
+    try:
+        driver.assert_valid_table(conn, table_name)
+        if not driver.get_primary_key_columns(conn, table_name):
+            raise HTTPException(
+                status_code=400,
+                detail=f"Table '{table_name}' has no primary key; editing is disabled",
+            )
+        row = driver.update_row(conn, table_name, req.pk, req.updates)
+        logger.info("Updated row in '%s' (db_id=%s)", table_name, db_id)
+        return {"row": row}
+    except ValueError as e:
+        status = 404 if str(e).lower().startswith("unknown table") or "not found" in str(e).lower() else 400
+        raise HTTPException(status_code=status, detail=str(e))
+    except Exception as e:
+        logger.error("Error updating row in '%s' (db_id=%s): %s", table_name, db_id, e)
+        raise HTTPException(status_code=400, detail=str(e))
+    finally:
+        driver.close(conn)
+
+
+@router.post("/{db_id}/tables/{table_name}/rows")
+def insert_row(db_id: str, table_name: str, req: InsertRowRequest, db: Session = Depends(get_db)):
+    driver = get_driver_for_db(db_id, db)
+    conn = driver.connect()
+    try:
+        driver.assert_valid_table(conn, table_name)
+        row = driver.insert_row(conn, table_name, req.values)
+        logger.info("Inserted row into '%s' (db_id=%s)", table_name, db_id)
+        return {"row": row}
+    except ValueError as e:
+        status = 404 if str(e).lower().startswith("unknown table") else 400
+        raise HTTPException(status_code=status, detail=str(e))
+    except Exception as e:
+        logger.error("Error inserting row into '%s' (db_id=%s): %s", table_name, db_id, e)
+        raise HTTPException(status_code=400, detail=str(e))
+    finally:
+        driver.close(conn)
+
+
+@router.delete("/{db_id}/tables/{table_name}/rows")
+def delete_row(db_id: str, table_name: str, req: DeleteRowRequest, db: Session = Depends(get_db)):
+    driver = get_driver_for_db(db_id, db)
+    conn = driver.connect()
+    try:
+        driver.assert_valid_table(conn, table_name)
+        if not driver.get_primary_key_columns(conn, table_name):
+            raise HTTPException(
+                status_code=400,
+                detail=f"Table '{table_name}' has no primary key; deleting is disabled",
+            )
+        driver.delete_row(conn, table_name, req.pk)
+        logger.info("Deleted row from '%s' (db_id=%s)", table_name, db_id)
+        return {"ok": True}
+    except ValueError as e:
+        status = 404 if str(e).lower().startswith("unknown table") or "not found" in str(e).lower() else 400
+        raise HTTPException(status_code=status, detail=str(e))
+    except Exception as e:
+        logger.error("Error deleting row from '%s' (db_id=%s): %s", table_name, db_id, e)
         raise HTTPException(status_code=400, detail=str(e))
     finally:
         driver.close(conn)

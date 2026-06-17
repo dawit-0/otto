@@ -98,6 +98,85 @@ class PostgresDriver(DatabaseDriver):
     def get_column_names(self, conn: Any, table: str) -> list[str]:
         return [c["name"] for c in self._get_columns(conn, table)]
 
+    def get_primary_key_columns(self, conn: Any, table: str) -> list[str]:
+        return self._get_pk_columns(conn, table)
+
+    def update_row(self, conn: Any, table: str, pk_values: dict, updates: dict) -> dict:
+        self.assert_valid_table(conn, table)
+        if not pk_values:
+            raise ValueError("Primary key values are required to update a row")
+        if not updates:
+            raise ValueError("No columns to update")
+        valid_columns = set(self.get_column_names(conn, table))
+        self.assert_valid_columns([*updates, *pk_values], valid_columns)
+
+        quoted = self.quote_identifier(table)
+        set_clause = ", ".join(f"{self.quote_identifier(c)} = %s" for c in updates)
+        where_clause = " AND ".join(f"{self.quote_identifier(c)} = %s" for c in pk_values)
+        params = [*updates.values(), *pk_values.values()]
+
+        cur = conn.cursor()
+        cur.execute(f"UPDATE {quoted} SET {set_clause} WHERE {where_clause}", params)
+        if cur.rowcount == 0:
+            conn.rollback()
+            cur.close()
+            raise ValueError("Row not found")
+        conn.commit()
+        cur.close()
+
+        new_pk = {col: updates.get(col, val) for col, val in pk_values.items()}
+        return self._fetch_one(conn, table, new_pk)
+
+    def insert_row(self, conn: Any, table: str, values: dict) -> dict:
+        self.assert_valid_table(conn, table)
+        valid_columns = set(self.get_column_names(conn, table))
+        self.assert_valid_columns(list(values), valid_columns)
+
+        quoted = self.quote_identifier(table)
+        cur = conn.cursor()
+        if values:
+            cols = ", ".join(self.quote_identifier(c) for c in values)
+            placeholders = ", ".join("%s" for _ in values)
+            cur.execute(
+                f"INSERT INTO {quoted} ({cols}) VALUES ({placeholders}) RETURNING *",
+                list(values.values()),
+            )
+        else:
+            cur.execute(f"INSERT INTO {quoted} DEFAULT VALUES RETURNING *")
+        columns = [desc[0] for desc in cur.description]
+        row = cur.fetchone()
+        conn.commit()
+        cur.close()
+        return dict(zip(columns, row)) if row else {}
+
+    def delete_row(self, conn: Any, table: str, pk_values: dict) -> None:
+        self.assert_valid_table(conn, table)
+        if not pk_values:
+            raise ValueError("Primary key values are required to delete a row")
+        valid_columns = set(self.get_column_names(conn, table))
+        self.assert_valid_columns(list(pk_values), valid_columns)
+
+        quoted = self.quote_identifier(table)
+        where_clause = " AND ".join(f"{self.quote_identifier(c)} = %s" for c in pk_values)
+        cur = conn.cursor()
+        cur.execute(f"DELETE FROM {quoted} WHERE {where_clause}", list(pk_values.values()))
+        if cur.rowcount == 0:
+            conn.rollback()
+            cur.close()
+            raise ValueError("Row not found")
+        conn.commit()
+        cur.close()
+
+    def _fetch_one(self, conn: Any, table: str, pk_values: dict) -> dict:
+        quoted = self.quote_identifier(table)
+        where_clause = " AND ".join(f"{self.quote_identifier(c)} = %s" for c in pk_values)
+        cur = conn.cursor()
+        cur.execute(f"SELECT * FROM {quoted} WHERE {where_clause}", list(pk_values.values()))
+        columns = [desc[0] for desc in cur.description]
+        row = cur.fetchone()
+        cur.close()
+        return dict(zip(columns, row)) if row else {}
+
     def get_table_data(
         self, conn: Any, table: str, limit: int, offset: int,
         sort_column: str | None = None,

@@ -2301,6 +2301,105 @@ body {
   color: var(--accent-hover);
 }
 
+/* ─── Inline row editing ─── */
+.pk-badge {
+  margin-left: 6px;
+  font-size: 9px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--accent-hover);
+  background: var(--accent-subtle);
+  border-radius: 3px;
+  padding: 1px 4px;
+}
+.editable-cell {
+  cursor: text;
+}
+.editable-cell:hover {
+  outline: 1px solid var(--accent-subtle);
+  outline-offset: -1px;
+}
+td.cell-editing {
+  padding: 4px 8px;
+  position: relative;
+}
+.cell-edit-input {
+  width: 100%;
+  background: var(--bg-primary);
+  border: 1px solid var(--accent);
+  border-radius: 4px;
+  color: var(--text-primary);
+  font-family: var(--font-mono);
+  font-size: 12px;
+  padding: 4px 6px;
+  outline: none;
+}
+.cell-error {
+  position: absolute;
+  top: 100%;
+  left: 0;
+  z-index: 5;
+  margin-top: 2px;
+  padding: 4px 8px;
+  background: var(--danger);
+  color: #fff;
+  font-size: 11px;
+  border-radius: 4px;
+  white-space: nowrap;
+  max-width: 280px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.actions-th {
+  width: 36px;
+}
+.actions-td {
+  position: relative;
+  white-space: nowrap;
+}
+.row-delete-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  border: none;
+  background: transparent;
+  color: var(--text-muted);
+  border-radius: 4px;
+  cursor: pointer;
+  opacity: 0;
+  transition: opacity 0.1s, color 0.1s, background 0.1s;
+}
+.data-table tr:hover .row-delete-btn {
+  opacity: 1;
+}
+.row-delete-btn:hover {
+  color: var(--danger);
+  background: rgba(239, 68, 68, 0.1);
+}
+.row-delete-btn:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+.row-deleting td {
+  opacity: 0.4;
+}
+.new-row td {
+  background: var(--accent-subtle);
+  padding: 4px 8px;
+}
+.new-row .cell-edit-input {
+  border-color: var(--accent);
+}
+.new-row .actions-td {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
 /* Button active state */
 .btn.active {
   background: var(--accent-subtle);

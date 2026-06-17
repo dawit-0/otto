@@ -77,6 +77,37 @@ class DatabaseDriver(ABC):
         ...
 
     @abstractmethod
+    def get_primary_key_columns(self, conn: Any, table: str) -> list[str]:
+        """Return the primary key column names for a table, in key order."""
+        ...
+
+    @abstractmethod
+    def update_row(self, conn: Any, table: str, pk_values: dict, updates: dict) -> dict:
+        """Update the single row identified by ``pk_values`` with ``updates``.
+
+        Returns the row as it looks after the update (re-fetched by its,
+        possibly changed, primary key). Raises ValueError if no row matched.
+        """
+        ...
+
+    @abstractmethod
+    def insert_row(self, conn: Any, table: str, values: dict) -> dict:
+        """Insert a new row.
+
+        Columns omitted from ``values`` use their database default (e.g.
+        autoincrement primary keys). Returns the inserted row as stored.
+        """
+        ...
+
+    @abstractmethod
+    def delete_row(self, conn: Any, table: str, pk_values: dict) -> None:
+        """Delete the single row identified by ``pk_values``.
+
+        Raises ValueError if no row matched.
+        """
+        ...
+
+    @abstractmethod
     def validate(self) -> None:
         """Test connectivity. Raise on failure."""
         ...
@@ -87,6 +118,11 @@ class DatabaseDriver(ABC):
         if "\x00" in name:
             raise ValueError("Identifier must not contain NUL bytes")
         return '"' + name.replace('"', '""') + '"'
+
+    def assert_valid_columns(self, columns: list[str], valid_columns: set[str]) -> None:
+        for col in columns:
+            if col not in valid_columns:
+                raise ValueError(f"Unknown column: {col!r}")
 
     def assert_valid_table(self, conn: Any, table_name: str) -> str:
         if not isinstance(table_name, str) or table_name == "":
