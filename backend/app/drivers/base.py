@@ -81,6 +81,39 @@ class DatabaseDriver(ABC):
         """Test connectivity. Raise on failure."""
         ...
 
+    @abstractmethod
+    def get_primary_key_columns(self, conn: Any, table: str) -> list[str]:
+        """Return the primary key column names for table (empty if none)."""
+        ...
+
+    @abstractmethod
+    def insert_row(self, conn: Any, table: str, values: dict[str, Any]) -> dict:
+        """Insert a row and return the resulting row (including generated keys)."""
+        ...
+
+    @abstractmethod
+    def update_row(
+        self, conn: Any, table: str, pk_values: dict[str, Any], changes: dict[str, Any],
+    ) -> dict:
+        """Update the single row matched by pk_values, applying changes.
+
+        Raises ValueError if no row matches pk_values.
+        """
+        ...
+
+    @abstractmethod
+    def delete_row(self, conn: Any, table: str, pk_values: dict[str, Any]) -> None:
+        """Delete the single row matched by pk_values.
+
+        Raises ValueError if no row matches pk_values.
+        """
+        ...
+
+    def _validate_row_columns(self, values: dict[str, Any], valid_columns: set[str]) -> None:
+        for col in values:
+            if col not in valid_columns:
+                raise ValueError(f"Unknown column: {col!r}")
+
     def quote_identifier(self, name: str) -> str:
         if not isinstance(name, str) or name == "":
             raise ValueError("Identifier must be a non-empty string")

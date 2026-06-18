@@ -98,6 +98,98 @@ class PostgresDriver(DatabaseDriver):
     def get_column_names(self, conn: Any, table: str) -> list[str]:
         return [c["name"] for c in self._get_columns(conn, table)]
 
+    def get_primary_key_columns(self, conn: Any, table: str) -> list[str]:
+        self.assert_valid_table(conn, table)
+        return self._get_pk_columns(conn, table)
+
+    def insert_row(self, conn: Any, table: str, values: dict[str, Any]) -> dict:
+        self.assert_valid_table(conn, table)
+        valid_columns = set(self.get_column_names(conn, table))
+        self._validate_row_columns(values, valid_columns)
+        if not values:
+            raise ValueError("No values provided for insert")
+
+        quoted = self.quote_identifier(table)
+        cols = list(values.keys())
+        col_sql = ", ".join(self.quote_identifier(c) for c in cols)
+        placeholder_sql = ", ".join("%s" for _ in cols)
+
+        cur = conn.cursor()
+        try:
+            cur.execute(
+                f"INSERT INTO {quoted} ({col_sql}) VALUES ({placeholder_sql}) RETURNING *",
+                [values[c] for c in cols],
+            )
+            columns = [desc[0] for desc in cur.description]
+            row = cur.fetchone()
+            conn.commit()
+            return dict(zip(columns, row)) if row else dict(values)
+        except Exception:
+            conn.rollback()
+            raise
+        finally:
+            cur.close()
+
+    def update_row(
+        self, conn: Any, table: str, pk_values: dict[str, Any], changes: dict[str, Any],
+    ) -> dict:
+        self.assert_valid_table(conn, table)
+        valid_columns = set(self.get_column_names(conn, table))
+        if not pk_values:
+            raise ValueError("No primary key values provided")
+        if not changes:
+            raise ValueError("No changes provided for update")
+        self._validate_row_columns(pk_values, valid_columns)
+        self._validate_row_columns(changes, valid_columns)
+
+        quoted = self.quote_identifier(table)
+        set_sql = ", ".join(f"{self.quote_identifier(c)} = %s" for c in changes)
+        where_sql = " AND ".join(f"{self.quote_identifier(c)} = %s" for c in pk_values)
+        params = [*changes.values(), *pk_values.values()]
+
+        cur = conn.cursor()
+        try:
+            cur.execute(f"UPDATE {quoted} SET {set_sql} WHERE {where_sql} RETURNING *", params)
+            if cur.rowcount == 0:
+                conn.rollback()
+                raise ValueError("Row not found")
+            columns = [desc[0] for desc in cur.description]
+            row = cur.fetchone()
+            conn.commit()
+            return dict(zip(columns, row)) if row else {**pk_values, **changes}
+        except ValueError:
+            raise
+        except Exception:
+            conn.rollback()
+            raise
+        finally:
+            cur.close()
+
+    def delete_row(self, conn: Any, table: str, pk_values: dict[str, Any]) -> None:
+        self.assert_valid_table(conn, table)
+        valid_columns = set(self.get_column_names(conn, table))
+        if not pk_values:
+            raise ValueError("No primary key values provided")
+        self._validate_row_columns(pk_values, valid_columns)
+
+        quoted = self.quote_identifier(table)
+        where_sql = " AND ".join(f"{self.quote_identifier(c)} = %s" for c in pk_values)
+
+        cur = conn.cursor()
+        try:
+            cur.execute(f"DELETE FROM {quoted} WHERE {where_sql}", list(pk_values.values()))
+            if cur.rowcount == 0:
+                conn.rollback()
+                raise ValueError("Row not found")
+            conn.commit()
+        except ValueError:
+            raise
+        except Exception:
+            conn.rollback()
+            raise
+        finally:
+            cur.close()
+
     def get_table_data(
         self, conn: Any, table: str, limit: int, offset: int,
         sort_column: str | None = None,

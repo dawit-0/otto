@@ -49,9 +49,18 @@ export default function TableBrowser({ dbId, tableName, columnDefs }: Props) {
 
   const [showProfile, setShowProfile] = useState(false);
 
+  const [showAddRow, setShowAddRow] = useState(false);
+  const [newRowValues, setNewRowValues] = useState<Record<string, string>>({});
+  const [newRowNulls, setNewRowNulls] = useState<Set<string>>(new Set());
+  const [addRowError, setAddRowError] = useState<string | null>(null);
+  const [addingRow, setAddingRow] = useState(false);
+
   const addFilterRef = useRef<HTMLDivElement>(null);
+  const addRowRef = useRef<HTMLDivElement>(null);
 
   const colNames = columnDefs.map((c) => c.name);
+  const pkColumns = columnDefs.filter((c) => c.pk).map((c) => c.name);
+  const editable = pkColumns.length > 0;
 
   const loadData = useCallback(async (nextOffset: number, currentSort: SortState | null, currentFilters: FilterRule[]) => {
     setLoading(true);
@@ -93,6 +102,73 @@ export default function TableBrowser({ dbId, tableName, columnDefs }: Props) {
     document.addEventListener('mousedown', handler);
     return () => document.removeEventListener('mousedown', handler);
   }, [showAddFilter]);
+
+  // Close add-row popover on outside click
+  useEffect(() => {
+    if (!showAddRow) return;
+    const handler = (e: MouseEvent) => {
+      if (addRowRef.current && !addRowRef.current.contains(e.target as Node)) {
+        setShowAddRow(false);
+      }
+    };
+    document.addEventListener('mousedown', handler);
+    return () => document.removeEventListener('mousedown', handler);
+  }, [showAddRow]);
+
+  const buildPk = (row: Record<string, unknown>): Record<string, unknown> => {
+    const pk: Record<string, unknown> = {};
+    pkColumns.forEach((c) => { pk[c] = row[c]; });
+    return pk;
+  };
+
+  const handleUpdateCell = async (rowIndex: number, column: string, value: string | null) => {
+    const target = rows[rowIndex];
+    const updated = await api.updateRow(dbId, tableName, buildPk(target), { [column]: value });
+    setRows((prev) => prev.map((r, i) => (i === rowIndex ? updated.row : r)));
+  };
+
+  const handleDeleteRow = async (rowIndex: number) => {
+    const target = rows[rowIndex];
+    await api.deleteRow(dbId, tableName, buildPk(target));
+    await loadData(offset, sort, filters);
+  };
+
+  const openAddRow = () => {
+    setNewRowValues({});
+    setNewRowNulls(new Set());
+    setAddRowError(null);
+    setShowAddRow(true);
+  };
+
+  const toggleNewRowNull = (col: string) => {
+    setNewRowNulls((prev) => {
+      const next = new Set(prev);
+      if (next.has(col)) next.delete(col); else next.add(col);
+      return next;
+    });
+  };
+
+  const commitAddRow = async () => {
+    const values: Record<string, string | null> = {};
+    for (const col of colNames) {
+      if (newRowNulls.has(col)) {
+        values[col] = null;
+      } else if (newRowValues[col] !== undefined && newRowValues[col] !== '') {
+        values[col] = newRowValues[col];
+      }
+    }
+    setAddingRow(true);
+    setAddRowError(null);
+    try {
+      await api.insertRow(dbId, tableName, values);
+      setShowAddRow(false);
+      await loadData(0, sort, filters);
+    } catch (e) {
+      setAddRowError(e instanceof Error ? e.message : 'Failed to add row');
+    } finally {
+      setAddingRow(false);
+    }
+  };
 
   const handleSort = (column: string) => {
     setSort((prev) => {
@@ -148,6 +224,23 @@ export default function TableBrowser({ dbId, tableName, columnDefs }: Props) {
               Filter
               {filters.length > 0 && <span className="filter-count-badge">{filters.length}</span>}
             </button>
+
+            {editable && (
+              <button
+                className={`btn btn-sm${showAddRow ? ' active' : ''}`}
+                onClick={() => (showAddRow ? setShowAddRow(false) : openAddRow())}
+              >
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                  <line x1="12" y1="5" x2="12" y2="19" /><line x1="5" y1="12" x2="19" y2="12" />
+                </svg>
+                Row
+              </button>
+            )}
+            {!editable && (
+              <span className="read-only-note" title="Otto can only edit rows in tables with a primary key">
+                Read-only — no primary key
+              </span>
+            )}
 
             {/* Active filter chips */}
             {filters.map((f) => (
@@ -261,6 +354,52 @@ export default function TableBrowser({ dbId, tableName, columnDefs }: Props) {
             </button>
           </div>
         )}
+
+        {/* ── Add-row inline form ── */}
+        {showAddRow && (
+          <div className="add-row-form" ref={addRowRef}>
+            <div className="add-row-fields">
+              {colNames.map((col) => {
+                const isNull = newRowNulls.has(col);
+                return (
+                  <div key={col} className="add-row-field">
+                    <label>{col}</label>
+                    <div className="add-row-field-input">
+                      <input
+                        type="text"
+                        placeholder={isNull ? 'NULL' : 'value…'}
+                        value={isNull ? '' : (newRowValues[col] ?? '')}
+                        disabled={isNull}
+                        onChange={(e) => setNewRowValues((prev) => ({ ...prev, [col]: e.target.value }))}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter') commitAddRow();
+                          if (e.key === 'Escape') setShowAddRow(false);
+                        }}
+                      />
+                      <button
+                        type="button"
+                        className={`cell-null-toggle${isNull ? ' active' : ''}`}
+                        title="Toggle NULL"
+                        onClick={() => toggleNewRowNull(col)}
+                      >
+                        ∅
+                      </button>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+            {addRowError && <div className="add-row-error">{addRowError}</div>}
+            <div className="add-row-actions">
+              <button className="btn btn-sm btn-primary" onClick={commitAddRow} disabled={addingRow}>
+                {addingRow ? 'Adding…' : 'Add row'}
+              </button>
+              <button className="btn btn-sm" onClick={() => setShowAddRow(false)}>
+                Cancel
+              </button>
+            </div>
+          </div>
+        )}
       </div>
 
       {/* ── Error ── */}
@@ -286,6 +425,9 @@ export default function TableBrowser({ dbId, tableName, columnDefs }: Props) {
           sortColumn={sort?.column}
           sortDirection={sort?.direction}
           onSort={handleSort}
+          editable={editable}
+          onUpdateCell={handleUpdateCell}
+          onDeleteRow={handleDeleteRow}
         />
       )}
       </div>

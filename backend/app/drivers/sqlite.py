@@ -131,6 +131,78 @@ class SQLiteDriver(DatabaseDriver):
         cursor = conn.execute(f"PRAGMA table_info({quoted})")
         return [row["name"] for row in cursor.fetchall()]
 
+    def get_primary_key_columns(self, conn: Any, table: str) -> list[str]:
+        self.assert_valid_table(conn, table)
+        quoted = self.quote_identifier(table)
+        cursor = conn.execute(f"PRAGMA table_info({quoted})")
+        pk_cols = [(row["pk"], row["name"]) for row in cursor.fetchall() if row["pk"]]
+        # PRAGMA table_info's pk field is the 1-based position within the key
+        # for composite primary keys, so sort by it to preserve key order.
+        return [name for _, name in sorted(pk_cols)]
+
+    def insert_row(self, conn: Any, table: str, values: dict[str, Any]) -> dict:
+        self.assert_valid_table(conn, table)
+        valid_columns = set(self.get_column_names(conn, table))
+        self._validate_row_columns(values, valid_columns)
+        if not values:
+            raise ValueError("No values provided for insert")
+
+        quoted = self.quote_identifier(table)
+        cols = list(values.keys())
+        col_sql = ", ".join(self.quote_identifier(c) for c in cols)
+        placeholder_sql = ", ".join("?" for _ in cols)
+        cursor = conn.execute(
+            f"INSERT INTO {quoted} ({col_sql}) VALUES ({placeholder_sql})",
+            [values[c] for c in cols],
+        )
+        conn.commit()
+
+        row = conn.execute(f"SELECT * FROM {quoted} WHERE rowid = ?", (cursor.lastrowid,)).fetchone()
+        return dict(row) if row else dict(values)
+
+    def update_row(
+        self, conn: Any, table: str, pk_values: dict[str, Any], changes: dict[str, Any],
+    ) -> dict:
+        self.assert_valid_table(conn, table)
+        valid_columns = set(self.get_column_names(conn, table))
+        if not pk_values:
+            raise ValueError("No primary key values provided")
+        if not changes:
+            raise ValueError("No changes provided for update")
+        self._validate_row_columns(pk_values, valid_columns)
+        self._validate_row_columns(changes, valid_columns)
+
+        quoted = self.quote_identifier(table)
+        set_sql = ", ".join(f"{self.quote_identifier(c)} = ?" for c in changes)
+        where_sql = " AND ".join(f"{self.quote_identifier(c)} = ?" for c in pk_values)
+        params = [*changes.values(), *pk_values.values()]
+
+        cursor = conn.execute(f"UPDATE {quoted} SET {set_sql} WHERE {where_sql}", params)
+        if cursor.rowcount == 0:
+            conn.rollback()
+            raise ValueError("Row not found")
+        conn.commit()
+
+        new_pk = {**pk_values, **{c: v for c, v in changes.items() if c in pk_values}}
+        where_sql2 = " AND ".join(f"{self.quote_identifier(c)} = ?" for c in new_pk)
+        row = conn.execute(f"SELECT * FROM {quoted} WHERE {where_sql2}", list(new_pk.values())).fetchone()
+        return dict(row) if row else {**pk_values, **changes}
+
+    def delete_row(self, conn: Any, table: str, pk_values: dict[str, Any]) -> None:
+        self.assert_valid_table(conn, table)
+        valid_columns = set(self.get_column_names(conn, table))
+        if not pk_values:
+            raise ValueError("No primary key values provided")
+        self._validate_row_columns(pk_values, valid_columns)
+
+        quoted = self.quote_identifier(table)
+        where_sql = " AND ".join(f"{self.quote_identifier(c)} = ?" for c in pk_values)
+        cursor = conn.execute(f"DELETE FROM {quoted} WHERE {where_sql}", list(pk_values.values()))
+        if cursor.rowcount == 0:
+            conn.rollback()
+            raise ValueError("Row not found")
+        conn.commit()
+
     def get_table_data(
         self, conn: Any, table: str, limit: int, offset: int,
         sort_column: str | None = None,

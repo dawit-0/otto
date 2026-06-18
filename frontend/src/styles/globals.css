@@ -2301,6 +2301,198 @@ body {
   color: var(--accent-hover);
 }
 
+/* ─── Inline row editing ─── */
+.read-only-note {
+  font-size: 11px;
+  color: var(--text-muted);
+  font-style: italic;
+}
+.row-actions-th {
+  width: 30px;
+  padding: 8px 4px !important;
+}
+.row-actions-td {
+  width: 30px;
+  padding: 4px !important;
+  text-align: center;
+}
+.row-delete-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  background: none;
+  border: none;
+  border-radius: var(--radius-sm);
+  color: var(--text-muted);
+  cursor: pointer;
+  opacity: 0;
+  transition: opacity 0.1s, color 0.1s, background 0.1s;
+}
+.data-table tr:hover .row-delete-btn {
+  opacity: 1;
+}
+.row-delete-btn:hover {
+  color: var(--danger);
+  background: rgba(239, 68, 68, 0.1);
+}
+.row-delete-confirm {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 11px;
+  color: var(--text-secondary);
+  white-space: nowrap;
+}
+.row-delete-confirm-yes,
+.row-delete-confirm-no {
+  border: none;
+  border-radius: var(--radius-sm);
+  padding: 2px 6px;
+  font-size: 11px;
+  cursor: pointer;
+  font-family: inherit;
+}
+.row-delete-confirm-yes {
+  background: var(--danger);
+  color: #fff;
+}
+.row-delete-confirm-no {
+  background: var(--bg-tertiary);
+  color: var(--text-secondary);
+}
+.row-deleting {
+  opacity: 0.4;
+}
+
+.data-table td.editing-cell {
+  padding: 3px 6px;
+  overflow: visible;
+  position: relative;
+}
+.cell-edit-wrap {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+.cell-edit-input {
+  flex: 1;
+  min-width: 60px;
+  padding: 4px 6px;
+  background: var(--bg-primary);
+  border: 1px solid var(--accent);
+  border-radius: var(--radius-sm);
+  color: var(--text-primary);
+  font-family: var(--font-mono);
+  font-size: 12px;
+  outline: none;
+}
+.cell-edit-input:read-only {
+  color: var(--text-muted);
+  font-style: italic;
+}
+.cell-null-toggle {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  flex-shrink: 0;
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  color: var(--text-muted);
+  font-size: 12px;
+  cursor: pointer;
+  transition: all 0.1s;
+}
+.cell-null-toggle:hover {
+  color: var(--text-primary);
+  border-color: var(--border-strong);
+}
+.cell-null-toggle.active {
+  background: var(--accent-subtle);
+  border-color: rgba(99, 102, 241, 0.4);
+  color: var(--accent-hover);
+}
+.cell-edit-error {
+  position: absolute;
+  left: 0;
+  top: 100%;
+  z-index: 5;
+  margin-top: 2px;
+  padding: 4px 8px;
+  background: var(--bg-secondary);
+  border: 1px solid rgba(239, 68, 68, 0.3);
+  border-radius: var(--radius-sm);
+  color: var(--danger);
+  font-size: 11px;
+  font-family: inherit;
+  white-space: nowrap;
+  box-shadow: var(--shadow-md);
+}
+
+/* ─── Add-row inline form ─── */
+.add-row-form {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 10px 12px;
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius);
+}
+.add-row-fields {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+.add-row-field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 140px;
+}
+.add-row-field label {
+  font-size: 11px;
+  font-family: var(--font-mono);
+  color: var(--text-muted);
+}
+.add-row-field-input {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+.add-row-field-input input {
+  flex: 1;
+  min-width: 0;
+  padding: 5px 8px;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  color: var(--text-primary);
+  font-size: 12px;
+  font-family: var(--font-mono);
+  outline: none;
+  transition: border-color 0.15s;
+}
+.add-row-field-input input:focus {
+  border-color: var(--accent);
+}
+.add-row-field-input input:disabled {
+  color: var(--text-muted);
+  font-style: italic;
+}
+.add-row-error {
+  font-size: 12px;
+  color: var(--danger);
+}
+.add-row-actions {
+  display: flex;
+  gap: 6px;
+}
+
 /* Button active state */
 .btn.active {
   background: var(--accent-subtle);
