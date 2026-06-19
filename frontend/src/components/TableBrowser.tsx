@@ -52,6 +52,8 @@ export default function TableBrowser({ dbId, tableName, columnDefs }: Props) {
   const addFilterRef = useRef<HTMLDivElement>(null);
 
   const colNames = columnDefs.map((c) => c.name);
+  const pkColumns = columnDefs.filter((c) => c.pk).map((c) => c.name);
+  const canEdit = pkColumns.length > 0;
 
   const loadData = useCallback(async (nextOffset: number, currentSort: SortState | null, currentFilters: FilterRule[]) => {
     setLoading(true);
@@ -80,6 +82,22 @@ export default function TableBrowser({ dbId, tableName, columnDefs }: Props) {
   // Reload from page 1 whenever sort or filters change
   useEffect(() => {
     loadData(0, sort, filters);
+  }, [dbId, tableName, sort, filters, loadData]);
+
+  const handleUpdateCell = useCallback(async (pk: Record<string, unknown>, column: string, value: string | null) => {
+    await api.updateRow(dbId, tableName, pk, { [column]: value });
+    await loadData(offset, sort, filters);
+  }, [dbId, tableName, offset, sort, filters, loadData]);
+
+  const handleDeleteRow = useCallback(async (pk: Record<string, unknown>) => {
+    await api.deleteRow(dbId, tableName, pk);
+    const nextOffset = rows.length === 1 && offset > 0 ? offset - LIMIT : offset;
+    await loadData(nextOffset, sort, filters);
+  }, [dbId, tableName, offset, rows.length, sort, filters, loadData]);
+
+  const handleInsertRow = useCallback(async (values: Record<string, string>) => {
+    await api.insertRow(dbId, tableName, values);
+    await loadData(0, sort, filters);
   }, [dbId, tableName, sort, filters, loadData]);
 
   // Close add-filter popover on outside click
@@ -187,6 +205,11 @@ export default function TableBrowser({ dbId, tableName, columnDefs }: Props) {
 
           <div className="filter-toolbar-right">
             {loading && <span className="filter-loading-indicator">Loading…</span>}
+            {!canEdit && (
+              <span className="filter-row-count" title="Add a primary key to this table to enable inline editing">
+                read-only · no primary key
+              </span>
+            )}
             <span className="filter-row-count">
               {total.toLocaleString()} {hasActiveState ? 'matching ' : ''}row{total !== 1 ? 's' : ''}
             </span>
@@ -286,6 +309,11 @@ export default function TableBrowser({ dbId, tableName, columnDefs }: Props) {
           sortColumn={sort?.column}
           sortDirection={sort?.direction}
           onSort={handleSort}
+          editable={canEdit}
+          pkColumns={pkColumns}
+          onUpdateCell={handleUpdateCell}
+          onDeleteRow={handleDeleteRow}
+          onInsertRow={handleInsertRow}
         />
       )}
       </div>

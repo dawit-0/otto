@@ -77,6 +77,35 @@ class DatabaseDriver(ABC):
         ...
 
     @abstractmethod
+    def get_primary_key_columns(self, conn: Any, table: str) -> list[str]:
+        """Return the ordered list of primary-key column names for a table."""
+        ...
+
+    @abstractmethod
+    def insert_row(self, conn: Any, table: str, values: dict[str, Any]) -> dict:
+        """Insert a row and return it as inserted (including generated defaults)."""
+        ...
+
+    @abstractmethod
+    def update_row(self, conn: Any, table: str, pk_values: dict[str, Any], values: dict[str, Any]) -> dict:
+        """Update the single row identified by ``pk_values`` and return the updated row.
+
+        Raises ValueError if the table has no primary key, if the update would
+        not match exactly one row, or if ``values``/``pk_values`` reference
+        unknown columns.
+        """
+        ...
+
+    @abstractmethod
+    def delete_row(self, conn: Any, table: str, pk_values: dict[str, Any]) -> None:
+        """Delete the single row identified by ``pk_values``.
+
+        Raises ValueError if the table has no primary key or the delete would
+        not match exactly one row.
+        """
+        ...
+
+    @abstractmethod
     def validate(self) -> None:
         """Test connectivity. Raise on failure."""
         ...
@@ -149,6 +178,27 @@ class DatabaseDriver(ABC):
                 clauses.append(f"{qcol} IS NULL")
             elif op == "is_not_null":
                 clauses.append(f"{qcol} IS NOT NULL")
+        return "WHERE " + " AND ".join(clauses), params
+
+    def build_pk_where_clause(
+        self,
+        pk_cols: list[str],
+        pk_values: dict[str, Any],
+    ) -> tuple[str, list]:
+        """Build a safe parameterized WHERE clause that pins exactly the columns
+        making up a table's primary key to specific values, for use in row-level
+        UPDATE/DELETE. Raises ValueError if the table has no primary key or a
+        required pk value is missing — both are required to identify a single
+        row unambiguously.
+        """
+        if not pk_cols:
+            raise ValueError("Table has no primary key; rows cannot be identified for editing")
+        missing = [c for c in pk_cols if c not in pk_values]
+        if missing:
+            raise ValueError(f"Missing primary key value(s): {', '.join(missing)}")
+        ph = self.placeholder
+        clauses = [f"{self.quote_identifier(c)} = {ph}" for c in pk_cols]
+        params = [pk_values[c] for c in pk_cols]
         return "WHERE " + " AND ".join(clauses), params
 
     def build_order_by(

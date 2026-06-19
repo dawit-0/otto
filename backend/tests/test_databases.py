@@ -205,3 +205,145 @@ def test_upload_database(client, sample_db):
     data = resp.json()
     assert data["name"] == "test"
     assert "id" in data
+
+
+# ── Row mutations: insert / update / delete ──
+
+
+def test_insert_row(client, sample_db):
+    info = _connect(client, sample_db)
+    resp = client.post(
+        f"/api/databases/{info['id']}/tables/authors/rows",
+        json={"values": {"id": 3, "name": "Carol", "email": "carol@example.com"}},
+    )
+    assert resp.status_code == 200, resp.text
+    row = resp.json()["row"]
+    assert row["id"] == 3
+    assert row["name"] == "Carol"
+
+    data = client.get(f"/api/databases/{info['id']}/tables/authors/data").json()
+    assert data["total"] == 3
+
+
+def test_insert_row_unknown_column(client, sample_db):
+    info = _connect(client, sample_db)
+    resp = client.post(
+        f"/api/databases/{info['id']}/tables/authors/rows",
+        json={"values": {"nope": "x"}},
+    )
+    assert resp.status_code == 400
+    assert "unknown column" in resp.json()["detail"].lower()
+
+
+def test_insert_row_unknown_table(client, sample_db):
+    info = _connect(client, sample_db)
+    resp = client.post(
+        f"/api/databases/{info['id']}/tables/nope/rows",
+        json={"values": {}},
+    )
+    assert resp.status_code == 404
+
+
+def test_update_row(client, sample_db):
+    info = _connect(client, sample_db)
+    resp = client.patch(
+        f"/api/databases/{info['id']}/tables/authors/rows",
+        json={"pk": {"id": 1}, "values": {"name": "Alice Updated"}},
+    )
+    assert resp.status_code == 200, resp.text
+    assert resp.json()["row"]["name"] == "Alice Updated"
+
+    data = client.get(f"/api/databases/{info['id']}/tables/authors/data").json()
+    names = {r["name"] for r in data["rows"]}
+    assert "Alice Updated" in names
+
+
+def test_update_row_missing_pk(client, sample_db):
+    info = _connect(client, sample_db)
+    resp = client.patch(
+        f"/api/databases/{info['id']}/tables/authors/rows",
+        json={"pk": {}, "values": {"name": "X"}},
+    )
+    assert resp.status_code == 400
+    assert "primary key" in resp.json()["detail"].lower()
+
+
+def test_update_row_not_found(client, sample_db):
+    info = _connect(client, sample_db)
+    resp = client.patch(
+        f"/api/databases/{info['id']}/tables/authors/rows",
+        json={"pk": {"id": 9999}, "values": {"name": "X"}},
+    )
+    assert resp.status_code == 400
+    assert "not found" in resp.json()["detail"].lower()
+
+
+def test_update_row_unknown_column(client, sample_db):
+    info = _connect(client, sample_db)
+    resp = client.patch(
+        f"/api/databases/{info['id']}/tables/authors/rows",
+        json={"pk": {"id": 1}, "values": {"nope": "x"}},
+    )
+    assert resp.status_code == 400
+    assert "unknown column" in resp.json()["detail"].lower()
+
+
+def test_delete_row(client, sample_db):
+    info = _connect(client, sample_db)
+    resp = client.request(
+        "DELETE",
+        f"/api/databases/{info['id']}/tables/books/rows",
+        json={"pk": {"id": 3}},
+    )
+    assert resp.status_code == 200, resp.text
+    assert resp.json()["ok"] is True
+
+    data = client.get(f"/api/databases/{info['id']}/tables/books/data").json()
+    assert data["total"] == 2
+    assert all(r["id"] != 3 for r in data["rows"])
+
+
+def test_delete_row_not_found(client, sample_db):
+    info = _connect(client, sample_db)
+    resp = client.request(
+        "DELETE",
+        f"/api/databases/{info['id']}/tables/books/rows",
+        json={"pk": {"id": 9999}},
+    )
+    assert resp.status_code == 400
+    assert "not found" in resp.json()["detail"].lower()
+
+
+def test_insert_row_sql_injection_in_value_is_inert(client, sample_db):
+    """A malicious string value must be stored as data, never executed as SQL."""
+    info = _connect(client, sample_db)
+    payload = "x'); DROP TABLE authors; --"
+    resp = client.post(
+        f"/api/databases/{info['id']}/tables/authors/rows",
+        json={"values": {"id": 5, "name": payload, "email": "z@example.com"}},
+    )
+    assert resp.status_code == 200, resp.text
+    assert resp.json()["row"]["name"] == payload
+
+    schema = client.get(f"/api/databases/{info['id']}/schema").json()
+    names = {t["name"] for t in schema["tables"]}
+    assert "authors" in names
+
+
+def test_insert_row_without_rowid_table(client, tmp_path):
+    """WITHOUT ROWID tables have no rowid to re-fetch the inserted row by."""
+    import sqlite3
+
+    db_path = str(tmp_path / "without_rowid.db")
+    conn = sqlite3.connect(db_path)
+    conn.execute("CREATE TABLE settings (key TEXT PRIMARY KEY, value TEXT) WITHOUT ROWID")
+    conn.commit()
+    conn.close()
+
+    info = _connect(client, db_path)
+    resp = client.post(
+        f"/api/databases/{info['id']}/tables/settings/rows",
+        json={"values": {"key": "theme", "value": "dark"}},
+    )
+    assert resp.status_code == 200, resp.text
+    assert resp.json()["row"] == {"key": "theme", "value": "dark"}

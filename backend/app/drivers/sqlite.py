@@ -131,6 +131,89 @@ class SQLiteDriver(DatabaseDriver):
         cursor = conn.execute(f"PRAGMA table_info({quoted})")
         return [row["name"] for row in cursor.fetchall()]
 
+    def get_primary_key_columns(self, conn: Any, table: str) -> list[str]:
+        quoted = self.quote_identifier(table)
+        cursor = conn.execute(f"PRAGMA table_info({quoted})")
+        pk_rows = sorted((row for row in cursor.fetchall() if row["pk"]), key=lambda r: r["pk"])
+        return [row["name"] for row in pk_rows]
+
+    def insert_row(self, conn: Any, table: str, values: dict[str, Any]) -> dict:
+        self.assert_valid_table(conn, table)
+        quoted = self.quote_identifier(table)
+        valid_columns = set(self.get_column_names(conn, table))
+        unknown = set(values) - valid_columns
+        if unknown:
+            raise ValueError(f"Unknown column(s): {', '.join(sorted(unknown))}")
+
+        if values:
+            cols = list(values.keys())
+            col_sql = ", ".join(self.quote_identifier(c) for c in cols)
+            ph_sql = ", ".join("?" for _ in cols)
+            cursor = conn.execute(
+                f"INSERT INTO {quoted} ({col_sql}) VALUES ({ph_sql})",
+                [values[c] for c in cols],
+            )
+        else:
+            cursor = conn.execute(f"INSERT INTO {quoted} DEFAULT VALUES")
+        conn.commit()
+
+        if self._is_without_rowid(conn, table):
+            # WITHOUT ROWID tables have no rowid to re-fetch by; the caller must
+            # have supplied the primary key value(s) in the insert itself.
+            pk_cols = self.get_primary_key_columns(conn, table)
+            pk_values = {c: values[c] for c in pk_cols if c in values}
+            where_sql, where_params = self.build_pk_where_clause(pk_cols, pk_values)
+            row = conn.execute(f"SELECT * FROM {quoted} {where_sql}", where_params).fetchone()
+        else:
+            row = conn.execute(f"SELECT * FROM {quoted} WHERE rowid = ?", (cursor.lastrowid,)).fetchone()
+        return dict(row) if row else {}
+
+    def _is_without_rowid(self, conn: Any, table: str) -> bool:
+        row = conn.execute(
+            "SELECT sql FROM sqlite_master WHERE type = 'table' AND name = ?", (table,)
+        ).fetchone()
+        return bool(row and row[0] and "WITHOUT ROWID" in row[0].upper())
+
+    def update_row(self, conn: Any, table: str, pk_values: dict[str, Any], values: dict[str, Any]) -> dict:
+        self.assert_valid_table(conn, table)
+        quoted = self.quote_identifier(table)
+        valid_columns = set(self.get_column_names(conn, table))
+        if not values:
+            raise ValueError("No columns to update")
+        unknown = set(values) - valid_columns
+        if unknown:
+            raise ValueError(f"Unknown column(s): {', '.join(sorted(unknown))}")
+
+        pk_cols = self.get_primary_key_columns(conn, table)
+        where_sql, where_params = self.build_pk_where_clause(pk_cols, pk_values)
+
+        set_sql = ", ".join(f"{self.quote_identifier(c)} = ?" for c in values)
+        cursor = conn.execute(
+            f"UPDATE {quoted} SET {set_sql} {where_sql}",
+            [*values.values(), *where_params],
+        )
+        if cursor.rowcount != 1:
+            conn.rollback()
+            raise ValueError("Row not found" if cursor.rowcount == 0 else "Update matched multiple rows; aborted for safety")
+        conn.commit()
+
+        new_pk_values = {**pk_values, **{c: values[c] for c in values if c in pk_cols}}
+        select_where_sql, select_params = self.build_pk_where_clause(pk_cols, new_pk_values)
+        row = conn.execute(f"SELECT * FROM {quoted} {select_where_sql}", select_params).fetchone()
+        return dict(row) if row else {}
+
+    def delete_row(self, conn: Any, table: str, pk_values: dict[str, Any]) -> None:
+        self.assert_valid_table(conn, table)
+        quoted = self.quote_identifier(table)
+        pk_cols = self.get_primary_key_columns(conn, table)
+        where_sql, where_params = self.build_pk_where_clause(pk_cols, pk_values)
+
+        cursor = conn.execute(f"DELETE FROM {quoted} {where_sql}", where_params)
+        if cursor.rowcount != 1:
+            conn.rollback()
+            raise ValueError("Row not found" if cursor.rowcount == 0 else "Delete matched multiple rows; aborted for safety")
+        conn.commit()
+
     def get_table_data(
         self, conn: Any, table: str, limit: int, offset: int,
         sort_column: str | None = None,

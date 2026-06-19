@@ -651,6 +651,77 @@ body {
   font-style: italic;
 }
 
+/* ─── Inline row editing ─── */
+.data-table td.editable-cell {
+  cursor: pointer;
+}
+.data-table td.editable-cell:hover {
+  box-shadow: inset 0 0 0 1px var(--accent);
+}
+.data-table td.cell-error {
+  box-shadow: inset 0 0 0 1px var(--danger);
+}
+.cell-edit-wrap {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+.cell-edit-input {
+  flex: 1;
+  width: 100%;
+  min-width: 60px;
+  padding: 3px 6px;
+  font-family: var(--font-mono);
+  font-size: 12px;
+  color: var(--text-primary);
+  background: var(--bg-primary);
+  border: 1px solid var(--accent);
+  border-radius: 4px;
+  outline: none;
+}
+.cell-null-btn {
+  flex-shrink: 0;
+  padding: 2px 5px;
+  font-size: 11px;
+  line-height: 1;
+  color: var(--text-muted);
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  cursor: pointer;
+}
+.cell-null-btn:hover {
+  color: var(--text-primary);
+  border-color: var(--border-strong);
+}
+.row-actions-th {
+  width: 32px;
+}
+.row-actions-cell {
+  width: 1%;
+  white-space: nowrap;
+  text-align: right;
+}
+.row-delete-btn:hover {
+  color: var(--danger);
+  background: rgba(239, 68, 68, 0.1);
+}
+.new-row td {
+  background: var(--accent-subtle);
+}
+.new-row-actions {
+  display: flex;
+  gap: 6px;
+  justify-content: flex-end;
+}
+.new-row-error-row td.new-row-error {
+  padding: 6px 14px;
+  font-size: 12px;
+  color: var(--danger);
+  background: rgba(239, 68, 68, 0.08);
+  white-space: normal;
+}
+
 /* ─── Empty State ─── */
 .empty-state {
   display: flex;
