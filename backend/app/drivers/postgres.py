@@ -98,6 +98,23 @@ class PostgresDriver(DatabaseDriver):
     def get_column_names(self, conn: Any, table: str) -> list[str]:
         return [c["name"] for c in self._get_columns(conn, table)]
 
+    def get_pk_columns(self, conn: Any, table: str) -> list[str]:
+        return self._get_pk_columns(conn, table)
+
+    def execute_params(self, conn: Any, sql: str, params: list) -> tuple[list[str], list[dict], int]:
+        cur = conn.cursor()
+        cur.execute(sql, params)
+        if cur.description:
+            columns = [desc[0] for desc in cur.description]
+            rows = [dict(zip(columns, row)) for row in cur.fetchall()]
+            rowcount = cur.rowcount
+            cur.close()
+            return columns, rows, rowcount
+        conn.commit()
+        rowcount = cur.rowcount
+        cur.close()
+        return [], [], rowcount
+
     def get_table_data(
         self, conn: Any, table: str, limit: int, offset: int,
         sort_column: str | None = None,

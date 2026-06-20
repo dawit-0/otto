@@ -77,6 +77,21 @@ class DatabaseDriver(ABC):
         ...
 
     @abstractmethod
+    def get_pk_columns(self, conn: Any, table: str) -> list[str]:
+        """Return the primary-key column names for a table (empty if none)."""
+        ...
+
+    @abstractmethod
+    def execute_params(self, conn: Any, sql: str, params: list) -> tuple[list[str], list[dict], int]:
+        """Execute a parameterized statement and commit automatically.
+
+        Returns (column_names, rows_as_dicts, rowcount). Unlike ``execute``,
+        this never interpolates values into the SQL text, so it's the
+        primitive row-edit operations build on.
+        """
+        ...
+
+    @abstractmethod
     def validate(self) -> None:
         """Test connectivity. Raise on failure."""
         ...
@@ -163,3 +178,96 @@ class DatabaseDriver(ABC):
             raise ValueError(f"Unknown column: {sort_column!r}")
         direction = "DESC" if (sort_direction or "asc").lower() == "desc" else "ASC"
         return f"ORDER BY {self.quote_identifier(sort_column)} {direction}"
+
+    def update_row(self, conn: Any, table: str, pk_values: dict, updates: dict) -> int:
+        """Update a single row identified by its primary key.
+
+        Returns the number of rows matched by the primary key (0 if the row
+        no longer exists). Refuses to run the UPDATE unless exactly one row
+        matches, so a bad or stale primary key can never edit multiple rows.
+        """
+        self.assert_valid_table(conn, table)
+        pk_columns = set(self.get_pk_columns(conn, table))
+        if not pk_columns:
+            raise ValueError(f"Table '{table}' has no primary key, so rows cannot be edited safely")
+        if set(pk_values) != pk_columns:
+            raise ValueError("Primary key values do not match the table's primary key columns")
+        if not updates:
+            raise ValueError("No fields to update")
+        valid_columns = set(self.get_column_names(conn, table))
+        for col in updates:
+            if col not in valid_columns:
+                raise ValueError(f"Unknown column: {col!r}")
+            if col in pk_columns:
+                raise ValueError("Primary key columns cannot be edited")
+
+        ph = self.placeholder
+        where_clause = " AND ".join(f"{self.quote_identifier(c)} = {ph}" for c in pk_values)
+        where_params = list(pk_values.values())
+
+        matched = self._count_matching(conn, table, where_clause, where_params)
+        if matched != 1:
+            return matched
+
+        set_clause = ", ".join(f"{self.quote_identifier(c)} = {ph}" for c in updates)
+        self.execute_params(
+            conn,
+            f"UPDATE {self.quote_identifier(table)} SET {set_clause} WHERE {where_clause}",
+            list(updates.values()) + where_params,
+        )
+        return 1
+
+    def delete_row(self, conn: Any, table: str, pk_values: dict) -> int:
+        """Delete a single row identified by its primary key.
+
+        Returns the number of rows matched (0 if already gone). Refuses to
+        run the DELETE unless exactly one row matches.
+        """
+        self.assert_valid_table(conn, table)
+        pk_columns = set(self.get_pk_columns(conn, table))
+        if not pk_columns:
+            raise ValueError(f"Table '{table}' has no primary key, so rows cannot be deleted safely")
+        if set(pk_values) != pk_columns:
+            raise ValueError("Primary key values do not match the table's primary key columns")
+
+        ph = self.placeholder
+        where_clause = " AND ".join(f"{self.quote_identifier(c)} = {ph}" for c in pk_values)
+        where_params = list(pk_values.values())
+
+        matched = self._count_matching(conn, table, where_clause, where_params)
+        if matched != 1:
+            return matched
+
+        self.execute_params(
+            conn,
+            f"DELETE FROM {self.quote_identifier(table)} WHERE {where_clause}",
+            where_params,
+        )
+        return 1
+
+    def insert_row(self, conn: Any, table: str, values: dict) -> None:
+        """Insert a new row. Columns omitted from ``values`` use their DB default."""
+        self.assert_valid_table(conn, table)
+        if not values:
+            raise ValueError("No values to insert")
+        valid_columns = set(self.get_column_names(conn, table))
+        for col in values:
+            if col not in valid_columns:
+                raise ValueError(f"Unknown column: {col!r}")
+
+        ph = self.placeholder
+        columns_sql = ", ".join(self.quote_identifier(c) for c in values)
+        placeholders_sql = ", ".join([ph] * len(values))
+        self.execute_params(
+            conn,
+            f"INSERT INTO {self.quote_identifier(table)} ({columns_sql}) VALUES ({placeholders_sql})",
+            list(values.values()),
+        )
+
+    def _count_matching(self, conn: Any, table: str, where_clause: str, where_params: list) -> int:
+        _, rows, _ = self.execute_params(
+            conn,
+            f"SELECT COUNT(*) AS cnt FROM {self.quote_identifier(table)} WHERE {where_clause}",
+            where_params,
+        )
+        return int(rows[0]["cnt"]) if rows else 0

@@ -28,6 +28,7 @@ from app.database import get_db
 from app.drivers import DatabaseDriver, get_driver
 from app.logging import get_logger
 from app.models.connection import ConnectedDatabase
+from app.models.history import QueryHistory
 
 logger = get_logger("databases")
 
@@ -423,5 +424,140 @@ def get_table_profile(db_id: str, table_name: str, db: Session = Depends(get_db)
             })
 
         return {"table": table_name, "row_count": total, "columns": result_columns}
+    finally:
+        driver.close(conn)
+
+
+# ── Row editing ──
+
+
+class RowUpdateRequest(BaseModel):
+    pk: dict[str, Any]
+    updates: dict[str, Any]
+
+
+class RowDeleteRequest(BaseModel):
+    pk: dict[str, Any]
+
+
+class RowInsertRequest(BaseModel):
+    values: dict[str, Any]
+
+
+def _sql_literal(v: Any) -> str:
+    if v is None:
+        return "NULL"
+    if isinstance(v, bool):
+        return "1" if v else "0"
+    if isinstance(v, (int, float)):
+        return str(v)
+    return "'" + str(v).replace("'", "''") + "'"
+
+
+def _format_update_display(table: str, pk: dict, updates: dict) -> str:
+    set_sql = ", ".join(f"{c} = {_sql_literal(v)}" for c, v in updates.items())
+    where_sql = " AND ".join(f"{c} = {_sql_literal(v)}" for c, v in pk.items())
+    return f"UPDATE {table} SET {set_sql} WHERE {where_sql}"
+
+
+def _format_delete_display(table: str, pk: dict) -> str:
+    where_sql = " AND ".join(f"{c} = {_sql_literal(v)}" for c, v in pk.items())
+    return f"DELETE FROM {table} WHERE {where_sql}"
+
+
+def _format_insert_display(table: str, values: dict) -> str:
+    cols_sql = ", ".join(values.keys())
+    vals_sql = ", ".join(_sql_literal(v) for v in values.values())
+    return f"INSERT INTO {table} ({cols_sql}) VALUES ({vals_sql})"
+
+
+@router.patch("/{db_id}/tables/{table_name}/rows")
+def update_table_row(db_id: str, table_name: str, req: RowUpdateRequest, db: Session = Depends(get_db)):
+    driver = get_driver_for_db(db_id, db)
+    db_name = get_db_name(db_id, db)
+    display_sql = _format_update_display(table_name, req.pk, req.updates)
+    conn = driver.connect()
+    try:
+        matched = driver.update_row(conn, table_name, req.pk, req.updates)
+        if matched != 1:
+            detail = (
+                "Row not found — it may have changed since it was loaded" if matched == 0
+                else f"Primary key matched {matched} rows; refusing an ambiguous update"
+            )
+            raise ValueError(detail)
+        logger.info("Updated row in '%s'.%s", db_name, table_name)
+        db.add(QueryHistory(db_id=db_id, db_name=db_name, sql=display_sql, status="success", row_count=1))
+        db.commit()
+        return {"ok": True}
+    except ValueError as e:
+        logger.warning("Row update rejected on '%s'.%s: %s", db_name, table_name, e)
+        db.add(QueryHistory(db_id=db_id, db_name=db_name, sql=display_sql, status="error", error_message=str(e)))
+        db.commit()
+        status_code = 404 if "not found" in str(e).lower() else 400
+        raise HTTPException(status_code=status_code, detail=str(e))
+    except Exception as e:
+        logger.error("Row update failed on '%s'.%s: %s", db_name, table_name, e)
+        db.add(QueryHistory(db_id=db_id, db_name=db_name, sql=display_sql, status="error", error_message=str(e)))
+        db.commit()
+        raise HTTPException(status_code=400, detail=str(e))
+    finally:
+        driver.close(conn)
+
+
+@router.delete("/{db_id}/tables/{table_name}/rows")
+def delete_table_row(db_id: str, table_name: str, req: RowDeleteRequest, db: Session = Depends(get_db)):
+    driver = get_driver_for_db(db_id, db)
+    db_name = get_db_name(db_id, db)
+    display_sql = _format_delete_display(table_name, req.pk)
+    conn = driver.connect()
+    try:
+        matched = driver.delete_row(conn, table_name, req.pk)
+        if matched != 1:
+            detail = (
+                "Row not found — it may have already been deleted" if matched == 0
+                else f"Primary key matched {matched} rows; refusing an ambiguous delete"
+            )
+            raise ValueError(detail)
+        logger.info("Deleted row from '%s'.%s", db_name, table_name)
+        db.add(QueryHistory(db_id=db_id, db_name=db_name, sql=display_sql, status="success", row_count=1))
+        db.commit()
+        return {"ok": True}
+    except ValueError as e:
+        logger.warning("Row delete rejected on '%s'.%s: %s", db_name, table_name, e)
+        db.add(QueryHistory(db_id=db_id, db_name=db_name, sql=display_sql, status="error", error_message=str(e)))
+        db.commit()
+        status_code = 404 if "not found" in str(e).lower() else 400
+        raise HTTPException(status_code=status_code, detail=str(e))
+    except Exception as e:
+        logger.error("Row delete failed on '%s'.%s: %s", db_name, table_name, e)
+        db.add(QueryHistory(db_id=db_id, db_name=db_name, sql=display_sql, status="error", error_message=str(e)))
+        db.commit()
+        raise HTTPException(status_code=400, detail=str(e))
+    finally:
+        driver.close(conn)
+
+
+@router.post("/{db_id}/tables/{table_name}/rows")
+def insert_table_row(db_id: str, table_name: str, req: RowInsertRequest, db: Session = Depends(get_db)):
+    driver = get_driver_for_db(db_id, db)
+    db_name = get_db_name(db_id, db)
+    display_sql = _format_insert_display(table_name, req.values)
+    conn = driver.connect()
+    try:
+        driver.insert_row(conn, table_name, req.values)
+        logger.info("Inserted row into '%s'.%s", db_name, table_name)
+        db.add(QueryHistory(db_id=db_id, db_name=db_name, sql=display_sql, status="success", row_count=1))
+        db.commit()
+        return {"ok": True}
+    except ValueError as e:
+        logger.warning("Row insert rejected on '%s'.%s: %s", db_name, table_name, e)
+        db.add(QueryHistory(db_id=db_id, db_name=db_name, sql=display_sql, status="error", error_message=str(e)))
+        db.commit()
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        logger.error("Row insert failed on '%s'.%s: %s", db_name, table_name, e)
+        db.add(QueryHistory(db_id=db_id, db_name=db_name, sql=display_sql, status="error", error_message=str(e)))
+        db.commit()
+        raise HTTPException(status_code=400, detail=str(e))
     finally:
         driver.close(conn)
