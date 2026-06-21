@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, Iterator
 
 import psycopg2
 import psycopg2.extras
@@ -39,6 +39,23 @@ class PostgresDriver(DatabaseDriver):
             cur.close()
         finally:
             conn.close()
+
+    def stream_query(
+        self, conn: Any, sql: str, params: list | None = None,
+    ) -> tuple[list[str], Iterator[dict]]:
+        cur = conn.cursor(name="otto_export")
+        cur.itersize = 2000
+        cur.execute(sql, params or [])
+        columns = [desc[0] for desc in cur.description] if cur.description else []
+
+        def rows() -> Iterator[dict]:
+            try:
+                for row in cur:
+                    yield dict(zip(columns, row))
+            finally:
+                cur.close()
+
+        return columns, rows()
 
     def explain_analyze(self, conn: Any, sql: str) -> dict:
         # EXPLAIN ANALYZE genuinely runs the statement, so for INSERT/UPDATE/

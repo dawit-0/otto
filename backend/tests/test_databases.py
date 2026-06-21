@@ -123,6 +123,69 @@ def test_get_table_data_nonexistent_table(client, sample_db):
     assert "unknown table" in resp.json()["detail"].lower()
 
 
+# ── Export ──
+
+
+def test_export_table_csv(client, sample_db):
+    info = _connect(client, sample_db)
+    resp = client.get(f"/api/databases/{info['id']}/tables/books/export?format=csv")
+    assert resp.status_code == 200
+    assert resp.headers["content-type"].startswith("text/csv")
+    assert 'filename="books.csv"' in resp.headers["content-disposition"]
+    lines = resp.text.strip().splitlines()
+    assert lines[0] == "id,title,author_id,pages"
+    assert len(lines) == 4  # header + 3 rows
+
+
+def test_export_table_json(client, sample_db):
+    info = _connect(client, sample_db)
+    resp = client.get(f"/api/databases/{info['id']}/tables/books/export?format=json")
+    assert resp.status_code == 200
+    assert resp.headers["content-type"].startswith("application/json")
+    data = resp.json()
+    assert len(data) == 3
+    assert {row["title"] for row in data} == {"Alpha", "Beta", "Gamma"}
+
+
+def test_export_table_respects_filters(client, sample_db):
+    info = _connect(client, sample_db)
+    filters = '[{"col": "author_id", "op": "equals", "val": "1"}]'
+    resp = client.get(
+        f"/api/databases/{info['id']}/tables/books/export",
+        params={"format": "json", "filters": filters},
+    )
+    assert resp.status_code == 200
+    data = resp.json()
+    assert {row["title"] for row in data} == {"Alpha", "Beta"}
+
+
+def test_export_table_respects_sort(client, sample_db):
+    info = _connect(client, sample_db)
+    resp = client.get(
+        f"/api/databases/{info['id']}/tables/books/export",
+        params={"format": "json", "sort_column": "pages", "sort_direction": "asc"},
+    )
+    data = resp.json()
+    assert [row["title"] for row in data] == ["Beta", "Alpha", "Gamma"]
+
+
+def test_export_table_nonexistent_table(client, sample_db):
+    info = _connect(client, sample_db)
+    resp = client.get(f"/api/databases/{info['id']}/tables/nope/export")
+    assert resp.status_code == 404
+
+
+def test_export_table_invalid_format(client, sample_db):
+    info = _connect(client, sample_db)
+    resp = client.get(f"/api/databases/{info['id']}/tables/books/export?format=xml")
+    assert resp.status_code == 400
+
+
+def test_export_table_unknown_db(client):
+    resp = client.get("/api/databases/nonexistent_12345678/tables/books/export")
+    assert resp.status_code == 404
+
+
 # ── Column Profile ──
 
 

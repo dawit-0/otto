@@ -28,6 +28,7 @@ from app.database import get_db
 from app.drivers import DatabaseDriver, get_driver
 from app.logging import get_logger
 from app.models.connection import ConnectedDatabase
+from app.utils.export import export_response
 
 logger = get_logger("databases")
 
@@ -316,6 +317,50 @@ def get_table_data(
         raise HTTPException(status_code=400, detail=str(e))
     finally:
         driver.close(conn)
+
+
+@router.get("/{db_id}/tables/{table_name}/export")
+def export_table_data(
+    db_id: str,
+    table_name: str,
+    format: str = "csv",
+    sort_column: Optional[str] = None,
+    sort_direction: str = "asc",
+    filters: Optional[str] = None,
+    db: Session = Depends(get_db),
+):
+    """Stream every row matching the current filters/sort for `table_name` as
+    a downloadable file, bypassing the page-size cap used by `/data` above."""
+    parsed_filters: list[dict] = []
+    if filters:
+        try:
+            parsed_filters = json.loads(filters)
+        except json.JSONDecodeError:
+            raise HTTPException(status_code=400, detail="Invalid filters JSON")
+
+    driver = get_driver_for_db(db_id, db)
+    conn = driver.connect()
+    try:
+        columns, rows = driver.export_table_rows(
+            conn, table_name,
+            sort_column=sort_column,
+            sort_direction=sort_direction,
+            filters=parsed_filters,
+        )
+    except ValueError as e:
+        driver.close(conn)
+        status = 404 if str(e).lower().startswith("unknown table") else 400
+        raise HTTPException(status_code=status, detail=str(e))
+    except Exception as e:
+        driver.close(conn)
+        logger.error("Error exporting table '%s' from db_id=%s: %s", table_name, db_id, e)
+        raise HTTPException(status_code=400, detail=str(e))
+
+    try:
+        return export_response(columns, rows, format, table_name, on_done=lambda: driver.close(conn))
+    except ValueError as e:
+        driver.close(conn)
+        raise HTTPException(status_code=400, detail=str(e))
 
 
 @router.get("/{db_id}/tables/{table_name}/profile")

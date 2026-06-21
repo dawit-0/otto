@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
-from typing import Any
+from typing import Any, Iterator
 
 
 ALLOWED_FILTER_OPS = {
@@ -80,6 +80,40 @@ class DatabaseDriver(ABC):
     def validate(self) -> None:
         """Test connectivity. Raise on failure."""
         ...
+
+    @abstractmethod
+    def stream_query(
+        self, conn: Any, sql: str, params: list | None = None,
+    ) -> tuple[list[str], Iterator[dict]]:
+        """Execute `sql` and return (columns, row_iterator).
+
+        Unlike `execute`, this does not materialize the full result into a
+        list — callers (e.g. file export) can consume rows incrementally.
+        """
+        ...
+
+    def export_table_rows(
+        self,
+        conn: Any,
+        table: str,
+        sort_column: str | None = None,
+        sort_direction: str = "asc",
+        filters: list[dict] | None = None,
+    ) -> tuple[list[str], Iterator[dict]]:
+        """Stream every row matching `filters`/`sort` for `table` (no paging).
+
+        Used for full-table export, as opposed to `get_table_data` which is
+        capped by limit/offset for on-screen browsing.
+        """
+        self.assert_valid_table(conn, table)
+        quoted = self.quote_identifier(table)
+        valid_columns = set(self.get_column_names(conn, table))
+
+        where_sql, where_params = self.build_filter_clause(filters or [], valid_columns)
+        order_sql = self.build_order_by(sort_column, sort_direction, valid_columns)
+
+        sql = f"SELECT * FROM {quoted} {where_sql} {order_sql}".strip()
+        return self.stream_query(conn, sql, where_params)
 
     def quote_identifier(self, name: str) -> str:
         if not isinstance(name, str) or name == "":

@@ -48,6 +48,8 @@ export default function TableBrowser({ dbId, tableName, columnDefs }: Props) {
   const [newVal, setNewVal] = useState('');
 
   const [showProfile, setShowProfile] = useState(false);
+  const [exporting, setExporting] = useState<'csv' | 'json' | null>(null);
+  const [exportError, setExportError] = useState<string | null>(null);
 
   const addFilterRef = useRef<HTMLDivElement>(null);
 
@@ -131,6 +133,18 @@ export default function TableBrowser({ dbId, tableName, columnDefs }: Props) {
   const hasActiveState = filters.length > 0 || sort !== null;
   const needsValueInput = VALUE_OPS.includes(newOp);
 
+  const handleExportAll = async (format: 'csv' | 'json') => {
+    setExporting(format);
+    setExportError(null);
+    try {
+      await api.exportTableData(dbId, tableName, format, sort?.column, sort?.direction, filters);
+    } catch (e) {
+      setExportError(e instanceof Error ? e.message : 'Export failed');
+    } finally {
+      setExporting(null);
+    }
+  };
+
   return (
     <div className={`table-browser-wrapper${showProfile ? ' profile-open' : ''}`}>
       <div className="table-browser-main">
@@ -201,8 +215,37 @@ export default function TableBrowser({ dbId, tableName, columnDefs }: Props) {
               </svg>
               Profile
             </button>
+            <button
+              className="btn btn-sm"
+              onClick={() => handleExportAll('csv')}
+              disabled={exporting !== null || total === 0}
+              title={`Export all ${total.toLocaleString()} ${hasActiveState ? 'matching ' : ''}rows as CSV (not just this page)`}
+            >
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+                <polyline points="7 10 12 15 17 10" />
+                <line x1="12" y1="15" x2="12" y2="3" />
+              </svg>
+              {exporting === 'csv' ? 'Exporting…' : 'Export All (CSV)'}
+            </button>
+            <button
+              className="btn btn-sm"
+              onClick={() => handleExportAll('json')}
+              disabled={exporting !== null || total === 0}
+              title={`Export all ${total.toLocaleString()} ${hasActiveState ? 'matching ' : ''}rows as JSON (not just this page)`}
+            >
+              {exporting === 'json' ? 'Exporting…' : 'Export All (JSON)'}
+            </button>
           </div>
         </div>
+        {exportError && (
+          <div className="filter-error">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <circle cx="12" cy="12" r="10" /><line x1="12" y1="8" x2="12" y2="12" /><line x1="12" y1="16" x2="12.01" y2="16" />
+            </svg>
+            {exportError}
+          </div>
+        )}
 
         {/* ── Add-filter inline form ── */}
         {showAddFilter && (

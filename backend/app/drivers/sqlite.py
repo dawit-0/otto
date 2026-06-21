@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import sqlite3
-from typing import Any
+from typing import Any, Iterator
 
 from app.drivers.base import DatabaseDriver
 
@@ -36,6 +36,18 @@ class SQLiteDriver(DatabaseDriver):
             conn.execute("SELECT 1")
         finally:
             conn.close()
+
+    def stream_query(
+        self, conn: Any, sql: str, params: list | None = None,
+    ) -> tuple[list[str], Iterator[dict]]:
+        cursor = conn.execute(sql, params or [])
+        columns = [desc[0] for desc in cursor.description] if cursor.description else []
+
+        def rows() -> Iterator[dict]:
+            for row in cursor:
+                yield dict(row)
+
+        return columns, rows()
 
     def explain_analyze(self, conn: Any, sql: str) -> dict:
         # SQLite has no runtime "ANALYZE" like PostgreSQL; EXPLAIN QUERY PLAN

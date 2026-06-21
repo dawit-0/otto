@@ -5,7 +5,7 @@ A lightweight web-based database explorer with schema visualization, data browsi
 ## Features
 
 - **Schema** — Interactive graph of tables and foreign-key relationships (pan, zoom, minimap)
-- **Data** — Paginated table browser with column/row count display
+- **Data** — Paginated table browser with column/row count display; export the full filtered/sorted result set (not just the current page) to CSV or JSON
 - **Query** — SQL editor with execution history, saved queries, and column profiling
 - **Visualize** — Drag-and-drop dashboard with 8 chart types; panels are persistent and resizable
 - **AI Assist** — Generate SQL from natural language; schema-aware, dialect-specific (SQLite / PostgreSQL)

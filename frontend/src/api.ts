@@ -253,6 +253,37 @@ export const api = {
     return request<TableDataResponse>(`/databases/${id}/tables/${table}/data?${params}`);
   },
 
+  exportTableData: async (
+    id: string,
+    table: string,
+    format: 'csv' | 'json',
+    sortColumn?: string,
+    sortDirection?: 'asc' | 'desc',
+    filters?: FilterRule[],
+  ): Promise<void> => {
+    const params = new URLSearchParams({ format });
+    if (sortColumn) params.set('sort_column', sortColumn);
+    if (sortDirection) params.set('sort_direction', sortDirection);
+    if (filters?.length) {
+      params.set('filters', JSON.stringify(filters.map(({ column, op, value }) => ({ col: column, op, val: value }))));
+    }
+    const res = await fetch(`${BASE}/databases/${id}/tables/${table}/export?${params}`);
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({ detail: res.statusText }));
+      throw new Error(err.detail || 'Export failed');
+    }
+    const blob = await res.blob();
+    const disposition = res.headers.get('Content-Disposition') || '';
+    const match = disposition.match(/filename="?([^"]+)"?/);
+    const filename = match ? match[1] : `${table}.${format}`;
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = filename;
+    a.click();
+    URL.revokeObjectURL(url);
+  },
+
   executeQuery: (dbId: string, sql: string) =>
     request<QueryResponse>('/query', {
       method: 'POST',
