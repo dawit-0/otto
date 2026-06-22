@@ -52,6 +52,7 @@ export default function TableBrowser({ dbId, tableName, columnDefs }: Props) {
   const addFilterRef = useRef<HTMLDivElement>(null);
 
   const colNames = columnDefs.map((c) => c.name);
+  const pkColumns = columnDefs.filter((c) => c.pk).map((c) => c.name);
 
   const loadData = useCallback(async (nextOffset: number, currentSort: SortState | null, currentFilters: FilterRule[]) => {
     setLoading(true);
@@ -122,6 +123,23 @@ export default function TableBrowser({ dbId, tableName, columnDefs }: Props) {
   };
 
   const removeFilter = (id: string) => setFilters((prev) => prev.filter((f) => f.id !== id));
+
+  const handleUpdateCell = async (pk: Record<string, unknown>, column: string, value: unknown) => {
+    const updated = await api.updateRow(dbId, tableName, pk, { [column]: value });
+    setRows((prev) => prev.map((r) => (
+      pkColumns.every((c) => r[c] === pk[c]) ? { ...r, ...updated } : r
+    )));
+  };
+
+  const handleDeleteRow = async (pk: Record<string, unknown>) => {
+    await api.deleteRow(dbId, tableName, pk);
+    await loadData(offset, sort, filters);
+  };
+
+  const handleInsertRow = async (values: Record<string, unknown>) => {
+    await api.insertRow(dbId, tableName, values);
+    await loadData(0, sort, filters);
+  };
 
   const clearAll = () => {
     setFilters([]);
@@ -286,6 +304,11 @@ export default function TableBrowser({ dbId, tableName, columnDefs }: Props) {
           sortColumn={sort?.column}
           sortDirection={sort?.direction}
           onSort={handleSort}
+          pkColumns={pkColumns}
+          editableColumns={columnDefs}
+          onUpdateCell={handleUpdateCell}
+          onDeleteRow={handleDeleteRow}
+          onInsertRow={handleInsertRow}
         />
       )}
       </div>

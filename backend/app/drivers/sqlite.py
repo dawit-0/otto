@@ -131,6 +131,82 @@ class SQLiteDriver(DatabaseDriver):
         cursor = conn.execute(f"PRAGMA table_info({quoted})")
         return [row["name"] for row in cursor.fetchall()]
 
+    def get_primary_key_columns(self, conn: Any, table: str) -> list[str]:
+        quoted = self.quote_identifier(table)
+        cursor = conn.execute(f"PRAGMA table_info({quoted})")
+        pk_cols = sorted(
+            (row for row in cursor.fetchall() if row["pk"]),
+            key=lambda row: row["pk"],
+        )
+        return [row["name"] for row in pk_cols]
+
+    def insert_row(self, conn: Any, table: str, values: dict) -> dict:
+        self.assert_valid_table(conn, table)
+        valid_columns = set(self.get_column_names(conn, table))
+        self._validate_columns(values.keys(), valid_columns)
+
+        quoted = self.quote_identifier(table)
+        cols = list(values.keys())
+        col_sql = ", ".join(self.quote_identifier(c) for c in cols)
+        placeholder_sql = ", ".join(["?"] * len(cols))
+        cursor = conn.execute(
+            f"INSERT INTO {quoted} ({col_sql}) VALUES ({placeholder_sql})",
+            tuple(values[c] for c in cols),
+        )
+        conn.commit()
+
+        row = conn.execute(
+            f"SELECT * FROM {quoted} WHERE rowid = ?", (cursor.lastrowid,)
+        ).fetchone()
+        return dict(row) if row is not None else dict(values)
+
+    def update_row(self, conn: Any, table: str, pk_values: dict, values: dict) -> dict:
+        self.assert_valid_table(conn, table)
+        valid_columns = set(self.get_column_names(conn, table))
+        self._validate_columns(pk_values.keys(), valid_columns)
+        self._validate_columns(values.keys(), valid_columns)
+
+        quoted = self.quote_identifier(table)
+        set_sql = ", ".join(f"{self.quote_identifier(c)} = ?" for c in values)
+        where_sql = " AND ".join(f"{self.quote_identifier(c)} = ?" for c in pk_values)
+        params = (*values.values(), *pk_values.values())
+
+        cursor = conn.execute(
+            f"UPDATE {quoted} SET {set_sql} WHERE {where_sql}", params
+        )
+        if cursor.rowcount == 0:
+            conn.rollback()
+            raise ValueError("Row not found")
+        if cursor.rowcount > 1:
+            conn.rollback()
+            raise ValueError("Update matched more than one row; aborted")
+        conn.commit()
+
+        new_pk = {**pk_values, **{c: values[c] for c in pk_values if c in values}}
+        new_where = " AND ".join(f"{self.quote_identifier(c)} = ?" for c in new_pk)
+        row = conn.execute(
+            f"SELECT * FROM {quoted} WHERE {new_where}", tuple(new_pk.values())
+        ).fetchone()
+        return dict(row) if row is not None else {**pk_values, **values}
+
+    def delete_row(self, conn: Any, table: str, pk_values: dict) -> None:
+        self.assert_valid_table(conn, table)
+        valid_columns = set(self.get_column_names(conn, table))
+        self._validate_columns(pk_values.keys(), valid_columns)
+
+        quoted = self.quote_identifier(table)
+        where_sql = " AND ".join(f"{self.quote_identifier(c)} = ?" for c in pk_values)
+        cursor = conn.execute(
+            f"DELETE FROM {quoted} WHERE {where_sql}", tuple(pk_values.values())
+        )
+        if cursor.rowcount == 0:
+            conn.rollback()
+            raise ValueError("Row not found")
+        if cursor.rowcount > 1:
+            conn.rollback()
+            raise ValueError("Delete matched more than one row; aborted")
+        conn.commit()
+
     def get_table_data(
         self, conn: Any, table: str, limit: int, offset: int,
         sort_column: str | None = None,

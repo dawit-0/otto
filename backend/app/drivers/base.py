@@ -77,9 +77,36 @@ class DatabaseDriver(ABC):
         ...
 
     @abstractmethod
+    def get_primary_key_columns(self, conn: Any, table: str) -> list[str]:
+        """Return the ordered list of primary-key column names for a table."""
+        ...
+
+    @abstractmethod
+    def insert_row(self, conn: Any, table: str, values: dict) -> dict:
+        """Insert a row and return it as inserted (with generated defaults)."""
+        ...
+
+    @abstractmethod
+    def update_row(self, conn: Any, table: str, pk_values: dict, values: dict) -> dict:
+        """Update the single row matched by ``pk_values`` and return the new row."""
+        ...
+
+    @abstractmethod
+    def delete_row(self, conn: Any, table: str, pk_values: dict) -> None:
+        """Delete the single row matched by ``pk_values``."""
+        ...
+
+    @abstractmethod
     def validate(self) -> None:
         """Test connectivity. Raise on failure."""
         ...
+
+    def _validate_columns(self, columns: Any, valid_columns: set[str]) -> None:
+        if not columns:
+            raise ValueError("At least one column value is required")
+        for col in columns:
+            if col not in valid_columns:
+                raise ValueError(f"Unknown column: {col!r}")
 
     def quote_identifier(self, name: str) -> str:
         if not isinstance(name, str) or name == "":
