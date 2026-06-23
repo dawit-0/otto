@@ -195,6 +195,108 @@ def test_get_table_profile_unknown_db(client):
     assert resp.status_code == 404
 
 
+# ── Row mutations (insert / update / delete) ──
+
+
+def test_insert_row(client, sample_db):
+    info = _connect(client, sample_db)
+    resp = client.post(
+        f"/api/databases/{info['id']}/tables/books/rows",
+        json={"values": {"title": "Delta", "author_id": 1, "pages": 99}},
+    )
+    assert resp.status_code == 200
+    row = resp.json()["row"]
+    assert row["title"] == "Delta"
+    assert row["pages"] == 99
+    assert "id" in row  # auto-generated primary key
+
+    data = client.get(f"/api/databases/{info['id']}/tables/books/data").json()
+    assert data["total"] == 4
+
+
+def test_insert_row_unknown_column(client, sample_db):
+    info = _connect(client, sample_db)
+    resp = client.post(
+        f"/api/databases/{info['id']}/tables/books/rows",
+        json={"values": {"nope": "x"}},
+    )
+    assert resp.status_code == 400
+
+
+def test_insert_row_empty_values(client, sample_db):
+    info = _connect(client, sample_db)
+    resp = client.post(
+        f"/api/databases/{info['id']}/tables/books/rows",
+        json={"values": {}},
+    )
+    assert resp.status_code == 400
+
+
+def test_update_row(client, sample_db):
+    info = _connect(client, sample_db)
+    resp = client.put(
+        f"/api/databases/{info['id']}/tables/books/rows",
+        json={"pk": {"id": 1}, "values": {"pages": 250}},
+    )
+    assert resp.status_code == 200
+    row = resp.json()["row"]
+    assert row["pages"] == 250
+    assert row["title"] == "Alpha"  # unchanged columns are preserved
+
+
+def test_update_row_not_found(client, sample_db):
+    info = _connect(client, sample_db)
+    resp = client.put(
+        f"/api/databases/{info['id']}/tables/books/rows",
+        json={"pk": {"id": 9999}, "values": {"pages": 1}},
+    )
+    assert resp.status_code == 404
+
+
+def test_update_row_missing_pk(client, sample_db):
+    info = _connect(client, sample_db)
+    resp = client.put(
+        f"/api/databases/{info['id']}/tables/books/rows",
+        json={"pk": {}, "values": {"pages": 1}},
+    )
+    assert resp.status_code == 400
+
+
+def test_delete_row(client, sample_db):
+    info = _connect(client, sample_db)
+    resp = client.request(
+        "DELETE",
+        f"/api/databases/{info['id']}/tables/books/rows",
+        json={"pk": {"id": 1}},
+    )
+    assert resp.status_code == 200
+    assert resp.json()["ok"] is True
+
+    data = client.get(f"/api/databases/{info['id']}/tables/books/data").json()
+    assert data["total"] == 2
+    assert all(r["id"] != 1 for r in data["rows"])
+
+
+def test_delete_row_not_found(client, sample_db):
+    info = _connect(client, sample_db)
+    resp = client.request(
+        "DELETE",
+        f"/api/databases/{info['id']}/tables/books/rows",
+        json={"pk": {"id": 9999}},
+    )
+    assert resp.status_code == 404
+
+
+def test_row_mutations_logged_to_history(client, sample_db):
+    info = _connect(client, sample_db)
+    client.post(
+        f"/api/databases/{info['id']}/tables/books/rows",
+        json={"values": {"title": "Delta", "author_id": 1, "pages": 99}},
+    )
+    history = client.get(f"/api/history?db_id={info['id']}").json()
+    assert any("INSERT INTO books" in h["sql"] for h in history)
+
+
 # ── Upload ──
 
 

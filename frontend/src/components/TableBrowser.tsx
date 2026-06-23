@@ -52,6 +52,10 @@ export default function TableBrowser({ dbId, tableName, columnDefs }: Props) {
   const addFilterRef = useRef<HTMLDivElement>(null);
 
   const colNames = columnDefs.map((c) => c.name);
+  const pkColumns = columnDefs.filter((c) => c.pk).map((c) => c.name);
+
+  const buildPk = (row: Record<string, unknown>): Record<string, unknown> =>
+    Object.fromEntries(pkColumns.map((c) => [c, row[c]]));
 
   const loadData = useCallback(async (nextOffset: number, currentSort: SortState | null, currentFilters: FilterRule[]) => {
     setLoading(true);
@@ -130,6 +134,29 @@ export default function TableBrowser({ dbId, tableName, columnDefs }: Props) {
 
   const hasActiveState = filters.length > 0 || sort !== null;
   const needsValueInput = VALUE_OPS.includes(newOp);
+
+  const handleCellEdit = async (row: Record<string, unknown>, column: string, newValue: string | null) => {
+    const pk = buildPk(row);
+    const res = await api.updateRow(dbId, tableName, pk, { [column]: newValue });
+    setRows((prev) => prev.map((r) => (r === row ? res.row : r)));
+  };
+
+  const handleDeleteRow = async (row: Record<string, unknown>) => {
+    const pk = buildPk(row);
+    await api.deleteRow(dbId, tableName, pk);
+    setRows((prev) => prev.filter((r) => r !== row));
+    setTotal((prev) => Math.max(0, prev - 1));
+  };
+
+  const handleAddRow = async (values: Record<string, string>) => {
+    const payload: Record<string, unknown> = {};
+    for (const [k, v] of Object.entries(values)) {
+      if (v !== '') payload[k] = v;
+    }
+    const res = await api.insertRow(dbId, tableName, payload);
+    setRows((prev) => [res.row, ...prev]);
+    setTotal((prev) => prev + 1);
+  };
 
   return (
     <div className={`table-browser-wrapper${showProfile ? ' profile-open' : ''}`}>
@@ -286,6 +313,10 @@ export default function TableBrowser({ dbId, tableName, columnDefs }: Props) {
           sortColumn={sort?.column}
           sortDirection={sort?.direction}
           onSort={handleSort}
+          pkColumns={pkColumns}
+          onCellEdit={handleCellEdit}
+          onDeleteRow={handleDeleteRow}
+          onAddRow={handleAddRow}
         />
       )}
       </div>

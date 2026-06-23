@@ -176,6 +176,10 @@ export interface OverviewTableSummary {
   indexes: Index[];
 }
 
+export interface RowMutationResponse {
+  row: Record<string, unknown>;
+}
+
 export interface OverviewResponse {
   db_info: {
     path: string;
@@ -363,6 +367,26 @@ export const api = {
 
   getTableProfile: (dbId: string, table: string) =>
     request<TableProfileResponse>(`/databases/${dbId}/tables/${table}/profile`),
+
+  // ── Row editing ──
+
+  insertRow: (dbId: string, table: string, values: Record<string, unknown>) =>
+    request<RowMutationResponse>(`/databases/${dbId}/tables/${table}/rows`, {
+      method: 'POST',
+      body: JSON.stringify({ values }),
+    }),
+
+  updateRow: (dbId: string, table: string, pk: Record<string, unknown>, values: Record<string, unknown>) =>
+    request<RowMutationResponse>(`/databases/${dbId}/tables/${table}/rows`, {
+      method: 'PUT',
+      body: JSON.stringify({ pk, values }),
+    }),
+
+  deleteRow: (dbId: string, table: string, pk: Record<string, unknown>) =>
+    request<{ ok: boolean }>(`/databases/${dbId}/tables/${table}/rows`, {
+      method: 'DELETE',
+      body: JSON.stringify({ pk }),
+    }),
 
   // ── AI ──
 

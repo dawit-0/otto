@@ -650,6 +650,55 @@ body {
   color: var(--text-muted);
   font-style: italic;
 }
+.data-table td.editable-cell:hover {
+  cursor: text;
+  outline: 1px dashed var(--border);
+  outline-offset: -1px;
+}
+
+/* ─── Inline Row Editing ─── */
+.pk-indicator {
+  margin-left: 4px;
+  font-size: 10px;
+  opacity: 0.8;
+}
+.row-actions-th,
+.row-actions-cell {
+  width: 36px;
+  text-align: center;
+  white-space: nowrap;
+}
+.cell-editing-td {
+  padding: 4px 8px !important;
+}
+.cell-edit-input {
+  width: 100%;
+  background: var(--bg-primary);
+  border: 1px solid var(--accent);
+  border-radius: var(--radius-sm);
+  color: var(--text-primary);
+  font-family: var(--font-mono);
+  font-size: 12px;
+  padding: 4px 6px;
+  outline: none;
+}
+.cell-error {
+  color: var(--danger);
+  font-size: 11px;
+  margin-top: 2px;
+  white-space: normal;
+}
+.add-row-row td {
+  background: rgba(99, 102, 241, 0.06);
+  padding: 4px 8px;
+}
+.btn-icon-delete:hover {
+  color: var(--danger);
+}
+.btn-icon-delete.confirm-delete {
+  color: var(--danger);
+  background: rgba(239, 68, 68, 0.12);
+}
 
 /* ─── Empty State ─── */
 .empty-state {

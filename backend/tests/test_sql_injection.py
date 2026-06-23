@@ -109,6 +109,43 @@ def test_table_with_embedded_quote_is_readable(client, weird_db):
     assert {"id", "v"} == set(data["columns"])
 
 
+# ── Row mutation endpoints reject malicious column names ──
+
+
+@pytest.mark.parametrize(
+    "bad_column",
+    [
+        'id"; DROP TABLE authors; --',
+        "id, (SELECT sql FROM sqlite_master)",
+    ],
+)
+def test_insert_row_rejects_injection_in_column_name(client, sample_db, bad_column):
+    info = _connect(client, sample_db)
+    resp = client.post(
+        f"/api/databases/{info['id']}/tables/books/rows",
+        json={"values": {bad_column: "x"}},
+    )
+    assert resp.status_code == 400
+
+    # The real tables must still be intact.
+    schema = client.get(f"/api/databases/{info['id']}/schema").json()
+    names = {t["name"] for t in schema["tables"]}
+    assert {"authors", "books"}.issubset(names)
+
+
+def test_update_row_rejects_injection_in_pk_column_name(client, sample_db):
+    info = _connect(client, sample_db)
+    resp = client.put(
+        f"/api/databases/{info['id']}/tables/books/rows",
+        json={"pk": {'id"; DROP TABLE authors; --': 1}, "values": {"pages": 1}},
+    )
+    assert resp.status_code == 400
+
+    schema = client.get(f"/api/databases/{info['id']}/schema").json()
+    names = {t["name"] for t in schema["tables"]}
+    assert {"authors", "books"}.issubset(names)
+
+
 # ── Schema endpoint handles awkward names without failing ──
 
 

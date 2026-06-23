@@ -3,6 +3,7 @@ import os
 import shutil
 import sqlite3
 import tempfile
+import time
 from hashlib import sha256
 from pathlib import Path
 from typing import Any, Optional
@@ -28,10 +29,35 @@ from app.database import get_db
 from app.drivers import DatabaseDriver, get_driver
 from app.logging import get_logger
 from app.models.connection import ConnectedDatabase
+from app.models.history import QueryHistory
 
 logger = get_logger("databases")
 
 router = APIRouter(prefix="/api/databases", tags=["databases"])
+
+
+def _sql_literal(value: Any) -> str:
+    """Render a Python value as a SQL literal, for display in query history only."""
+    if value is None:
+        return "NULL"
+    if isinstance(value, bool):
+        return "TRUE" if value else "FALSE"
+    if isinstance(value, (int, float)):
+        return str(value)
+    return "'" + str(value).replace("'", "''") + "'"
+
+
+class InsertRowRequest(BaseModel):
+    values: dict[str, Any]
+
+
+class UpdateRowRequest(BaseModel):
+    pk: dict[str, Any]
+    values: dict[str, Any]
+
+
+class DeleteRowRequest(BaseModel):
+    pk: dict[str, Any]
 
 
 class ConnectRequest(BaseModel):
@@ -313,6 +339,93 @@ def get_table_data(
         raise HTTPException(status_code=status, detail=str(e))
     except Exception as e:
         logger.error("Error reading table '%s' from db_id=%s: %s", table_name, db_id, e)
+        raise HTTPException(status_code=400, detail=str(e))
+    finally:
+        driver.close(conn)
+
+
+@router.post("/{db_id}/tables/{table_name}/rows")
+def insert_row(db_id: str, table_name: str, req: InsertRowRequest, db: Session = Depends(get_db)):
+    driver = get_driver_for_db(db_id, db)
+    db_name = get_db_name(db_id, db)
+    conn = driver.connect()
+    start = time.perf_counter()
+    try:
+        row = driver.insert_row(conn, table_name, req.values)
+        duration_ms = (time.perf_counter() - start) * 1000
+        logger.info("Inserted row into '%s'.'%s'", db_name, table_name)
+        log_sql = (
+            f"INSERT INTO {table_name} ({', '.join(req.values)}) "
+            f"VALUES ({', '.join(_sql_literal(v) for v in req.values.values())})"
+        )
+        db.add(QueryHistory(
+            db_id=db_id, db_name=db_name, sql=log_sql,
+            status="success", row_count=1, duration_ms=duration_ms,
+        ))
+        db.commit()
+        return {"row": row}
+    except ValueError as e:
+        status = 404 if str(e).lower().startswith("unknown table") else 400
+        raise HTTPException(status_code=status, detail=str(e))
+    except Exception as e:
+        logger.error("Insert failed on '%s'.'%s': %s", db_name, table_name, e)
+        raise HTTPException(status_code=400, detail=str(e))
+    finally:
+        driver.close(conn)
+
+
+@router.put("/{db_id}/tables/{table_name}/rows")
+def update_row(db_id: str, table_name: str, req: UpdateRowRequest, db: Session = Depends(get_db)):
+    driver = get_driver_for_db(db_id, db)
+    db_name = get_db_name(db_id, db)
+    conn = driver.connect()
+    start = time.perf_counter()
+    try:
+        row = driver.update_row(conn, table_name, req.pk, req.values)
+        duration_ms = (time.perf_counter() - start) * 1000
+        logger.info("Updated row in '%s'.'%s'", db_name, table_name)
+        set_clause = ', '.join(f"{k} = {_sql_literal(v)}" for k, v in req.values.items())
+        where_clause = ' AND '.join(f"{k} = {_sql_literal(v)}" for k, v in req.pk.items())
+        log_sql = f"UPDATE {table_name} SET {set_clause} WHERE {where_clause}"
+        db.add(QueryHistory(
+            db_id=db_id, db_name=db_name, sql=log_sql,
+            status="success", row_count=1, duration_ms=duration_ms,
+        ))
+        db.commit()
+        return {"row": row}
+    except ValueError as e:
+        status = 404 if str(e) == "Row not found" or str(e).lower().startswith("unknown table") else 400
+        raise HTTPException(status_code=status, detail=str(e))
+    except Exception as e:
+        logger.error("Update failed on '%s'.'%s': %s", db_name, table_name, e)
+        raise HTTPException(status_code=400, detail=str(e))
+    finally:
+        driver.close(conn)
+
+
+@router.delete("/{db_id}/tables/{table_name}/rows")
+def delete_row(db_id: str, table_name: str, req: DeleteRowRequest, db: Session = Depends(get_db)):
+    driver = get_driver_for_db(db_id, db)
+    db_name = get_db_name(db_id, db)
+    conn = driver.connect()
+    start = time.perf_counter()
+    try:
+        driver.delete_row(conn, table_name, req.pk)
+        duration_ms = (time.perf_counter() - start) * 1000
+        logger.info("Deleted row from '%s'.'%s'", db_name, table_name)
+        where_clause = ' AND '.join(f"{k} = {_sql_literal(v)}" for k, v in req.pk.items())
+        log_sql = f"DELETE FROM {table_name} WHERE {where_clause}"
+        db.add(QueryHistory(
+            db_id=db_id, db_name=db_name, sql=log_sql,
+            status="success", row_count=1, duration_ms=duration_ms,
+        ))
+        db.commit()
+        return {"ok": True}
+    except ValueError as e:
+        status = 404 if str(e) == "Row not found" or str(e).lower().startswith("unknown table") else 400
+        raise HTTPException(status_code=status, detail=str(e))
+    except Exception as e:
+        logger.error("Delete failed on '%s'.'%s': %s", db_name, table_name, e)
         raise HTTPException(status_code=400, detail=str(e))
     finally:
         driver.close(conn)

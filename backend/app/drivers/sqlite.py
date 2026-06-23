@@ -131,6 +131,15 @@ class SQLiteDriver(DatabaseDriver):
         cursor = conn.execute(f"PRAGMA table_info({quoted})")
         return [row["name"] for row in cursor.fetchall()]
 
+    def get_primary_key_columns(self, conn: Any, table: str) -> list[str]:
+        quoted = self.quote_identifier(table)
+        cursor = conn.execute(f"PRAGMA table_info({quoted})")
+        # `pk` is the 1-based position within the key (0 = not part of the PK).
+        pk_cols = sorted(
+            ((row["pk"], row["name"]) for row in cursor.fetchall() if row["pk"] > 0),
+        )
+        return [name for _, name in pk_cols]
+
     def get_table_data(
         self, conn: Any, table: str, limit: int, offset: int,
         sort_column: str | None = None,

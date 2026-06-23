@@ -77,6 +77,11 @@ class DatabaseDriver(ABC):
         ...
 
     @abstractmethod
+    def get_primary_key_columns(self, conn: Any, table: str) -> list[str]:
+        """Return the primary key column names for a table (empty if none)."""
+        ...
+
+    @abstractmethod
     def validate(self) -> None:
         """Test connectivity. Raise on failure."""
         ...
@@ -163,3 +168,79 @@ class DatabaseDriver(ABC):
             raise ValueError(f"Unknown column: {sort_column!r}")
         direction = "DESC" if (sort_direction or "asc").lower() == "desc" else "ASC"
         return f"ORDER BY {self.quote_identifier(sort_column)} {direction}"
+
+    def _validate_columns(self, conn: Any, table: str, columns: Any) -> None:
+        valid = set(self.get_column_names(conn, table))
+        for col in columns:
+            if col not in valid:
+                raise ValueError(f"Unknown column: {col!r}")
+
+    def insert_row(self, conn: Any, table: str, values: dict[str, Any]) -> dict:
+        """Insert a row and return the persisted row (including generated defaults).
+
+        Uses RETURNING so the same query both writes and reads the final row;
+        both psycopg2 and modern sqlite3 (3.35+) support it.
+        """
+        self.assert_valid_table(conn, table)
+        if not values:
+            raise ValueError("No values provided")
+        self._validate_columns(conn, table, values.keys())
+
+        ph = self.placeholder
+        cols = list(values.keys())
+        col_sql = ", ".join(self.quote_identifier(c) for c in cols)
+        ph_sql = ", ".join([ph] * len(cols))
+        sql = (
+            f"INSERT INTO {self.quote_identifier(table)} ({col_sql}) "
+            f"VALUES ({ph_sql}) RETURNING *"
+        )
+        cursor = conn.cursor()
+        cursor.execute(sql, [values[c] for c in cols])
+        row = cursor.fetchone()
+        conn.commit()
+        out_cols = [d[0] for d in cursor.description]
+        return dict(zip(out_cols, row))
+
+    def update_row(self, conn: Any, table: str, pk: dict[str, Any], values: dict[str, Any]) -> dict:
+        """Update the single row matched by `pk` and return the updated row."""
+        self.assert_valid_table(conn, table)
+        if not pk:
+            raise ValueError("A primary key is required to update a row")
+        if not values:
+            raise ValueError("No changes provided")
+        self._validate_columns(conn, table, list(pk.keys()) + list(values.keys()))
+
+        ph = self.placeholder
+        set_sql = ", ".join(f"{self.quote_identifier(c)} = {ph}" for c in values)
+        where_sql = " AND ".join(f"{self.quote_identifier(c)} = {ph}" for c in pk)
+        sql = (
+            f"UPDATE {self.quote_identifier(table)} SET {set_sql} "
+            f"WHERE {where_sql} RETURNING *"
+        )
+        params = [*values.values(), *pk.values()]
+        cursor = conn.cursor()
+        cursor.execute(sql, params)
+        row = cursor.fetchone()
+        if row is None:
+            conn.rollback()
+            raise ValueError("Row not found")
+        conn.commit()
+        out_cols = [d[0] for d in cursor.description]
+        return dict(zip(out_cols, row))
+
+    def delete_row(self, conn: Any, table: str, pk: dict[str, Any]) -> None:
+        """Delete the single row matched by `pk`."""
+        self.assert_valid_table(conn, table)
+        if not pk:
+            raise ValueError("A primary key is required to delete a row")
+        self._validate_columns(conn, table, pk.keys())
+
+        ph = self.placeholder
+        where_sql = " AND ".join(f"{self.quote_identifier(c)} = {ph}" for c in pk)
+        sql = f"DELETE FROM {self.quote_identifier(table)} WHERE {where_sql}"
+        cursor = conn.cursor()
+        cursor.execute(sql, list(pk.values()))
+        if cursor.rowcount == 0:
+            conn.rollback()
+            raise ValueError("Row not found")
+        conn.commit()
