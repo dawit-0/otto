@@ -930,6 +930,29 @@ body {
   gap: 8px;
   margin-top: 20px;
 }
+.modal-title-danger {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--danger);
+}
+.confirm-destructive-text {
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--text-secondary);
+  margin-bottom: 12px;
+}
+.confirm-destructive-emphasis {
+  color: var(--danger);
+}
+.btn-danger-solid {
+  background: var(--danger);
+  border-color: var(--danger);
+}
+.btn-danger-solid:hover {
+  background: #dc2626;
+  border-color: #dc2626;
+}
 .modal-divider {
   display: flex;
   align-items: center;

@@ -8,6 +8,12 @@ from app.database import get_db
 from app.logging import get_logger
 from app.models.history import QueryHistory
 from app.routes.databases import get_driver_for_db, get_db_name
+from app.utils.sql_safety import (
+    DESTRUCTIVE_DDL,
+    DESTRUCTIVE_DML,
+    classify_statement,
+    has_where_clause,
+)
 
 logger = get_logger("query")
 
@@ -17,6 +23,9 @@ router = APIRouter(prefix="/api", tags=["query"])
 class QueryRequest(BaseModel):
     db_id: str
     sql: str
+    # Set once the user has clicked through the destructive-statement
+    # confirmation modal; first pass through always defaults to False.
+    confirmed: bool = False
 
 
 class ExplainRequest(BaseModel):
@@ -28,6 +37,19 @@ class ExplainRequest(BaseModel):
 def execute_query(req: QueryRequest, db: Session = Depends(get_db)):
     driver = get_driver_for_db(req.db_id, db)
     db_name = get_db_name(req.db_id, db)
+    statement_type = classify_statement(req.sql)
+
+    # Schema-destroying statements (DROP/TRUNCATE/ALTER) are gated purely on
+    # the keyword — there is no safe way to "preview" them, so we just ask
+    # before running anything at all.
+    if not req.confirmed and statement_type in DESTRUCTIVE_DDL:
+        return {
+            "requires_confirmation": True,
+            "statement_type": statement_type,
+            "affected_rows": None,
+            "has_where": False,
+        }
+
     logger.info("Executing query on '%s': %.100s", db_name, req.sql)
 
     conn = driver.connect()
@@ -35,6 +57,20 @@ def execute_query(req: QueryRequest, db: Session = Depends(get_db)):
     try:
         cursor = conn.cursor()
         cursor.execute(req.sql)
+
+        # UPDATE/DELETE can be previewed safely: run it for real inside the
+        # open transaction to get an accurate affected-row count, then roll
+        # back instead of committing if the user hasn't confirmed yet.
+        if not req.confirmed and statement_type in DESTRUCTIVE_DML:
+            affected_rows = cursor.rowcount
+            conn.rollback()
+            return {
+                "requires_confirmation": True,
+                "statement_type": statement_type,
+                "affected_rows": affected_rows,
+                "has_where": has_where_clause(req.sql),
+            }
+
         duration_ms = (time.perf_counter() - start) * 1000
 
         if cursor.description:

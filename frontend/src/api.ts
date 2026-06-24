@@ -64,6 +64,19 @@ export interface QueryResponse {
   message?: string;
 }
 
+export interface QueryConfirmationRequired {
+  requires_confirmation: true;
+  statement_type: string;
+  affected_rows: number | null;
+  has_where: boolean;
+}
+
+export function isConfirmationRequired(
+  res: QueryResponse | QueryConfirmationRequired,
+): res is QueryConfirmationRequired {
+  return (res as QueryConfirmationRequired).requires_confirmation === true;
+}
+
 export interface ExplainPlanResponse {
   command: string;
   format: 'text' | 'tree';
@@ -253,10 +266,10 @@ export const api = {
     return request<TableDataResponse>(`/databases/${id}/tables/${table}/data?${params}`);
   },
 
-  executeQuery: (dbId: string, sql: string) =>
-    request<QueryResponse>('/query', {
+  executeQuery: (dbId: string, sql: string, confirmed = false) =>
+    request<QueryResponse | QueryConfirmationRequired>('/query', {
       method: 'POST',
-      body: JSON.stringify({ db_id: dbId, sql }),
+      body: JSON.stringify({ db_id: dbId, sql, confirmed }),
     }),
 
   explainQuery: (dbId: string, sql: string) =>

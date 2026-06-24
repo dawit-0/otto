@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
-import { api, type QueryResponse, type QueryHistoryEntry, type SavedQueryEntry, type QueryParam, type ExplainPlanResponse } from '../api';
+import { api, isConfirmationRequired, type QueryResponse, type QueryConfirmationRequired, type QueryHistoryEntry, type SavedQueryEntry, type QueryParam, type ExplainPlanResponse } from '../api';
 import DataTable from './DataTable';
 import QueryInsights from './QueryInsights';
 import QueryPlan from './QueryPlan';
@@ -35,6 +35,8 @@ export default function QueryEditor({ dbId, dbName, dbType, initialSql, onVisual
   const [planError, setPlanError] = useState<string | null>(null);
   const [showHistory, setShowHistory] = useState(false);
   const [history, setHistory] = useState<QueryHistoryEntry[]>([]);
+  const [pendingConfirm, setPendingConfirm] = useState<QueryConfirmationRequired | null>(null);
+  const [confirmLoading, setConfirmLoading] = useState(false);
   const [showAiInput, setShowAiInput] = useState(false);
   const [aiPrompt, setAiPrompt] = useState('');
   const [aiLoading, setAiLoading] = useState(false);
@@ -172,21 +174,37 @@ export default function QueryEditor({ dbId, dbName, dbType, initialSql, onVisual
     }
   };
 
-  const run = async () => {
+  const run = async (confirmed = false) => {
     if (!sql.trim()) return;
     setLoading(true);
     setError(null);
     setPlan(null);
     setPlanError(null);
     try {
-      const res = await api.executeQuery(dbId, sql);
-      setResult(res);
+      const res = await api.executeQuery(dbId, sql, confirmed);
+      if (isConfirmationRequired(res)) {
+        setPendingConfirm(res);
+        setResult(null);
+      } else {
+        setPendingConfirm(null);
+        setResult(res);
+      }
     } catch (e: any) {
       setError(e.message);
       setResult(null);
     } finally {
       setLoading(false);
       if (showHistory) fetchHistory();
+    }
+  };
+
+  const confirmAndRun = async () => {
+    setConfirmLoading(true);
+    try {
+      await run(true);
+    } finally {
+      setConfirmLoading(false);
+      setPendingConfirm(null);
     }
   };
 
@@ -292,7 +310,7 @@ export default function QueryEditor({ dbId, dbName, dbType, initialSql, onVisual
           </div>
         )}
         <div className="query-editor-actions">
-          <button className="btn btn-primary" onClick={run} disabled={loading || !sql.trim()}>
+          <button className="btn btn-primary" onClick={() => run()} disabled={loading || !sql.trim()}>
             {loading ? 'Running...' : 'Run Query'}
           </button>
           <button
@@ -576,6 +594,41 @@ export default function QueryEditor({ dbId, dbName, dbType, initialSql, onVisual
               <button className="btn" onClick={() => setRunTarget(null)}>Cancel</button>
               <button className="btn btn-primary" onClick={handleRunWithParams} disabled={runLoading}>
                 {runLoading ? 'Running...' : 'Run Query'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── Destructive Statement Confirmation Modal ── */}
+      {pendingConfirm && (
+        <div className="modal-overlay" onClick={() => setPendingConfirm(null)}>
+          <div className="modal" onClick={(e) => e.stopPropagation()}>
+            <div className="modal-title modal-title-danger">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0Z" />
+                <line x1="12" y1="9" x2="12" y2="13" />
+                <line x1="12" y1="17" x2="12.01" y2="17" />
+              </svg>
+              Confirm {pendingConfirm.statement_type}
+            </div>
+            {pendingConfirm.affected_rows != null ? (
+              <p className="confirm-destructive-text">
+                This will affect <strong>{pendingConfirm.affected_rows}</strong> row{pendingConfirm.affected_rows !== 1 ? 's' : ''} in the database.
+                {!pendingConfirm.has_where && (
+                  <> <strong className="confirm-destructive-emphasis">There is no WHERE clause</strong> — every row in the table is affected.</>
+                )}
+              </p>
+            ) : (
+              <p className="confirm-destructive-text">
+                This is a schema-changing statement (<strong>{pendingConfirm.statement_type}</strong>) and cannot be undone.
+              </p>
+            )}
+            <pre className="saved-query-preview-sql">{sql}</pre>
+            <div className="modal-actions">
+              <button className="btn" onClick={() => setPendingConfirm(null)}>Cancel</button>
+              <button className="btn btn-primary btn-danger-solid" onClick={confirmAndRun} disabled={confirmLoading}>
+                {confirmLoading ? 'Running...' : `Run ${pendingConfirm.statement_type}`}
               </button>
             </div>
           </div>

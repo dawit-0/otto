@@ -4,8 +4,43 @@ import sqlite3
 
 import pytest
 
-from app.utils.sql_safety import quote_identifier
+from app.utils.sql_safety import classify_statement, has_where_clause, quote_identifier
 from app.drivers.sqlite import SQLiteDriver
+
+
+# ── classify_statement ──
+
+
+@pytest.mark.parametrize("sql,expected", [
+    ("SELECT * FROM t", "SELECT"),
+    ("  select * from t", "SELECT"),
+    ("insert into t values (1)", "INSERT"),
+    ("UPDATE t SET x = 1", "UPDATE"),
+    ("delete from t", "DELETE"),
+    ("DROP TABLE t", "DROP"),
+    ("truncate table t", "TRUNCATE"),
+    ("ALTER TABLE t ADD COLUMN x", "ALTER"),
+    ("-- a comment\nDELETE FROM t", "DELETE"),
+    ("/* block comment */ DELETE FROM t", "DELETE"),
+    ("", ""),
+])
+def test_classify_statement(sql, expected):
+    assert classify_statement(sql) == expected
+
+
+# ── has_where_clause ──
+
+
+def test_has_where_clause_true_when_present():
+    assert has_where_clause("DELETE FROM t WHERE id = 1") is True
+
+
+def test_has_where_clause_false_when_absent():
+    assert has_where_clause("DELETE FROM t") is False
+
+
+def test_has_where_clause_case_insensitive():
+    assert has_where_clause("delete from t where id = 1") is True
 
 
 # ── quote_identifier ──
