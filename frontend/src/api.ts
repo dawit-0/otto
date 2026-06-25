@@ -253,6 +253,24 @@ export const api = {
     return request<TableDataResponse>(`/databases/${id}/tables/${table}/data?${params}`);
   },
 
+  updateRow: (dbId: string, table: string, pk: Record<string, unknown>, changes: Record<string, unknown>) =>
+    request<{ affected_rows: number }>(`/databases/${dbId}/tables/${table}/rows`, {
+      method: 'PUT',
+      body: JSON.stringify({ pk, changes }),
+    }),
+
+  insertRow: (dbId: string, table: string, values: Record<string, unknown>) =>
+    request<{ row: Record<string, unknown> }>(`/databases/${dbId}/tables/${table}/rows`, {
+      method: 'POST',
+      body: JSON.stringify({ values }),
+    }),
+
+  deleteRow: (dbId: string, table: string, pk: Record<string, unknown>) =>
+    request<{ affected_rows: number }>(`/databases/${dbId}/tables/${table}/rows`, {
+      method: 'DELETE',
+      body: JSON.stringify({ pk }),
+    }),
+
   executeQuery: (dbId: string, sql: string) =>
     request<QueryResponse>('/query', {
       method: 'POST',

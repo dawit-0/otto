@@ -650,6 +650,74 @@ body {
   color: var(--text-muted);
   font-style: italic;
 }
+.data-table th .pk-indicator {
+  margin-left: 4px;
+  font-size: 10px;
+  opacity: 0.7;
+}
+.data-table td.editable-cell {
+  cursor: text;
+}
+.data-table td.editable-cell:hover {
+  outline: 1px dashed var(--border-strong);
+  outline-offset: -1px;
+}
+.data-table td.cell-editing {
+  padding: 4px 8px;
+}
+.cell-edit-input {
+  width: 100%;
+  min-width: 60px;
+  padding: 4px 6px;
+  font-family: var(--font-mono);
+  font-size: 12px;
+  border: 1px solid var(--accent);
+  border-radius: var(--radius-sm);
+  background: var(--bg-primary);
+  color: var(--text-primary);
+}
+.cell-edit-input:focus {
+  outline: none;
+}
+.row-actions-th {
+  width: 36px;
+  background: var(--bg-tertiary);
+  border-bottom: 1px solid var(--border);
+}
+.row-actions-td {
+  white-space: nowrap;
+  text-align: right;
+  padding-right: 8px !important;
+}
+.row-delete-btn {
+  opacity: 0;
+  color: var(--text-muted);
+  transition: opacity 0.15s ease, color 0.15s ease;
+}
+.data-table tr:hover .row-delete-btn {
+  opacity: 1;
+}
+.row-delete-btn:hover {
+  color: var(--danger);
+}
+.row-delete-btn.confirm-delete {
+  opacity: 1;
+  color: var(--danger);
+  font-size: 11px;
+  font-weight: 600;
+  padding: 2px 8px;
+}
+.row-deleting {
+  opacity: 0.4;
+  pointer-events: none;
+}
+.new-row-form td {
+  background: rgba(59, 130, 246, 0.06);
+  padding: 6px 10px !important;
+}
+.new-row-error-row td {
+  padding: 6px 14px !important;
+}
 
 /* ─── Empty State ─── */
 .empty-state {

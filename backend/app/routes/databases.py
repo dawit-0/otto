@@ -3,6 +3,7 @@ import os
 import shutil
 import sqlite3
 import tempfile
+import time
 from hashlib import sha256
 from pathlib import Path
 from typing import Any, Optional
@@ -28,10 +29,24 @@ from app.database import get_db
 from app.drivers import DatabaseDriver, get_driver
 from app.logging import get_logger
 from app.models.connection import ConnectedDatabase
+from app.models.history import QueryHistory
 
 logger = get_logger("databases")
 
 router = APIRouter(prefix="/api/databases", tags=["databases"])
+
+
+class RowUpdateRequest(BaseModel):
+    pk: dict[str, Any]
+    changes: dict[str, Any]
+
+
+class RowInsertRequest(BaseModel):
+    values: dict[str, Any]
+
+
+class RowDeleteRequest(BaseModel):
+    pk: dict[str, Any]
 
 
 class ConnectRequest(BaseModel):
@@ -423,5 +438,120 @@ def get_table_profile(db_id: str, table_name: str, db: Session = Depends(get_db)
             })
 
         return {"table": table_name, "row_count": total, "columns": result_columns}
+    finally:
+        driver.close(conn)
+
+
+# ── Row editing ──
+
+
+def _render_assignment(values: dict[str, Any]) -> str:
+    return ", ".join(f"{col} = {val!r}" for col, val in values.items())
+
+
+def _log_row_edit(
+    db: Session, db_id: str, db_name: str, sql_preview: str,
+    row_count: int, duration_ms: float,
+) -> None:
+    db.add(QueryHistory(
+        db_id=db_id, db_name=db_name, sql=sql_preview,
+        status="success", row_count=row_count, duration_ms=duration_ms,
+    ))
+    db.commit()
+
+
+def _require_primary_key(driver: DatabaseDriver, conn: Any, table_name: str) -> None:
+    driver.assert_valid_table(conn, table_name)
+    if not driver.get_primary_key_columns(conn, table_name):
+        raise HTTPException(status_code=400, detail="Table has no primary key; inline editing is disabled")
+
+
+def _row_edit_error_status(e: ValueError) -> int:
+    return 404 if str(e).lower().startswith("unknown table") else 400
+
+
+@router.put("/{db_id}/tables/{table_name}/rows")
+def update_row(db_id: str, table_name: str, req: RowUpdateRequest, db: Session = Depends(get_db)):
+    driver = get_driver_for_db(db_id, db)
+    db_name = get_db_name(db_id, db)
+    conn = driver.connect()
+    start = time.perf_counter()
+    try:
+        _require_primary_key(driver, conn, table_name)
+        affected = driver.update_row(conn, table_name, req.pk, req.changes)
+        duration_ms = (time.perf_counter() - start) * 1000
+
+        sql_preview = (
+            f"UPDATE {table_name} SET {_render_assignment(req.changes)} "
+            f"WHERE {_render_assignment(req.pk)}"
+        )
+        logger.info("Updated row in '%s'.'%s' (%d affected)", db_name, table_name, affected)
+        _log_row_edit(db, db_id, db_name, sql_preview, affected, duration_ms)
+
+        return {"affected_rows": affected}
+    except HTTPException:
+        raise
+    except ValueError as e:
+        logger.warning("Rejected row update on '%s': %s", table_name, e)
+        raise HTTPException(status_code=_row_edit_error_status(e), detail=str(e))
+    except Exception as e:
+        logger.error("Row update failed on '%s': %s", table_name, e)
+        raise HTTPException(status_code=400, detail=str(e))
+    finally:
+        driver.close(conn)
+
+
+@router.post("/{db_id}/tables/{table_name}/rows")
+def insert_row(db_id: str, table_name: str, req: RowInsertRequest, db: Session = Depends(get_db)):
+    driver = get_driver_for_db(db_id, db)
+    db_name = get_db_name(db_id, db)
+    conn = driver.connect()
+    start = time.perf_counter()
+    try:
+        _require_primary_key(driver, conn, table_name)
+        row = driver.insert_row(conn, table_name, req.values)
+        duration_ms = (time.perf_counter() - start) * 1000
+
+        sql_preview = f"INSERT INTO {table_name} ({_render_assignment(req.values)})"
+        logger.info("Inserted row into '%s'.'%s'", db_name, table_name)
+        _log_row_edit(db, db_id, db_name, sql_preview, 1, duration_ms)
+
+        return {"row": row}
+    except HTTPException:
+        raise
+    except ValueError as e:
+        logger.warning("Rejected row insert on '%s': %s", table_name, e)
+        raise HTTPException(status_code=_row_edit_error_status(e), detail=str(e))
+    except Exception as e:
+        logger.error("Row insert failed on '%s': %s", table_name, e)
+        raise HTTPException(status_code=400, detail=str(e))
+    finally:
+        driver.close(conn)
+
+
+@router.delete("/{db_id}/tables/{table_name}/rows")
+def delete_row(db_id: str, table_name: str, req: RowDeleteRequest, db: Session = Depends(get_db)):
+    driver = get_driver_for_db(db_id, db)
+    db_name = get_db_name(db_id, db)
+    conn = driver.connect()
+    start = time.perf_counter()
+    try:
+        _require_primary_key(driver, conn, table_name)
+        affected = driver.delete_row(conn, table_name, req.pk)
+        duration_ms = (time.perf_counter() - start) * 1000
+
+        sql_preview = f"DELETE FROM {table_name} WHERE {_render_assignment(req.pk)}"
+        logger.info("Deleted row from '%s'.'%s' (%d affected)", db_name, table_name, affected)
+        _log_row_edit(db, db_id, db_name, sql_preview, affected, duration_ms)
+
+        return {"affected_rows": affected}
+    except HTTPException:
+        raise
+    except ValueError as e:
+        logger.warning("Rejected row delete on '%s': %s", table_name, e)
+        raise HTTPException(status_code=_row_edit_error_status(e), detail=str(e))
+    except Exception as e:
+        logger.error("Row delete failed on '%s': %s", table_name, e)
+        raise HTTPException(status_code=400, detail=str(e))
     finally:
         driver.close(conn)

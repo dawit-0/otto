@@ -131,6 +131,47 @@ class SQLiteDriver(DatabaseDriver):
         cursor = conn.execute(f"PRAGMA table_info({quoted})")
         return [row["name"] for row in cursor.fetchall()]
 
+    def get_primary_key_columns(self, conn: Any, table: str) -> list[str]:
+        quoted = self.quote_identifier(table)
+        cursor = conn.execute(f"PRAGMA table_info({quoted})")
+        # PRAGMA table_info's "pk" field is the column's 1-based position
+        # within the primary key (0 if it's not part of it), so sorting by
+        # it recovers composite-key column order.
+        pk_cols = sorted(
+            (row for row in cursor.fetchall() if row["pk"]),
+            key=lambda row: row["pk"],
+        )
+        return [row["name"] for row in pk_cols]
+
+    def run_dml(self, conn: Any, sql: str, params: list) -> int:
+        cursor = conn.execute(sql, params)
+        conn.commit()
+        return cursor.rowcount
+
+    def insert_row(self, conn: Any, table: str, values: dict[str, Any]) -> dict[str, Any]:
+        self.assert_valid_table(conn, table)
+        if not values:
+            raise ValueError("No values provided")
+        valid_columns = set(self.get_column_names(conn, table))
+        for col in values:
+            if col not in valid_columns:
+                raise ValueError(f"Unknown column: {col!r}")
+
+        quoted = self.quote_identifier(table)
+        cols = list(values.keys())
+        col_sql = ", ".join(self.quote_identifier(c) for c in cols)
+        placeholders = ", ".join(["?"] * len(cols))
+        sql = f"INSERT INTO {quoted} ({col_sql}) VALUES ({placeholders})"
+        cursor = conn.execute(sql, list(values.values()))
+        conn.commit()
+
+        try:
+            row = conn.execute(f"SELECT * FROM {quoted} WHERE rowid = ?", (cursor.lastrowid,)).fetchone()
+        except sqlite3.OperationalError:
+            # WITHOUT ROWID tables have no rowid to look up by.
+            row = None
+        return dict(row) if row else dict(values)
+
     def get_table_data(
         self, conn: Any, table: str, limit: int, offset: int,
         sort_column: str | None = None,

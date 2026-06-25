@@ -98,6 +98,38 @@ class PostgresDriver(DatabaseDriver):
     def get_column_names(self, conn: Any, table: str) -> list[str]:
         return [c["name"] for c in self._get_columns(conn, table)]
 
+    def get_primary_key_columns(self, conn: Any, table: str) -> list[str]:
+        return self._get_pk_columns(conn, table)
+
+    def run_dml(self, conn: Any, sql: str, params: list) -> int:
+        cur = conn.cursor()
+        cur.execute(sql, params)
+        rowcount = cur.rowcount
+        conn.commit()
+        cur.close()
+        return rowcount
+
+    def insert_row(self, conn: Any, table: str, values: dict[str, Any]) -> dict[str, Any]:
+        self.assert_valid_table(conn, table)
+        if not values:
+            raise ValueError("No values provided")
+        valid_columns = set(self.get_column_names(conn, table))
+        for col in values:
+            if col not in valid_columns:
+                raise ValueError(f"Unknown column: {col!r}")
+
+        cols = list(values.keys())
+        col_sql = ", ".join(self.quote_identifier(c) for c in cols)
+        placeholders = ", ".join(["%s"] * len(cols))
+        sql = f"INSERT INTO {self.quote_identifier(table)} ({col_sql}) VALUES ({placeholders}) RETURNING *"
+        cur = conn.cursor()
+        cur.execute(sql, list(values.values()))
+        columns = [desc[0] for desc in cur.description]
+        row = cur.fetchone()
+        conn.commit()
+        cur.close()
+        return dict(zip(columns, row)) if row else dict(values)
+
     def get_table_data(
         self, conn: Any, table: str, limit: int, offset: int,
         sort_column: str | None = None,

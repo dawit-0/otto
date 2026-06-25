@@ -77,6 +77,28 @@ class DatabaseDriver(ABC):
         ...
 
     @abstractmethod
+    def get_primary_key_columns(self, conn: Any, table: str) -> list[str]:
+        """Return the table's primary key column names, in key order.
+
+        Empty list means the table has no primary key, which callers use to
+        gate row editing — without a PK there is no safe way to address a
+        single row for UPDATE/DELETE.
+        """
+        ...
+
+    @abstractmethod
+    def run_dml(self, conn: Any, sql: str, params: list) -> int:
+        """Execute a parameterized INSERT/UPDATE/DELETE, commit, and return
+        the affected row count."""
+        ...
+
+    @abstractmethod
+    def insert_row(self, conn: Any, table: str, values: dict[str, Any]) -> dict[str, Any]:
+        """Insert a row and return the row as stored (including any
+        database-generated defaults, e.g. autoincrement ids)."""
+        ...
+
+    @abstractmethod
     def validate(self) -> None:
         """Test connectivity. Raise on failure."""
         ...
@@ -150,6 +172,57 @@ class DatabaseDriver(ABC):
             elif op == "is_not_null":
                 clauses.append(f"{qcol} IS NOT NULL")
         return "WHERE " + " AND ".join(clauses), params
+
+    def _check_known_columns(self, columns: Any, valid_columns: set[str]) -> None:
+        for col in columns:
+            if col not in valid_columns:
+                raise ValueError(f"Unknown column: {col!r}")
+
+    def update_row(
+        self,
+        conn: Any,
+        table: str,
+        pk_values: dict[str, Any],
+        changes: dict[str, Any],
+    ) -> int:
+        """Update a single row identified by its full primary key.
+
+        Shared across drivers since the only dialect-specific pieces —
+        identifier quoting and the parameter placeholder — are already
+        abstracted on ``self``.
+        """
+        self.assert_valid_table(conn, table)
+        if not pk_values:
+            raise ValueError("Primary key values are required to update a row")
+        if not changes:
+            raise ValueError("No changes provided")
+        if set(pk_values) & set(changes):
+            raise ValueError("Cannot modify primary key columns")
+
+        valid_columns = set(self.get_column_names(conn, table))
+        self._check_known_columns(pk_values, valid_columns)
+        self._check_known_columns(changes, valid_columns)
+
+        ph = self.placeholder
+        set_clause = ", ".join(f"{self.quote_identifier(c)} = {ph}" for c in changes)
+        where_clause = " AND ".join(f"{self.quote_identifier(c)} = {ph}" for c in pk_values)
+        sql = f"UPDATE {self.quote_identifier(table)} SET {set_clause} WHERE {where_clause}"
+        params = [*changes.values(), *pk_values.values()]
+        return self.run_dml(conn, sql, params)
+
+    def delete_row(self, conn: Any, table: str, pk_values: dict[str, Any]) -> int:
+        """Delete a single row identified by its full primary key."""
+        self.assert_valid_table(conn, table)
+        if not pk_values:
+            raise ValueError("Primary key values are required to delete a row")
+
+        valid_columns = set(self.get_column_names(conn, table))
+        self._check_known_columns(pk_values, valid_columns)
+
+        ph = self.placeholder
+        where_clause = " AND ".join(f"{self.quote_identifier(c)} = {ph}" for c in pk_values)
+        sql = f"DELETE FROM {self.quote_identifier(table)} WHERE {where_clause}"
+        return self.run_dml(conn, sql, list(pk_values.values()))
 
     def build_order_by(
         self,
