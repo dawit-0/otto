@@ -205,3 +205,146 @@ def test_upload_database(client, sample_db):
     data = resp.json()
     assert data["name"] == "test"
     assert "id" in data
+
+
+# ── Row mutations ──
+
+
+def test_insert_row(client, sample_db):
+    info = _connect(client, sample_db)
+    resp = client.post(
+        f"/api/databases/{info['id']}/tables/books/rows",
+        json={"values": {"id": 4, "title": "Delta", "author_id": 2, "pages": 90}},
+    )
+    assert resp.status_code == 200
+    assert resp.json()["affected_rows"] == 1
+
+    data = client.get(f"/api/databases/{info['id']}/tables/books/data").json()
+    assert data["total"] == 4
+    assert any(r["title"] == "Delta" for r in data["rows"])
+
+
+def test_insert_row_unknown_column(client, sample_db):
+    info = _connect(client, sample_db)
+    resp = client.post(
+        f"/api/databases/{info['id']}/tables/books/rows",
+        json={"values": {"nope": "x"}},
+    )
+    assert resp.status_code == 400
+    assert "unknown column" in resp.json()["detail"].lower()
+
+
+def test_insert_row_numeric_string_coerced(client, sample_db):
+    """Values submitted from a text input should be coerced to the column's type."""
+    info = _connect(client, sample_db)
+    resp = client.post(
+        f"/api/databases/{info['id']}/tables/books/rows",
+        json={"values": {"id": "5", "title": "Epsilon", "author_id": "1", "pages": "42"}},
+    )
+    assert resp.status_code == 200
+
+    data = client.get(f"/api/databases/{info['id']}/tables/books/data").json()
+    row = next(r for r in data["rows"] if r["title"] == "Epsilon")
+    assert row["pages"] == 42
+    assert row["author_id"] == 1
+
+
+def test_insert_row_unknown_table(client, sample_db):
+    info = _connect(client, sample_db)
+    resp = client.post(
+        f"/api/databases/{info['id']}/tables/nope/rows",
+        json={"values": {"id": 1}},
+    )
+    assert resp.status_code == 404
+
+
+def test_update_row(client, sample_db):
+    info = _connect(client, sample_db)
+    resp = client.put(
+        f"/api/databases/{info['id']}/tables/books/rows",
+        json={"pk": {"id": 1}, "values": {"title": "Alpha Revised", "pages": "210"}},
+    )
+    assert resp.status_code == 200
+    assert resp.json()["affected_rows"] == 1
+
+    data = client.get(f"/api/databases/{info['id']}/tables/books/data").json()
+    row = next(r for r in data["rows"] if r["id"] == 1)
+    assert row["title"] == "Alpha Revised"
+    assert row["pages"] == 210
+
+
+def test_update_row_not_found(client, sample_db):
+    info = _connect(client, sample_db)
+    resp = client.put(
+        f"/api/databases/{info['id']}/tables/books/rows",
+        json={"pk": {"id": 999}, "values": {"title": "Nope"}},
+    )
+    assert resp.status_code == 404
+
+
+def test_update_row_missing_pk(client, sample_db):
+    info = _connect(client, sample_db)
+    resp = client.put(
+        f"/api/databases/{info['id']}/tables/books/rows",
+        json={"pk": {}, "values": {"title": "Nope"}},
+    )
+    assert resp.status_code == 400
+
+
+def test_update_row_ignores_pk_in_changes(client, sample_db):
+    """The pk column itself can't be changed through an inline edit — it's
+    silently dropped from the SET clause rather than erroring."""
+    info = _connect(client, sample_db)
+    resp = client.put(
+        f"/api/databases/{info['id']}/tables/books/rows",
+        json={"pk": {"id": 1}, "values": {"id": 999, "title": "Still Alpha"}},
+    )
+    assert resp.status_code == 200
+
+    data = client.get(f"/api/databases/{info['id']}/tables/books/data").json()
+    row = next(r for r in data["rows"] if r["id"] == 1)
+    assert row["title"] == "Still Alpha"
+    assert not any(r["id"] == 999 for r in data["rows"])
+
+
+def test_update_row_unknown_column(client, sample_db):
+    info = _connect(client, sample_db)
+    resp = client.put(
+        f"/api/databases/{info['id']}/tables/books/rows",
+        json={"pk": {"id": 1}, "values": {"nope": "x"}},
+    )
+    assert resp.status_code == 400
+    assert "unknown column" in resp.json()["detail"].lower()
+
+
+def test_delete_row(client, sample_db):
+    info = _connect(client, sample_db)
+    resp = client.request(
+        "DELETE",
+        f"/api/databases/{info['id']}/tables/books/rows",
+        json={"pk": {"id": 2}},
+    )
+    assert resp.status_code == 200
+    assert resp.json()["affected_rows"] == 1
+
+    data = client.get(f"/api/databases/{info['id']}/tables/books/data").json()
+    assert data["total"] == 2
+    assert not any(r["id"] == 2 for r in data["rows"])
+
+
+def test_delete_row_not_found(client, sample_db):
+    info = _connect(client, sample_db)
+    resp = client.request(
+        "DELETE",
+        f"/api/databases/{info['id']}/tables/books/rows",
+        json={"pk": {"id": 999}},
+    )
+    assert resp.status_code == 404
+
+
+def test_row_mutations_unknown_db(client):
+    resp = client.post(
+        "/api/databases/nonexistent_12345678/tables/books/rows",
+        json={"values": {"id": 1}},
+    )
+    assert resp.status_code == 404

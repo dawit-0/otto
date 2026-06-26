@@ -37,6 +37,11 @@ class SQLiteDriver(DatabaseDriver):
         finally:
             conn.close()
 
+    def _execute_write(self, conn: Any, sql: str, params: list) -> int:
+        cursor = conn.execute(sql, params)
+        conn.commit()
+        return cursor.rowcount
+
     def explain_analyze(self, conn: Any, sql: str) -> dict:
         # SQLite has no runtime "ANALYZE" like PostgreSQL; EXPLAIN QUERY PLAN
         # is the equivalent the optimizer exposes. It is read-only and never

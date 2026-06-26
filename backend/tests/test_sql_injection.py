@@ -109,6 +109,54 @@ def test_table_with_embedded_quote_is_readable(client, weird_db):
     assert {"id", "v"} == set(data["columns"])
 
 
+# ── Row mutation endpoints reject injection attempts ──
+
+
+@pytest.mark.parametrize(
+    "payload",
+    [
+        'books"; DROP TABLE authors; --',
+        "nope",
+    ],
+)
+def test_row_mutation_rejects_unknown_table(client, sample_db, payload):
+    info = _connect(client, sample_db)
+    resp = client.post(
+        f"/api/databases/{info['id']}/tables/{payload}/rows",
+        json={"values": {"id": 1}},
+    )
+    assert resp.status_code == 404, resp.text
+    assert "unknown table" in resp.json()["detail"].lower()
+
+
+def test_row_mutation_rejects_malicious_column_name(client, sample_db):
+    """A column name crafted to break out of the quoted identifier must be
+    rejected by the unknown-column check before any SQL is built."""
+    info = _connect(client, sample_db)
+    payload = 'title"; DROP TABLE authors; --'
+    resp = client.put(
+        f"/api/databases/{info['id']}/tables/books/rows",
+        json={"pk": {"id": 1}, "values": {payload: "x"}},
+    )
+    assert resp.status_code == 400, resp.text
+    assert "unknown column" in resp.json()["detail"].lower()
+
+    # The real tables must still be intact.
+    schema = client.get(f"/api/databases/{info['id']}/schema").json()
+    names = {t["name"] for t in schema["tables"]}
+    assert {"authors", "books"}.issubset(names)
+
+
+def test_insert_row_rejects_injection_in_table_name_and_leaves_data_intact(client, sample_db):
+    info = _connect(client, sample_db)
+    client.post(
+        f"/api/databases/{info['id']}/tables/books\"; DROP TABLE authors; --/rows",
+        json={"values": {"id": 99}},
+    )
+    rows = client.get(f"/api/databases/{info['id']}/tables/authors/data").json()
+    assert rows["total"] == 2
+
+
 # ── Schema endpoint handles awkward names without failing ──
 
 

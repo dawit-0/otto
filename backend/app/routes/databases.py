@@ -20,6 +20,26 @@ def _is_numeric_type(type_str: str | None) -> bool:
     base = type_str.lower().split("(")[0].strip().split()[0]
     return base in _NUMERIC_BASE_TYPES
 
+
+def _coerce_value(value: Any, column_type: str | None) -> Any:
+    """Best-effort coercion of a JSON value edited in the UI to match its
+    column's declared type, so e.g. a numeric column compared/assigned in a
+    parameterized query doesn't get a string bound against it (PostgreSQL is
+    strict about this; SQLite is lenient but stores the wrong affinity)."""
+    if not isinstance(value, str):
+        return value
+    if value == "":
+        return None
+    if _is_numeric_type(column_type):
+        try:
+            return float(value) if ("." in value or "e" in value.lower()) else int(value)
+        except ValueError:
+            return value
+    base = (column_type or "").lower().split("(")[0].strip()
+    if base in ("bool", "boolean") and value.lower() in ("true", "false", "t", "f", "0", "1", "yes", "no"):
+        return value.lower() in ("true", "t", "1", "yes")
+    return value
+
 from fastapi import APIRouter, Depends, File, HTTPException, UploadFile
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
@@ -32,6 +52,15 @@ from app.models.connection import ConnectedDatabase
 logger = get_logger("databases")
 
 router = APIRouter(prefix="/api/databases", tags=["databases"])
+
+
+class RowMutationRequest(BaseModel):
+    pk: dict[str, Any]
+    values: dict[str, Any] = {}
+
+
+class RowInsertRequest(BaseModel):
+    values: dict[str, Any]
 
 
 class ConnectRequest(BaseModel):
@@ -313,6 +342,82 @@ def get_table_data(
         raise HTTPException(status_code=status, detail=str(e))
     except Exception as e:
         logger.error("Error reading table '%s' from db_id=%s: %s", table_name, db_id, e)
+        raise HTTPException(status_code=400, detail=str(e))
+    finally:
+        driver.close(conn)
+
+
+def _column_type_map(driver: DatabaseDriver, conn: Any, table_name: str) -> dict[str, str | None]:
+    tables = driver.get_table_info(conn)
+    table_info = next((t for t in tables if t["name"] == table_name), None)
+    if table_info is None:
+        raise ValueError(f"Unknown table: {table_name}")
+    return {c["name"]: c["type"] for c in table_info["columns"]}
+
+
+def _row_mutation_error_status(detail: str) -> int:
+    lowered = detail.lower()
+    if lowered.startswith("unknown table") or "row not found" in lowered:
+        return 404
+    return 400
+
+
+@router.put("/{db_id}/tables/{table_name}/rows")
+def update_table_row(db_id: str, table_name: str, req: RowMutationRequest, db: Session = Depends(get_db)):
+    driver = get_driver_for_db(db_id, db)
+    db_name = get_db_name(db_id, db)
+    conn = driver.connect()
+    try:
+        type_map = _column_type_map(driver, conn, table_name)
+        changes = {k: _coerce_value(v, type_map.get(k)) for k, v in req.values.items()}
+        result = driver.update_row(conn, table_name, req.pk, changes)
+        logger.info("Updated row in '%s'.'%s' (pk=%s)", db_name, table_name, req.pk)
+        return result
+    except ValueError as e:
+        logger.warning("Rejected row update on '%s'.'%s': %s", db_name, table_name, e)
+        raise HTTPException(status_code=_row_mutation_error_status(str(e)), detail=str(e))
+    except Exception as e:
+        logger.error("Failed to update row in '%s'.'%s': %s", db_name, table_name, e)
+        raise HTTPException(status_code=400, detail=str(e))
+    finally:
+        driver.close(conn)
+
+
+@router.post("/{db_id}/tables/{table_name}/rows")
+def insert_table_row(db_id: str, table_name: str, req: RowInsertRequest, db: Session = Depends(get_db)):
+    driver = get_driver_for_db(db_id, db)
+    db_name = get_db_name(db_id, db)
+    conn = driver.connect()
+    try:
+        type_map = _column_type_map(driver, conn, table_name)
+        values = {k: _coerce_value(v, type_map.get(k)) for k, v in req.values.items()}
+        result = driver.insert_row(conn, table_name, values)
+        logger.info("Inserted row into '%s'.'%s'", db_name, table_name)
+        return result
+    except ValueError as e:
+        logger.warning("Rejected row insert on '%s'.'%s': %s", db_name, table_name, e)
+        raise HTTPException(status_code=_row_mutation_error_status(str(e)), detail=str(e))
+    except Exception as e:
+        logger.error("Failed to insert row into '%s'.'%s': %s", db_name, table_name, e)
+        raise HTTPException(status_code=400, detail=str(e))
+    finally:
+        driver.close(conn)
+
+
+@router.delete("/{db_id}/tables/{table_name}/rows")
+def delete_table_row(db_id: str, table_name: str, req: RowMutationRequest, db: Session = Depends(get_db)):
+    driver = get_driver_for_db(db_id, db)
+    db_name = get_db_name(db_id, db)
+    conn = driver.connect()
+    try:
+        result = driver.delete_row(conn, table_name, req.pk)
+        logger.info("Deleted row from '%s'.'%s' (pk=%s)", db_name, table_name, req.pk)
+        return result
+    except ValueError as e:
+        logger.warning("Rejected row delete on '%s'.'%s': %s", db_name, table_name, e)
+        raise HTTPException(status_code=_row_mutation_error_status(str(e)), detail=str(e))
+    except Exception as e:
+        logger.error("Failed to delete row from '%s'.'%s': %s", db_name, table_name, e)
         raise HTTPException(status_code=400, detail=str(e))
     finally:
         driver.close(conn)

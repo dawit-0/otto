@@ -81,6 +81,100 @@ class DatabaseDriver(ABC):
         """Test connectivity. Raise on failure."""
         ...
 
+    @abstractmethod
+    def _execute_write(self, conn: Any, sql: str, params: list) -> int:
+        """Execute a parameterized write statement, commit, and return rowcount."""
+        ...
+
+    def get_primary_key_columns(self, conn: Any, table: str) -> list[str]:
+        info = self.get_table_info(conn)
+        table_info = next((t for t in info if t["name"] == table), None)
+        if table_info is None:
+            return []
+        return [c["name"] for c in table_info["columns"] if c["pk"]]
+
+    def update_row(
+        self, conn: Any, table: str, pk_values: dict[str, Any], changes: dict[str, Any],
+    ) -> dict:
+        """Update a single row identified by its primary key.
+
+        ``pk_values`` must supply exactly the table's primary-key columns;
+        any of those keys present in ``changes`` are ignored, since renaming
+        a row's identity through an inline edit is not supported.
+        """
+        self.assert_valid_table(conn, table)
+        valid_columns = set(self.get_column_names(conn, table))
+        pk_cols = sorted(self.get_primary_key_columns(conn, table))
+        if not pk_cols:
+            raise ValueError("Table has no primary key; rows cannot be updated")
+
+        unknown_pk = set(pk_values) - valid_columns
+        if unknown_pk:
+            raise ValueError(f"Unknown column: {sorted(unknown_pk)[0]!r}")
+        if set(pk_values) != set(pk_cols):
+            raise ValueError("Primary key values must include exactly: " + ", ".join(pk_cols))
+
+        edit_cols = {k: v for k, v in changes.items() if k not in pk_cols}
+        unknown_change = set(edit_cols) - valid_columns
+        if unknown_change:
+            raise ValueError(f"Unknown column: {sorted(unknown_change)[0]!r}")
+        if not edit_cols:
+            raise ValueError("No editable columns supplied")
+
+        edit_names = sorted(edit_cols)
+        ph = self.placeholder
+        set_sql = ", ".join(f"{self.quote_identifier(c)} = {ph}" for c in edit_names)
+        where_sql = " AND ".join(f"{self.quote_identifier(c)} = {ph}" for c in pk_cols)
+        params = [edit_cols[c] for c in edit_names] + [pk_values[c] for c in pk_cols]
+
+        sql = f"UPDATE {self.quote_identifier(table)} SET {set_sql} WHERE {where_sql}"
+        affected = self._execute_write(conn, sql, params)
+        if affected == 0:
+            raise ValueError("Row not found")
+        return {"affected_rows": affected}
+
+    def insert_row(self, conn: Any, table: str, values: dict[str, Any]) -> dict:
+        self.assert_valid_table(conn, table)
+        valid_columns = set(self.get_column_names(conn, table))
+        if not values:
+            raise ValueError("No values supplied")
+        unknown = set(values) - valid_columns
+        if unknown:
+            raise ValueError(f"Unknown column: {sorted(unknown)[0]!r}")
+
+        col_names = sorted(values)
+        ph = self.placeholder
+        col_sql = ", ".join(self.quote_identifier(c) for c in col_names)
+        val_sql = ", ".join([ph] * len(col_names))
+        params = [values[c] for c in col_names]
+
+        sql = f"INSERT INTO {self.quote_identifier(table)} ({col_sql}) VALUES ({val_sql})"
+        affected = self._execute_write(conn, sql, params)
+        return {"affected_rows": affected}
+
+    def delete_row(self, conn: Any, table: str, pk_values: dict[str, Any]) -> dict:
+        self.assert_valid_table(conn, table)
+        valid_columns = set(self.get_column_names(conn, table))
+        pk_cols = sorted(self.get_primary_key_columns(conn, table))
+        if not pk_cols:
+            raise ValueError("Table has no primary key; rows cannot be deleted")
+
+        unknown = set(pk_values) - valid_columns
+        if unknown:
+            raise ValueError(f"Unknown column: {sorted(unknown)[0]!r}")
+        if set(pk_values) != set(pk_cols):
+            raise ValueError("Primary key values must include exactly: " + ", ".join(pk_cols))
+
+        ph = self.placeholder
+        where_sql = " AND ".join(f"{self.quote_identifier(c)} = {ph}" for c in pk_cols)
+        params = [pk_values[c] for c in pk_cols]
+
+        sql = f"DELETE FROM {self.quote_identifier(table)} WHERE {where_sql}"
+        affected = self._execute_write(conn, sql, params)
+        if affected == 0:
+            raise ValueError("Row not found")
+        return {"affected_rows": affected}
+
     def quote_identifier(self, name: str) -> str:
         if not isinstance(name, str) or name == "":
             raise ValueError("Identifier must be a non-empty string")

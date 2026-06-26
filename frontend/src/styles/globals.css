@@ -651,6 +651,83 @@ body {
   font-style: italic;
 }
 
+/* ─── Inline row editing ─── */
+.data-table-actions-th,
+.data-table-actions-cell {
+  width: 28px;
+  padding: 0 4px;
+  text-align: center;
+}
+.pk-badge {
+  margin-left: 6px;
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--accent-hover);
+  background: var(--accent-subtle);
+  padding: 1px 5px;
+  border-radius: var(--radius-sm);
+}
+.data-table td.editable-cell {
+  cursor: text;
+}
+.data-table td.editable-cell:hover {
+  outline: 1px dashed var(--border-strong);
+  outline-offset: -1px;
+}
+.data-table td.editing-cell {
+  padding: 0;
+}
+.cell-edit-input {
+  width: 100%;
+  box-sizing: border-box;
+  padding: 6px 14px;
+  border: 1px solid var(--accent);
+  background: var(--bg-primary);
+  color: var(--text-primary);
+  font-family: var(--font-mono);
+  font-size: 12px;
+  outline: none;
+  border-radius: 0;
+}
+.cell-edit-input:disabled {
+  opacity: 0.6;
+}
+.cell-error-text {
+  color: var(--danger);
+  font-size: 11px;
+  padding: 4px 14px !important;
+  background: rgba(239, 68, 68, 0.08);
+  white-space: normal;
+}
+.row-readonly-dot {
+  color: var(--text-muted);
+}
+.btn-icon-danger {
+  font-size: 11px;
+}
+.btn-icon-danger:hover {
+  color: var(--danger) !important;
+  background: rgba(239, 68, 68, 0.1) !important;
+}
+.btn-icon-danger.confirming {
+  color: var(--danger) !important;
+  background: rgba(239, 68, 68, 0.12) !important;
+  font-size: 10px;
+  white-space: nowrap;
+  padding: 4px 6px;
+}
+.add-row-row td {
+  padding: 4px 14px;
+  background: var(--accent-subtle);
+}
+.add-row-submit-row td {
+  padding: 6px 14px !important;
+  background: var(--accent-subtle);
+  border-bottom: 1px solid var(--border);
+}
+
 /* ─── Empty State ─── */
 .empty-state {
   display: flex;

@@ -286,6 +286,12 @@ export default function TableBrowser({ dbId, tableName, columnDefs }: Props) {
           sortColumn={sort?.column}
           sortDirection={sort?.direction}
           onSort={handleSort}
+          editable={{
+            dbId,
+            tableName,
+            columnDefs,
+            onChanged: () => loadData(offset, sort, filters),
+          }}
         />
       )}
       </div>

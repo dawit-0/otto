@@ -40,6 +40,14 @@ class PostgresDriver(DatabaseDriver):
         finally:
             conn.close()
 
+    def _execute_write(self, conn: Any, sql: str, params: list) -> int:
+        cur = conn.cursor()
+        cur.execute(sql, params)
+        conn.commit()
+        rowcount = cur.rowcount
+        cur.close()
+        return rowcount
+
     def explain_analyze(self, conn: Any, sql: str) -> dict:
         # EXPLAIN ANALYZE genuinely runs the statement, so for INSERT/UPDATE/
         # DELETE it would otherwise persist changes. Run it inside a transaction
