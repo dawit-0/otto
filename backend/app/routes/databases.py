@@ -28,6 +28,7 @@ from app.database import get_db
 from app.drivers import DatabaseDriver, get_driver
 from app.logging import get_logger
 from app.models.connection import ConnectedDatabase
+from app.models.history import QueryHistory
 
 logger = get_logger("databases")
 
@@ -42,6 +43,19 @@ class ConnectRequest(BaseModel):
     database: str | None = None
     username: str | None = None
     password: str | None = None
+
+
+class RowUpdateRequest(BaseModel):
+    pk: dict[str, Any]
+    updates: dict[str, Any]
+
+
+class RowInsertRequest(BaseModel):
+    values: dict[str, Any]
+
+
+class RowDeleteRequest(BaseModel):
+    pk: dict[str, Any]
 
 
 def _resolve_record(db_id: str, db: Session) -> ConnectedDatabase:
@@ -423,5 +437,124 @@ def get_table_profile(db_id: str, table_name: str, db: Session = Depends(get_db)
             })
 
         return {"table": table_name, "row_count": total, "columns": result_columns}
+    finally:
+        driver.close(conn)
+
+
+def _require_pk_match(driver: DatabaseDriver, conn: Any, table_name: str, pk: dict) -> None:
+    pk_cols = driver.get_primary_key_columns(conn, table_name)
+    if not pk_cols:
+        raise HTTPException(
+            status_code=400,
+            detail="This table has no primary key, so its rows can't be edited safely",
+        )
+    if set(pk) != set(pk_cols):
+        raise HTTPException(
+            status_code=400,
+            detail=f"Primary key values must cover: {', '.join(pk_cols)}",
+        )
+
+
+def _log_row_edit(
+    db: Session, db_id: str, db_name: str, sql: str, status: str,
+    row_count: int | None = None, error_message: str | None = None,
+) -> None:
+    db.add(QueryHistory(
+        db_id=db_id, db_name=db_name, sql=sql, status=status,
+        row_count=row_count, error_message=error_message,
+    ))
+    db.commit()
+
+
+@router.put("/{db_id}/tables/{table_name}/rows")
+def update_row(
+    db_id: str, table_name: str, req: RowUpdateRequest, db: Session = Depends(get_db),
+):
+    driver = get_driver_for_db(db_id, db)
+    db_name = get_db_name(db_id, db)
+    conn = driver.connect()
+    display_sql = ""
+    try:
+        driver.assert_valid_table(conn, table_name)
+        _require_pk_match(driver, conn, table_name, req.pk)
+        if not req.updates:
+            raise HTTPException(status_code=400, detail="No column values to update")
+        display_sql = driver.render_update_sql(table_name, req.pk, req.updates)
+        affected = driver.update_row(conn, table_name, req.pk, req.updates)
+        if affected == 0:
+            raise HTTPException(status_code=404, detail="Row not found (it may have changed since you loaded it)")
+        _log_row_edit(db, db_id, db_name, display_sql, "success", row_count=affected)
+        logger.info("Updated row in '%s'.'%s'", db_name, table_name)
+        return {"ok": True, "affected_rows": affected}
+    except HTTPException:
+        raise
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        logger.error("Row update failed on '%s'.'%s': %s", db_name, table_name, e)
+        if display_sql:
+            _log_row_edit(db, db_id, db_name, display_sql, "error", error_message=str(e))
+        raise HTTPException(status_code=400, detail=str(e))
+    finally:
+        driver.close(conn)
+
+
+@router.post("/{db_id}/tables/{table_name}/rows")
+def insert_row(
+    db_id: str, table_name: str, req: RowInsertRequest, db: Session = Depends(get_db),
+):
+    driver = get_driver_for_db(db_id, db)
+    db_name = get_db_name(db_id, db)
+    conn = driver.connect()
+    display_sql = ""
+    try:
+        driver.assert_valid_table(conn, table_name)
+        if not req.values:
+            raise HTTPException(status_code=400, detail="No column values to insert")
+        display_sql = driver.render_insert_sql(table_name, req.values)
+        affected = driver.insert_row(conn, table_name, req.values)
+        _log_row_edit(db, db_id, db_name, display_sql, "success", row_count=affected)
+        logger.info("Inserted row into '%s'.'%s'", db_name, table_name)
+        return {"ok": True, "affected_rows": affected}
+    except HTTPException:
+        raise
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        logger.error("Row insert failed on '%s'.'%s': %s", db_name, table_name, e)
+        if display_sql:
+            _log_row_edit(db, db_id, db_name, display_sql, "error", error_message=str(e))
+        raise HTTPException(status_code=400, detail=str(e))
+    finally:
+        driver.close(conn)
+
+
+@router.delete("/{db_id}/tables/{table_name}/rows")
+def delete_row(
+    db_id: str, table_name: str, req: RowDeleteRequest, db: Session = Depends(get_db),
+):
+    driver = get_driver_for_db(db_id, db)
+    db_name = get_db_name(db_id, db)
+    conn = driver.connect()
+    display_sql = ""
+    try:
+        driver.assert_valid_table(conn, table_name)
+        _require_pk_match(driver, conn, table_name, req.pk)
+        display_sql = driver.render_delete_sql(table_name, req.pk)
+        affected = driver.delete_row(conn, table_name, req.pk)
+        if affected == 0:
+            raise HTTPException(status_code=404, detail="Row not found (it may have already been deleted)")
+        _log_row_edit(db, db_id, db_name, display_sql, "success", row_count=affected)
+        logger.info("Deleted row from '%s'.'%s'", db_name, table_name)
+        return {"ok": True, "affected_rows": affected}
+    except HTTPException:
+        raise
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        logger.error("Row delete failed on '%s'.'%s': %s", db_name, table_name, e)
+        if display_sql:
+            _log_row_edit(db, db_id, db_name, display_sql, "error", error_message=str(e))
+        raise HTTPException(status_code=400, detail=str(e))
     finally:
         driver.close(conn)

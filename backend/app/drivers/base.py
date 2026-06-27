@@ -81,6 +81,12 @@ class DatabaseDriver(ABC):
         """Test connectivity. Raise on failure."""
         ...
 
+    @abstractmethod
+    def execute_params(self, conn: Any, sql: str, params: list) -> int:
+        """Execute a parameterized DML statement, commit, and return the
+        number of affected rows."""
+        ...
+
     def quote_identifier(self, name: str) -> str:
         if not isinstance(name, str) or name == "":
             raise ValueError("Identifier must be a non-empty string")
@@ -163,3 +169,90 @@ class DatabaseDriver(ABC):
             raise ValueError(f"Unknown column: {sort_column!r}")
         direction = "DESC" if (sort_direction or "asc").lower() == "desc" else "ASC"
         return f"ORDER BY {self.quote_identifier(sort_column)} {direction}"
+
+    def get_primary_key_columns(self, conn: Any, table: str) -> list[str]:
+        """Return the primary key column names for ``table``, in order.
+        Empty if the table has no primary key."""
+        for t in self.get_table_info(conn):
+            if t["name"] == table:
+                return [c["name"] for c in t["columns"] if c["pk"]]
+        return []
+
+    @staticmethod
+    def format_literal(value: Any) -> str:
+        """Render a value as a SQL literal for display purposes (query
+        history, audit trail). Never used to build executed SQL."""
+        if value is None:
+            return "NULL"
+        if isinstance(value, bool):
+            return "TRUE" if value else "FALSE"
+        if isinstance(value, (int, float)):
+            return str(value)
+        return "'" + str(value).replace("'", "''") + "'"
+
+    def _validate_columns(self, conn: Any, table: str, columns: list[str]) -> None:
+        valid_columns = set(self.get_column_names(conn, table))
+        for col in columns:
+            if col not in valid_columns:
+                raise ValueError(f"Unknown column: {col!r}")
+
+    def render_update_sql(self, table: str, pk_values: dict, updates: dict) -> str:
+        set_sql = ", ".join(
+            f"{self.quote_identifier(c)} = {self.format_literal(v)}" for c, v in updates.items()
+        )
+        where_sql = " AND ".join(
+            f"{self.quote_identifier(c)} = {self.format_literal(v)}" for c, v in pk_values.items()
+        )
+        return f"UPDATE {self.quote_identifier(table)} SET {set_sql} WHERE {where_sql}"
+
+    def render_insert_sql(self, table: str, values: dict) -> str:
+        cols_sql = ", ".join(self.quote_identifier(c) for c in values)
+        vals_sql = ", ".join(self.format_literal(v) for v in values.values())
+        return f"INSERT INTO {self.quote_identifier(table)} ({cols_sql}) VALUES ({vals_sql})"
+
+    def render_delete_sql(self, table: str, pk_values: dict) -> str:
+        where_sql = " AND ".join(
+            f"{self.quote_identifier(c)} = {self.format_literal(v)}" for c, v in pk_values.items()
+        )
+        return f"DELETE FROM {self.quote_identifier(table)} WHERE {where_sql}"
+
+    def update_row(self, conn: Any, table: str, pk_values: dict, updates: dict) -> int:
+        """Update the single row matched by ``pk_values`` with ``updates``.
+        Returns the number of affected rows."""
+        self.assert_valid_table(conn, table)
+        if not pk_values:
+            raise ValueError("Row updates require primary key values")
+        if not updates:
+            return 0
+        self._validate_columns(conn, table, [*pk_values, *updates])
+        ph = self.placeholder
+        set_clause = ", ".join(f"{self.quote_identifier(c)} = {ph}" for c in updates)
+        where_clause = " AND ".join(f"{self.quote_identifier(c)} = {ph}" for c in pk_values)
+        sql = f"UPDATE {self.quote_identifier(table)} SET {set_clause} WHERE {where_clause}"
+        return self.execute_params(conn, sql, [*updates.values(), *pk_values.values()])
+
+    def insert_row(self, conn: Any, table: str, values: dict) -> int:
+        """Insert a new row. Columns omitted from ``values`` fall back to the
+        table's defaults (e.g. autoincrement primary keys)."""
+        self.assert_valid_table(conn, table)
+        if not values:
+            raise ValueError("Insert requires at least one column value")
+        self._validate_columns(conn, table, list(values))
+        ph = self.placeholder
+        cols_sql = ", ".join(self.quote_identifier(c) for c in values)
+        placeholders_sql = ", ".join(ph for _ in values)
+        sql = f"INSERT INTO {self.quote_identifier(table)} ({cols_sql}) VALUES ({placeholders_sql})"
+        return self.execute_params(conn, sql, list(values.values()))
+
+    def delete_row(self, conn: Any, table: str, pk_values: dict) -> int:
+        """Delete the single row matched by ``pk_values``. Returns the number
+        of affected rows."""
+        self.assert_valid_table(conn, table)
+        if not pk_values:
+            raise ValueError("Row deletion requires primary key values")
+        self._validate_columns(conn, table, list(pk_values))
+        where_clause = " AND ".join(
+            f"{self.quote_identifier(c)} = {self.placeholder}" for c in pk_values
+        )
+        sql = f"DELETE FROM {self.quote_identifier(table)} WHERE {where_clause}"
+        return self.execute_params(conn, sql, list(pk_values.values()))

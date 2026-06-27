@@ -52,6 +52,8 @@ export default function TableBrowser({ dbId, tableName, columnDefs }: Props) {
   const addFilterRef = useRef<HTMLDivElement>(null);
 
   const colNames = columnDefs.map((c) => c.name);
+  const pkColumns = columnDefs.filter((c) => c.pk).map((c) => c.name);
+  const hasPrimaryKey = pkColumns.length > 0;
 
   const loadData = useCallback(async (nextOffset: number, currentSort: SortState | null, currentFilters: FilterRule[]) => {
     setLoading(true);
@@ -81,6 +83,27 @@ export default function TableBrowser({ dbId, tableName, columnDefs }: Props) {
   useEffect(() => {
     loadData(0, sort, filters);
   }, [dbId, tableName, sort, filters, loadData]);
+
+  const buildPk = (row: Record<string, unknown>): Record<string, unknown> => {
+    const pk: Record<string, unknown> = {};
+    for (const col of pkColumns) pk[col] = row[col];
+    return pk;
+  };
+
+  const handleUpdateCell = async (row: Record<string, unknown>, column: string, value: string) => {
+    await api.updateRow(dbId, tableName, buildPk(row), { [column]: value });
+    await loadData(offset, sort, filters);
+  };
+
+  const handleDeleteRow = async (row: Record<string, unknown>) => {
+    await api.deleteRow(dbId, tableName, buildPk(row));
+    await loadData(offset, sort, filters);
+  };
+
+  const handleInsertRow = async (values: Record<string, string>) => {
+    await api.insertRow(dbId, tableName, values);
+    await loadData(0, sort, filters);
+  };
 
   // Close add-filter popover on outside click
   useEffect(() => {
@@ -190,6 +213,11 @@ export default function TableBrowser({ dbId, tableName, columnDefs }: Props) {
             <span className="filter-row-count">
               {total.toLocaleString()} {hasActiveState ? 'matching ' : ''}row{total !== 1 ? 's' : ''}
             </span>
+            {!hasPrimaryKey && (
+              <span className="readonly-badge" title="This table has no primary key, so its rows can't be edited">
+                Read-only
+              </span>
+            )}
             <button
               className={`btn btn-sm${showProfile ? ' btn-profile-active' : ''}`}
               onClick={() => setShowProfile((v) => !v)}
@@ -286,6 +314,10 @@ export default function TableBrowser({ dbId, tableName, columnDefs }: Props) {
           sortColumn={sort?.column}
           sortDirection={sort?.direction}
           onSort={handleSort}
+          primaryKeyColumns={hasPrimaryKey ? pkColumns : undefined}
+          onUpdateCell={hasPrimaryKey ? handleUpdateCell : undefined}
+          onDeleteRow={hasPrimaryKey ? handleDeleteRow : undefined}
+          onInsertRow={handleInsertRow}
         />
       )}
       </div>
