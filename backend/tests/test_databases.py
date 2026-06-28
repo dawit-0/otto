@@ -205,3 +205,115 @@ def test_upload_database(client, sample_db):
     data = resp.json()
     assert data["name"] == "test"
     assert "id" in data
+
+
+# ── Row mutations: insert / update / delete ──
+
+
+def test_insert_row(client, sample_db):
+    info = _connect(client, sample_db)
+    resp = client.post(
+        f"/api/databases/{info['id']}/tables/authors/rows",
+        json={"values": {"name": "Carol", "email": "carol@example.com"}},
+    )
+    assert resp.status_code == 200
+    assert resp.json()["ok"] is True
+
+    rows = client.get(f"/api/databases/{info['id']}/tables/authors/data").json()
+    assert rows["total"] == 3
+    assert any(r["name"] == "Carol" for r in rows["rows"])
+
+
+def test_insert_row_unknown_column(client, sample_db):
+    info = _connect(client, sample_db)
+    resp = client.post(
+        f"/api/databases/{info['id']}/tables/authors/rows",
+        json={"values": {"nope": "x"}},
+    )
+    assert resp.status_code == 400
+    assert "unknown column" in resp.json()["detail"].lower()
+
+
+def test_insert_row_unknown_table(client, sample_db):
+    info = _connect(client, sample_db)
+    resp = client.post(
+        f"/api/databases/{info['id']}/tables/nope/rows",
+        json={"values": {"name": "x"}},
+    )
+    assert resp.status_code == 404
+
+
+def test_update_row(client, sample_db):
+    info = _connect(client, sample_db)
+    resp = client.put(
+        f"/api/databases/{info['id']}/tables/authors/rows",
+        json={"pk": {"id": 1}, "values": {"name": "Alice Updated"}},
+    )
+    assert resp.status_code == 200
+    assert resp.json()["affected_rows"] == 1
+
+    rows = client.get(f"/api/databases/{info['id']}/tables/authors/data").json()
+    updated = next(r for r in rows["rows"] if r["id"] == 1)
+    assert updated["name"] == "Alice Updated"
+
+
+def test_update_row_not_found(client, sample_db):
+    info = _connect(client, sample_db)
+    resp = client.put(
+        f"/api/databases/{info['id']}/tables/authors/rows",
+        json={"pk": {"id": 999}, "values": {"name": "x"}},
+    )
+    assert resp.status_code == 404
+
+
+def test_update_row_missing_pk(client, sample_db):
+    info = _connect(client, sample_db)
+    resp = client.put(
+        f"/api/databases/{info['id']}/tables/authors/rows",
+        json={"pk": {}, "values": {"name": "x"}},
+    )
+    assert resp.status_code == 400
+    assert "primary key" in resp.json()["detail"].lower()
+
+
+def test_delete_row(client, sample_db):
+    info = _connect(client, sample_db)
+    resp = client.request(
+        "DELETE",
+        f"/api/databases/{info['id']}/tables/books/rows",
+        json={"pk": {"id": 2}},
+    )
+    assert resp.status_code == 200
+    assert resp.json()["affected_rows"] == 1
+
+    rows = client.get(f"/api/databases/{info['id']}/tables/books/data").json()
+    assert rows["total"] == 2
+    assert not any(r["id"] == 2 for r in rows["rows"])
+
+
+def test_delete_row_not_found(client, sample_db):
+    info = _connect(client, sample_db)
+    resp = client.request(
+        "DELETE",
+        f"/api/databases/{info['id']}/tables/books/rows",
+        json={"pk": {"id": 999}},
+    )
+    assert resp.status_code == 404
+
+
+def test_row_mutations_injection_safe(client, sample_db):
+    """Malicious values must be treated as data, never as SQL."""
+    info = _connect(client, sample_db)
+    payload = "x'); DROP TABLE authors; --"
+    resp = client.post(
+        f"/api/databases/{info['id']}/tables/authors/rows",
+        json={"values": {"name": payload, "email": "x@example.com"}},
+    )
+    assert resp.status_code == 200
+
+    schema = client.get(f"/api/databases/{info['id']}/schema").json()
+    names = {t["name"] for t in schema["tables"]}
+    assert {"authors", "books"}.issubset(names)
+
+    rows = client.get(f"/api/databases/{info['id']}/tables/authors/data").json()
+    assert any(r["name"] == payload for r in rows["rows"])

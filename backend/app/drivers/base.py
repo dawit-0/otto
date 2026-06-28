@@ -77,6 +77,17 @@ class DatabaseDriver(ABC):
         ...
 
     @abstractmethod
+    def get_primary_key_columns(self, conn: Any, table: str) -> list[str]:
+        """Return the names of the table's primary-key column(s), or []."""
+        ...
+
+    @abstractmethod
+    def execute_dml(self, conn: Any, sql: str, params: list) -> int:
+        """Execute a parameterized INSERT/UPDATE/DELETE, commit, and return
+        the number of affected rows."""
+        ...
+
+    @abstractmethod
     def validate(self) -> None:
         """Test connectivity. Raise on failure."""
         ...
@@ -163,3 +174,51 @@ class DatabaseDriver(ABC):
             raise ValueError(f"Unknown column: {sort_column!r}")
         direction = "DESC" if (sort_direction or "asc").lower() == "desc" else "ASC"
         return f"ORDER BY {self.quote_identifier(sort_column)} {direction}"
+
+    def _validate_columns(self, conn: Any, table: str, values: dict) -> None:
+        if not values:
+            raise ValueError("No values provided")
+        valid_columns = set(self.get_column_names(conn, table))
+        unknown = set(values) - valid_columns
+        if unknown:
+            raise ValueError(f"Unknown column(s): {', '.join(sorted(unknown))}")
+
+    def _require_primary_key(self, conn: Any, table: str, pk: dict) -> list[str]:
+        pk_columns = self.get_primary_key_columns(conn, table)
+        if not pk_columns:
+            raise ValueError("Table has no primary key; row editing is not supported")
+        missing = set(pk_columns) - set(pk)
+        if missing:
+            raise ValueError(f"Missing primary key value(s): {', '.join(sorted(missing))}")
+        return pk_columns
+
+    def insert_row(self, conn: Any, table: str, values: dict) -> None:
+        """Insert a new row. Columns absent from ``values`` are left to the
+        database's own default (e.g. autoincrement primary keys)."""
+        self.assert_valid_table(conn, table)
+        self._validate_columns(conn, table, values)
+        cols = list(values.keys())
+        qcols = ", ".join(self.quote_identifier(c) for c in cols)
+        phs = ", ".join([self.placeholder] * len(cols))
+        sql = f"INSERT INTO {self.quote_identifier(table)} ({qcols}) VALUES ({phs})"
+        self.execute_dml(conn, sql, [values[c] for c in cols])
+
+    def update_row(self, conn: Any, table: str, pk: dict, values: dict) -> int:
+        """Update the single row identified by ``pk``. Returns affected row count."""
+        self.assert_valid_table(conn, table)
+        self._validate_columns(conn, table, values)
+        pk_columns = self._require_primary_key(conn, table, pk)
+        set_cols = list(values.keys())
+        set_clause = ", ".join(f"{self.quote_identifier(c)} = {self.placeholder}" for c in set_cols)
+        where_clause = " AND ".join(f"{self.quote_identifier(c)} = {self.placeholder}" for c in pk_columns)
+        sql = f"UPDATE {self.quote_identifier(table)} SET {set_clause} WHERE {where_clause}"
+        params = [values[c] for c in set_cols] + [pk[c] for c in pk_columns]
+        return self.execute_dml(conn, sql, params)
+
+    def delete_row(self, conn: Any, table: str, pk: dict) -> int:
+        """Delete the single row identified by ``pk``. Returns affected row count."""
+        self.assert_valid_table(conn, table)
+        pk_columns = self._require_primary_key(conn, table, pk)
+        where_clause = " AND ".join(f"{self.quote_identifier(c)} = {self.placeholder}" for c in pk_columns)
+        sql = f"DELETE FROM {self.quote_identifier(table)} WHERE {where_clause}"
+        return self.execute_dml(conn, sql, [pk[c] for c in pk_columns])

@@ -11,6 +11,9 @@ interface Props {
   sortColumn?: string;
   sortDirection?: 'asc' | 'desc';
   onSort?: (column: string) => void;
+  editable?: boolean;
+  onCellEdit?: (row: Record<string, unknown>, column: string, newValue: string | null) => Promise<void>;
+  onDeleteRow?: (row: Record<string, unknown>) => void;
 }
 
 function toCSV(columns: string[], rows: Record<string, unknown>[]): string {
@@ -48,9 +51,14 @@ function downloadFile(filename: string, content: string, mimeType: string) {
   URL.revokeObjectURL(url);
 }
 
-export default function DataTable({ columns, rows, total, limit = 100, offset = 0, onPageChange, exportFilename = 'export', sortColumn, sortDirection, onSort }: Props) {
+export default function DataTable({ columns, rows, total, limit = 100, offset = 0, onPageChange, exportFilename = 'export', sortColumn, sortDirection, onSort, editable, onCellEdit, onDeleteRow }: Props) {
   const [copyState, setCopyState] = useState<null | 'csv' | 'json'>(null);
   const copyTimeout = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const [editingCell, setEditingCell] = useState<{ row: number; col: string } | null>(null);
+  const [editValue, setEditValue] = useState('');
+  const [savingCell, setSavingCell] = useState(false);
+  const [cellError, setCellError] = useState<string | null>(null);
 
   if (columns.length === 0) {
     return (
@@ -83,6 +91,38 @@ export default function DataTable({ columns, rows, total, limit = 100, offset = 
   const handleCopyJSON = () =>
     triggerCopy('json', toJSON(columns, rows));
 
+  const startEdit = (rowIndex: number, col: string, currentVal: unknown) => {
+    if (!editable || !onCellEdit) return;
+    setCellError(null);
+    setEditingCell({ row: rowIndex, col });
+    setEditValue(currentVal === null || currentVal === undefined ? '' : String(currentVal));
+  };
+
+  const cancelEdit = () => {
+    setEditingCell(null);
+    setEditValue('');
+    setCellError(null);
+  };
+
+  const commitEdit = async (newValue: string | null) => {
+    if (!editingCell || !onCellEdit) return;
+    const row = rows[editingCell.row];
+    const col = editingCell.col;
+    setSavingCell(true);
+    setCellError(null);
+    try {
+      await onCellEdit(row, col, newValue);
+      setEditingCell(null);
+      setEditValue('');
+    } catch (e) {
+      setCellError(e instanceof Error ? e.message : 'Failed to save');
+    } finally {
+      setSavingCell(false);
+    }
+  };
+
+  const showActionsColumn = Boolean(editable && onDeleteRow);
+
   return (
     <div className="table-browser">
       <div className="data-table-container">
@@ -103,6 +143,7 @@ export default function DataTable({ columns, rows, total, limit = 100, offset = 
                   )}
                 </th>
               ))}
+              {showActionsColumn && <th className="data-table-actions-th" />}
             </tr>
           </thead>
           <tbody>
@@ -111,12 +152,63 @@ export default function DataTable({ columns, rows, total, limit = 100, offset = 
                 {columns.map((col) => {
                   const val = row[col];
                   const isNull = val === null || val === undefined;
+                  const isEditing = editingCell?.row === i && editingCell.col === col;
+
+                  if (isEditing) {
+                    return (
+                      <td key={col} className="cell-editing">
+                        <div className="cell-edit-wrap">
+                          <input
+                            className="cell-edit-input"
+                            value={editValue}
+                            onChange={(e) => setEditValue(e.target.value)}
+                            onKeyDown={(e) => {
+                              if (e.key === 'Enter') commitEdit(editValue);
+                              if (e.key === 'Escape') cancelEdit();
+                            }}
+                            onBlur={() => { if (!savingCell) commitEdit(editValue); }}
+                            disabled={savingCell}
+                            autoFocus
+                          />
+                          <button
+                            className="btn-icon cell-edit-null-btn"
+                            title="Set to NULL"
+                            tabIndex={-1}
+                            onMouseDown={(e) => { e.preventDefault(); commitEdit(null); }}
+                            disabled={savingCell}
+                          >
+                            &empty;
+                          </button>
+                        </div>
+                        {cellError && <div className="cell-edit-error">{cellError}</div>}
+                      </td>
+                    );
+                  }
+
                   return (
-                    <td key={col} className={isNull ? 'null-value' : ''}>
+                    <td
+                      key={col}
+                      className={isNull ? 'null-value' : ''}
+                      onDoubleClick={editable ? () => startEdit(i, col, val) : undefined}
+                      title={editable ? 'Double-click to edit' : undefined}
+                    >
                       {isNull ? 'NULL' : String(val)}
                     </td>
                   );
                 })}
+                {showActionsColumn && (
+                  <td className="data-table-actions-td">
+                    <button
+                      className="btn-icon"
+                      onClick={() => onDeleteRow!(row)}
+                      title="Delete row"
+                    >
+                      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                        <polyline points="3 6 5 6 21 6" /><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
+                      </svg>
+                    </button>
+                  </td>
+                )}
               </tr>
             ))}
           </tbody>

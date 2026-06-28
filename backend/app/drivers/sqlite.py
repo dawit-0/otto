@@ -131,6 +131,16 @@ class SQLiteDriver(DatabaseDriver):
         cursor = conn.execute(f"PRAGMA table_info({quoted})")
         return [row["name"] for row in cursor.fetchall()]
 
+    def get_primary_key_columns(self, conn: Any, table: str) -> list[str]:
+        quoted = self.quote_identifier(table)
+        cursor = conn.execute(f"PRAGMA table_info({quoted})")
+        return [row["name"] for row in cursor.fetchall() if row["pk"]]
+
+    def execute_dml(self, conn: Any, sql: str, params: list) -> int:
+        cursor = conn.execute(sql, params)
+        conn.commit()
+        return cursor.rowcount
+
     def get_table_data(
         self, conn: Any, table: str, limit: int, offset: int,
         sort_column: str | None = None,

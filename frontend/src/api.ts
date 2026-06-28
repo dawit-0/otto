@@ -45,6 +45,11 @@ export interface TableDataResponse {
   offset: number;
 }
 
+export interface RowMutationResponse {
+  ok: boolean;
+  affected_rows?: number;
+}
+
 export type FilterOp =
   | 'contains' | 'equals' | 'not_equals' | 'starts_with'
   | 'gt' | 'lt' | 'gte' | 'lte'
@@ -252,6 +257,24 @@ export const api = {
     }
     return request<TableDataResponse>(`/databases/${id}/tables/${table}/data?${params}`);
   },
+
+  insertRow: (dbId: string, table: string, values: Record<string, unknown>) =>
+    request<RowMutationResponse>(`/databases/${dbId}/tables/${table}/rows`, {
+      method: 'POST',
+      body: JSON.stringify({ values }),
+    }),
+
+  updateRow: (dbId: string, table: string, pk: Record<string, unknown>, values: Record<string, unknown>) =>
+    request<RowMutationResponse>(`/databases/${dbId}/tables/${table}/rows`, {
+      method: 'PUT',
+      body: JSON.stringify({ pk, values }),
+    }),
+
+  deleteRow: (dbId: string, table: string, pk: Record<string, unknown>) =>
+    request<RowMutationResponse>(`/databases/${dbId}/tables/${table}/rows`, {
+      method: 'DELETE',
+      body: JSON.stringify({ pk }),
+    }),
 
   executeQuery: (dbId: string, sql: string) =>
     request<QueryResponse>('/query', {

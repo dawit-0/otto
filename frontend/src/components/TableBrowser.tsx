@@ -49,9 +49,72 @@ export default function TableBrowser({ dbId, tableName, columnDefs }: Props) {
 
   const [showProfile, setShowProfile] = useState(false);
 
+  const [deleteTarget, setDeleteTarget] = useState<Record<string, unknown> | null>(null);
+  const [deleteError, setDeleteError] = useState<string | null>(null);
+  const [deleting, setDeleting] = useState(false);
+
+  const [showAddRow, setShowAddRow] = useState(false);
+  const [newRowValues, setNewRowValues] = useState<Record<string, string>>({});
+  const [addRowError, setAddRowError] = useState<string | null>(null);
+  const [addingRow, setAddingRow] = useState(false);
+
   const addFilterRef = useRef<HTMLDivElement>(null);
 
   const colNames = columnDefs.map((c) => c.name);
+  const pkColumns = columnDefs.filter((c) => c.pk).map((c) => c.name);
+  const canEditRows = pkColumns.length > 0;
+
+  const buildPk = (row: Record<string, unknown>): Record<string, unknown> => {
+    const pk: Record<string, unknown> = {};
+    for (const col of pkColumns) pk[col] = row[col];
+    return pk;
+  };
+
+  const handleCellEdit = async (row: Record<string, unknown>, column: string, newValue: string | null) => {
+    const updated = await api.updateRow(dbId, tableName, buildPk(row), { [column]: newValue });
+    setRows((prev) => prev.map((r) => (r === row ? { ...r, [column]: newValue } : r)));
+    void updated;
+  };
+
+  const openAddRow = () => {
+    setNewRowValues({});
+    setAddRowError(null);
+    setShowAddRow(true);
+  };
+
+  const handleAddRow = async () => {
+    setAddingRow(true);
+    setAddRowError(null);
+    try {
+      const values: Record<string, string> = {};
+      for (const [k, v] of Object.entries(newRowValues)) {
+        if (v.trim() !== '') values[k] = v;
+      }
+      await api.insertRow(dbId, tableName, values);
+      setShowAddRow(false);
+      setNewRowValues({});
+      await loadData(0, sort, filters);
+    } catch (e) {
+      setAddRowError(e instanceof Error ? e.message : 'Failed to add row');
+    } finally {
+      setAddingRow(false);
+    }
+  };
+
+  const handleConfirmDelete = async () => {
+    if (!deleteTarget) return;
+    setDeleting(true);
+    setDeleteError(null);
+    try {
+      await api.deleteRow(dbId, tableName, buildPk(deleteTarget));
+      setDeleteTarget(null);
+      await loadData(offset, sort, filters);
+    } catch (e) {
+      setDeleteError(e instanceof Error ? e.message : 'Failed to delete row');
+    } finally {
+      setDeleting(false);
+    }
+  };
 
   const loadData = useCallback(async (nextOffset: number, currentSort: SortState | null, currentFilters: FilterRule[]) => {
     setLoading(true);
@@ -190,6 +253,12 @@ export default function TableBrowser({ dbId, tableName, columnDefs }: Props) {
             <span className="filter-row-count">
               {total.toLocaleString()} {hasActiveState ? 'matching ' : ''}row{total !== 1 ? 's' : ''}
             </span>
+            <button className="btn btn-sm" onClick={openAddRow} title="Add a new row">
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                <line x1="12" y1="5" x2="12" y2="19" /><line x1="5" y1="12" x2="19" y2="12" />
+              </svg>
+              Add row
+            </button>
             <button
               className={`btn btn-sm${showProfile ? ' btn-profile-active' : ''}`}
               onClick={() => setShowProfile((v) => !v)}
@@ -263,6 +332,12 @@ export default function TableBrowser({ dbId, tableName, columnDefs }: Props) {
         )}
       </div>
 
+      {!canEditRows && (
+        <div className="no-pk-banner">
+          This table has no primary key, so existing rows can&rsquo;t be edited or deleted. New rows can still be added.
+        </div>
+      )}
+
       {/* ── Error ── */}
       {error && (
         <div className="filter-error">
@@ -286,6 +361,9 @@ export default function TableBrowser({ dbId, tableName, columnDefs }: Props) {
           sortColumn={sort?.column}
           sortDirection={sort?.direction}
           onSort={handleSort}
+          editable={canEditRows}
+          onCellEdit={canEditRows ? handleCellEdit : undefined}
+          onDeleteRow={canEditRows ? (row) => { setDeleteTarget(row); setDeleteError(null); } : undefined}
         />
       )}
       </div>
@@ -296,6 +374,59 @@ export default function TableBrowser({ dbId, tableName, columnDefs }: Props) {
           tableName={tableName}
           onClose={() => setShowProfile(false)}
         />
+      )}
+
+      {/* ── Add Row Modal ── */}
+      {showAddRow && (
+        <div className="modal-overlay" onClick={() => setShowAddRow(false)}>
+          <div className="modal modal-wide" onClick={(e) => e.stopPropagation()}>
+            <div className="modal-title">Add Row to {tableName}</div>
+            <p className="modal-params-hint">Leave a field blank to use the column&rsquo;s default value.</p>
+            <div className="add-row-fields">
+              {columnDefs.map((col) => (
+                <div key={col.name} className="modal-field">
+                  <label>
+                    {col.name}
+                    {col.notnull && !col.pk && <span className="add-row-required">*</span>}
+                    <span className="add-row-type">{col.type || 'ANY'}</span>
+                  </label>
+                  <input
+                    value={newRowValues[col.name] ?? ''}
+                    onChange={(e) => setNewRowValues((prev) => ({ ...prev, [col.name]: e.target.value }))}
+                    placeholder={col.pk ? 'auto' : col.default ?? ''}
+                    onKeyDown={(e) => { if (e.key === 'Escape') setShowAddRow(false); }}
+                  />
+                </div>
+              ))}
+            </div>
+            {addRowError && <div className="ai-error" style={{ marginBottom: 12 }}>{addRowError}</div>}
+            <div className="modal-actions">
+              <button className="btn" onClick={() => setShowAddRow(false)}>Cancel</button>
+              <button className="btn btn-primary" onClick={handleAddRow} disabled={addingRow}>
+                {addingRow ? 'Adding...' : 'Add Row'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── Delete Row Confirm Modal ── */}
+      {deleteTarget && (
+        <div className="modal-overlay" onClick={() => setDeleteTarget(null)}>
+          <div className="modal" onClick={(e) => e.stopPropagation()}>
+            <div className="modal-title">Delete row?</div>
+            <p style={{ fontSize: 13, color: 'var(--text-secondary)', marginBottom: 16 }}>
+              This permanently deletes the row identified by {pkColumns.map((c) => `${c}=${String(deleteTarget[c])}`).join(', ')} from {tableName}. This cannot be undone.
+            </p>
+            {deleteError && <div className="ai-error" style={{ marginBottom: 12 }}>{deleteError}</div>}
+            <div className="modal-actions">
+              <button className="btn" onClick={() => setDeleteTarget(null)}>Cancel</button>
+              <button className="btn btn-danger" onClick={handleConfirmDelete} disabled={deleting}>
+                {deleting ? 'Deleting...' : 'Delete Row'}
+              </button>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );
