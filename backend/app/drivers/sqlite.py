@@ -146,18 +146,107 @@ class SQLiteDriver(DatabaseDriver):
         if not order_sql:
             order_sql = "ORDER BY rowid DESC"
 
-        data_sql = f"SELECT * FROM {quoted} {where_sql} {order_sql} LIMIT ? OFFSET ?"
+        pk_cols = self.get_primary_key_columns(conn, table)
+        use_rowid = pk_cols == ["rowid"]
+        select_cols = "rowid AS __rowid, *" if use_rowid else "*"
+
+        data_sql = f"SELECT {select_cols} FROM {quoted} {where_sql} {order_sql} LIMIT ? OFFSET ?"
         cursor = conn.execute(data_sql, (*where_params, limit, offset))
-        columns = [desc[0] for desc in cursor.description]
+        all_columns = [desc[0] for desc in cursor.description]
         rows = [dict(row) for row in cursor.fetchall()]
+        display_columns = [c for c in all_columns if c != "__rowid"]
 
         count_sql = f"SELECT COUNT(*) FROM {quoted} {where_sql}"
         count = conn.execute(count_sql, where_params).fetchone()[0]
 
         return {
-            "columns": columns,
+            "columns": display_columns,
             "rows": rows,
             "total": count,
             "limit": limit,
             "offset": offset,
+            "primary_key": pk_cols,
+            "editable": True,
         }
+
+    def get_primary_key_columns(self, conn: Any, table: str) -> list[str]:
+        self.assert_valid_table(conn, table)
+        quoted = self.quote_identifier(table)
+        cols_cursor = conn.execute(f"PRAGMA table_info({quoted})")
+        pk_rows = sorted(
+            (row for row in cols_cursor.fetchall() if row["pk"]),
+            key=lambda row: row["pk"],
+        )
+        if pk_rows:
+            return [row["name"] for row in pk_rows]
+        # Rowid tables (the vast majority of SQLite tables) always have an
+        # implicit, unique `rowid` we can use as a row identity even without
+        # a declared PRIMARY KEY. WITHOUT ROWID tables would fail at the SQL
+        # layer when this is used, which surfaces as a clear 400 to the user.
+        return ["rowid"]
+
+    def _quoted_pk_clause(self, pk: dict[str, Any], valid_columns: set[str]) -> tuple[str, list]:
+        allowed = valid_columns | {"rowid"}
+        self.assert_valid_columns(pk.keys(), allowed)
+        clause = " AND ".join(f"{self.quote_identifier(c)} = ?" for c in pk)
+        return clause, list(pk.values())
+
+    def insert_row(self, conn: Any, table: str, values: dict[str, Any]) -> dict[str, Any]:
+        self.assert_valid_table(conn, table)
+        valid_columns = set(self.get_column_names(conn, table))
+        self.assert_valid_columns(values.keys(), valid_columns)
+        quoted = self.quote_identifier(table)
+
+        if values:
+            cols = ", ".join(self.quote_identifier(c) for c in values)
+            placeholders = ", ".join("?" for _ in values)
+            cursor = conn.execute(
+                f"INSERT INTO {quoted} ({cols}) VALUES ({placeholders})",
+                list(values.values()),
+            )
+        else:
+            cursor = conn.execute(f"INSERT INTO {quoted} DEFAULT VALUES")
+        conn.commit()
+
+        row_cursor = conn.execute(
+            f"SELECT rowid AS __rowid, * FROM {quoted} WHERE rowid = ?", (cursor.lastrowid,)
+        )
+        row = row_cursor.fetchone()
+        return dict(row) if row else {}
+
+    def update_row(self, conn: Any, table: str, pk: dict[str, Any], updates: dict[str, Any]) -> None:
+        self.assert_valid_table(conn, table)
+        valid_columns = set(self.get_column_names(conn, table))
+        if not pk:
+            raise ValueError("pk must not be empty")
+        if not updates:
+            raise ValueError("updates must not be empty")
+        self.assert_valid_columns(updates.keys(), valid_columns)
+        where_clause, where_params = self._quoted_pk_clause(pk, valid_columns)
+
+        quoted = self.quote_identifier(table)
+        set_clause = ", ".join(f"{self.quote_identifier(c)} = ?" for c in updates)
+        cursor = conn.execute(
+            f"UPDATE {quoted} SET {set_clause} WHERE {where_clause}",
+            [*updates.values(), *where_params],
+        )
+        conn.commit()
+        if cursor.rowcount == 0:
+            raise ValueError("Row not found (it may have been modified or deleted)")
+        if cursor.rowcount > 1:
+            raise ValueError("Update matched more than one row; refusing to proceed")
+
+    def delete_row(self, conn: Any, table: str, pk: dict[str, Any]) -> None:
+        self.assert_valid_table(conn, table)
+        valid_columns = set(self.get_column_names(conn, table))
+        if not pk:
+            raise ValueError("pk must not be empty")
+        where_clause, where_params = self._quoted_pk_clause(pk, valid_columns)
+
+        quoted = self.quote_identifier(table)
+        cursor = conn.execute(f"DELETE FROM {quoted} WHERE {where_clause}", where_params)
+        conn.commit()
+        if cursor.rowcount == 0:
+            raise ValueError("Row not found (it may have already been deleted)")
+        if cursor.rowcount > 1:
+            raise ValueError("Delete matched more than one row; refusing to proceed")

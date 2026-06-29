@@ -129,13 +129,100 @@ class PostgresDriver(DatabaseDriver):
         total = cur.fetchone()[0]
         cur.close()
 
+        pk_cols = self._get_pk_columns(conn, table)
+
         return {
             "columns": columns,
             "rows": rows,
             "total": total,
             "limit": limit,
             "offset": offset,
+            "primary_key": pk_cols,
+            "editable": bool(pk_cols),
         }
+
+    def get_primary_key_columns(self, conn: Any, table: str) -> list[str]:
+        self.assert_valid_table(conn, table)
+        return self._get_pk_columns(conn, table)
+
+    def insert_row(self, conn: Any, table: str, values: dict[str, Any]) -> dict[str, Any]:
+        self.assert_valid_table(conn, table)
+        valid_columns = set(self.get_column_names(conn, table))
+        self.assert_valid_columns(values.keys(), valid_columns)
+        quoted = self.quote_identifier(table)
+
+        cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+        try:
+            if values:
+                cols = ", ".join(self.quote_identifier(c) for c in values)
+                placeholders = ", ".join("%s" for _ in values)
+                cur.execute(
+                    f"INSERT INTO {quoted} ({cols}) VALUES ({placeholders}) RETURNING *",
+                    list(values.values()),
+                )
+            else:
+                cur.execute(f"INSERT INTO {quoted} DEFAULT VALUES RETURNING *")
+            row = cur.fetchone()
+            conn.commit()
+            return dict(row) if row else {}
+        except Exception:
+            conn.rollback()
+            raise
+        finally:
+            cur.close()
+
+    def update_row(self, conn: Any, table: str, pk: dict[str, Any], updates: dict[str, Any]) -> None:
+        self.assert_valid_table(conn, table)
+        valid_columns = set(self.get_column_names(conn, table))
+        if not pk:
+            raise ValueError("pk must not be empty")
+        if not updates:
+            raise ValueError("updates must not be empty")
+        self.assert_valid_columns(updates.keys(), valid_columns)
+        self.assert_valid_columns(pk.keys(), valid_columns)
+
+        quoted = self.quote_identifier(table)
+        set_clause = ", ".join(f"{self.quote_identifier(c)} = %s" for c in updates)
+        where_clause = " AND ".join(f"{self.quote_identifier(c)} = %s" for c in pk)
+        cur = conn.cursor()
+        try:
+            cur.execute(
+                f"UPDATE {quoted} SET {set_clause} WHERE {where_clause}",
+                [*updates.values(), *pk.values()],
+            )
+            if cur.rowcount == 0:
+                raise ValueError("Row not found (it may have been modified or deleted)")
+            if cur.rowcount > 1:
+                raise ValueError("Update matched more than one row; refusing to proceed")
+            conn.commit()
+        except Exception:
+            conn.rollback()
+            raise
+        finally:
+            cur.close()
+
+    def delete_row(self, conn: Any, table: str, pk: dict[str, Any]) -> None:
+        self.assert_valid_table(conn, table)
+        valid_columns = set(self.get_column_names(conn, table))
+        if not pk:
+            raise ValueError("pk must not be empty")
+        self.assert_valid_columns(pk.keys(), valid_columns)
+
+        quoted = self.quote_identifier(table)
+        where_clause = " AND ".join(f"{self.quote_identifier(c)} = %s" for c in pk)
+        cur = conn.cursor()
+        try:
+            cur.execute(f"DELETE FROM {quoted} WHERE {where_clause}", list(pk.values()))
+            if cur.rowcount == 0:
+                raise ValueError("Row not found (it may have already been deleted)")
+            if cur.rowcount > 1:
+                raise ValueError("Delete matched more than one row; refusing to proceed")
+            conn.commit()
+        except Exception:
+            conn.rollback()
+            raise
+        finally:
+            cur.close()
 
     # ── Private helpers ──
 

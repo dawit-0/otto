@@ -1,5 +1,11 @@
 import { useState, useRef } from 'react';
 
+export interface EditingConfig {
+  primaryKey: string[];
+  onUpdateCell: (row: Record<string, unknown>, column: string, newValue: string | null) => Promise<void>;
+  onDeleteRow: (row: Record<string, unknown>) => Promise<void>;
+}
+
 interface Props {
   columns: string[];
   rows: Record<string, unknown>[];
@@ -11,6 +17,7 @@ interface Props {
   sortColumn?: string;
   sortDirection?: 'asc' | 'desc';
   onSort?: (column: string) => void;
+  editing?: EditingConfig;
 }
 
 function toCSV(columns: string[], rows: Record<string, unknown>[]): string {
@@ -48,9 +55,18 @@ function downloadFile(filename: string, content: string, mimeType: string) {
   URL.revokeObjectURL(url);
 }
 
-export default function DataTable({ columns, rows, total, limit = 100, offset = 0, onPageChange, exportFilename = 'export', sortColumn, sortDirection, onSort }: Props) {
+export default function DataTable({ columns, rows, total, limit = 100, offset = 0, onPageChange, exportFilename = 'export', sortColumn, sortDirection, onSort, editing }: Props) {
   const [copyState, setCopyState] = useState<null | 'csv' | 'json'>(null);
   const copyTimeout = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const [editingCell, setEditingCell] = useState<{ row: number; col: string } | null>(null);
+  const [editValue, setEditValue] = useState('');
+  const [editIsNull, setEditIsNull] = useState(false);
+  const [editSaving, setEditSaving] = useState(false);
+  const [editError, setEditError] = useState<string | null>(null);
+  const [confirmDeleteRow, setConfirmDeleteRow] = useState<number | null>(null);
+  const [deletingRow, setDeletingRow] = useState<number | null>(null);
+  const confirmDeleteTimeout = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   if (columns.length === 0) {
     return (
@@ -83,10 +99,62 @@ export default function DataTable({ columns, rows, total, limit = 100, offset = 
   const handleCopyJSON = () =>
     triggerCopy('json', toJSON(columns, rows));
 
+  const startEdit = (rowIndex: number, col: string, row: Record<string, unknown>) => {
+    if (!editing) return;
+    const val = row[col];
+    const isNull = val === null || val === undefined;
+    setEditingCell({ row: rowIndex, col });
+    setEditValue(isNull ? '' : String(val));
+    setEditIsNull(isNull);
+    setEditError(null);
+  };
+
+  const cancelEdit = () => {
+    setEditingCell(null);
+    setEditError(null);
+  };
+
+  const commitEdit = async (row: Record<string, unknown>, overrideIsNull?: boolean) => {
+    if (!editing || !editingCell) return;
+    const { col } = editingCell;
+    const isNull = overrideIsNull ?? editIsNull;
+    const val = row[col];
+    const currentlyNull = val === null || val === undefined;
+    const unchanged = isNull ? currentlyNull : !currentlyNull && String(val) === editValue;
+    if (unchanged) {
+      cancelEdit();
+      return;
+    }
+    setEditSaving(true);
+    setEditError(null);
+    try {
+      await editing.onUpdateCell(row, col, isNull ? null : editValue);
+      setEditingCell(null);
+    } catch (e) {
+      setEditError(e instanceof Error ? e.message : 'Failed to save');
+    } finally {
+      setEditSaving(false);
+    }
+  };
+
+  const handleDeleteClick = (rowIndex: number, row: Record<string, unknown>) => {
+    if (!editing) return;
+    if (confirmDeleteRow !== rowIndex) {
+      setConfirmDeleteRow(rowIndex);
+      if (confirmDeleteTimeout.current) clearTimeout(confirmDeleteTimeout.current);
+      confirmDeleteTimeout.current = setTimeout(() => setConfirmDeleteRow(null), 3000);
+      return;
+    }
+    if (confirmDeleteTimeout.current) clearTimeout(confirmDeleteTimeout.current);
+    setConfirmDeleteRow(null);
+    setDeletingRow(rowIndex);
+    editing.onDeleteRow(row).finally(() => setDeletingRow(null));
+  };
+
   return (
     <div className="table-browser">
       <div className="data-table-container">
-        <table className="data-table">
+        <table className={`data-table${editing ? ' data-table-editable' : ''}`}>
           <thead>
             <tr>
               {columns.map((col) => (
@@ -103,20 +171,81 @@ export default function DataTable({ columns, rows, total, limit = 100, offset = 
                   )}
                 </th>
               ))}
+              {editing && <th className="row-actions-th" />}
             </tr>
           </thead>
           <tbody>
             {rows.map((row, i) => (
-              <tr key={i}>
+              <tr key={i} className={deletingRow === i ? 'row-deleting' : ''}>
                 {columns.map((col) => {
                   const val = row[col];
                   const isNull = val === null || val === undefined;
+                  const isEditingThis = editingCell?.row === i && editingCell.col === col;
+
+                  if (isEditingThis) {
+                    return (
+                      <td key={col} className="cell-editing">
+                        <div className="cell-edit-wrap">
+                          <input
+                            className="cell-edit-input"
+                            value={editValue}
+                            disabled={editIsNull || editSaving}
+                            autoFocus
+                            onChange={(e) => setEditValue(e.target.value)}
+                            onKeyDown={(e) => {
+                              if (e.key === 'Enter') commitEdit(row);
+                              if (e.key === 'Escape') cancelEdit();
+                            }}
+                            onBlur={() => commitEdit(row)}
+                          />
+                          <label className="cell-edit-null" onMouseDown={(e) => e.preventDefault()}>
+                            <input
+                              type="checkbox"
+                              checked={editIsNull}
+                              disabled={editSaving}
+                              onChange={(e) => {
+                                const checked = e.target.checked;
+                                setEditIsNull(checked);
+                                if (checked) commitEdit(row, true);
+                              }}
+                            />
+                            NULL
+                          </label>
+                        </div>
+                        {editError && <div className="cell-edit-error">{editError}</div>}
+                      </td>
+                    );
+                  }
+
                   return (
-                    <td key={col} className={isNull ? 'null-value' : ''}>
+                    <td
+                      key={col}
+                      className={`${isNull ? 'null-value' : ''}${editing ? ' editable-cell' : ''}`}
+                      onClick={editing ? () => startEdit(i, col, row) : undefined}
+                      title={editing ? 'Click to edit' : undefined}
+                    >
                       {isNull ? 'NULL' : String(val)}
                     </td>
                   );
                 })}
+                {editing && (
+                  <td className="row-actions-td">
+                    <button
+                      className={`btn-icon btn-icon-delete-row${confirmDeleteRow === i ? ' confirm-delete' : ''}`}
+                      onClick={() => handleDeleteClick(i, row)}
+                      disabled={deletingRow === i}
+                      title={confirmDeleteRow === i ? 'Click again to confirm delete' : 'Delete row'}
+                    >
+                      {confirmDeleteRow === i ? (
+                        'Confirm?'
+                      ) : (
+                        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                          <polyline points="3 6 5 6 21 6" /><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
+                        </svg>
+                      )}
+                    </button>
+                  </td>
+                )}
               </tr>
             ))}
           </tbody>

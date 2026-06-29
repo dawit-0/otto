@@ -81,12 +81,53 @@ class DatabaseDriver(ABC):
         """Test connectivity. Raise on failure."""
         ...
 
+    @abstractmethod
+    def get_primary_key_columns(self, conn: Any, table: str) -> list[str]:
+        """Return the ordered primary-key column names for ``table``.
+
+        Empty list means the table has no usable row identity, in which case
+        callers must treat it as read-only (no update/insert/delete).
+        """
+        ...
+
+    @abstractmethod
+    def insert_row(self, conn: Any, table: str, values: dict[str, Any]) -> dict[str, Any]:
+        """Insert a new row and return it as inserted (including generated defaults)."""
+        ...
+
+    @abstractmethod
+    def update_row(self, conn: Any, table: str, pk: dict[str, Any], updates: dict[str, Any]) -> None:
+        """Update the single row identified by ``pk`` with ``updates``.
+
+        Raises ValueError if zero or more than one row would be affected, so a
+        stale or ambiguous identifier never silently touches the wrong row.
+        """
+        ...
+
+    @abstractmethod
+    def delete_row(self, conn: Any, table: str, pk: dict[str, Any]) -> None:
+        """Delete the single row identified by ``pk``.
+
+        Raises ValueError if zero or more than one row would be affected.
+        """
+        ...
+
     def quote_identifier(self, name: str) -> str:
         if not isinstance(name, str) or name == "":
             raise ValueError("Identifier must be a non-empty string")
         if "\x00" in name:
             raise ValueError("Identifier must not contain NUL bytes")
         return '"' + name.replace('"', '""') + '"'
+
+    def assert_valid_columns(self, names: Any, valid_columns: set[str]) -> None:
+        """Validate every name in ``names`` against ``valid_columns``.
+
+        Used before building UPDATE/INSERT/DELETE SQL so untrusted JSON keys
+        from row-mutation requests never reach identifier interpolation.
+        """
+        for name in names:
+            if name not in valid_columns:
+                raise ValueError(f"Unknown column: {name!r}")
 
     def assert_valid_table(self, conn: Any, table_name: str) -> str:
         if not isinstance(table_name, str) or table_name == "":

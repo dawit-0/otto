@@ -43,6 +43,8 @@ export interface TableDataResponse {
   total: number;
   limit: number;
   offset: number;
+  primary_key: string[];
+  editable: boolean;
 }
 
 export type FilterOp =
@@ -252,6 +254,24 @@ export const api = {
     }
     return request<TableDataResponse>(`/databases/${id}/tables/${table}/data?${params}`);
   },
+
+  updateTableRow: (dbId: string, table: string, pk: Record<string, unknown>, updates: Record<string, unknown>) =>
+    request<{ ok: boolean }>(`/databases/${dbId}/tables/${table}/rows`, {
+      method: 'PATCH',
+      body: JSON.stringify({ pk, updates }),
+    }),
+
+  insertTableRow: (dbId: string, table: string, values: Record<string, unknown>) =>
+    request<{ row: Record<string, unknown> }>(`/databases/${dbId}/tables/${table}/rows`, {
+      method: 'POST',
+      body: JSON.stringify({ values }),
+    }),
+
+  deleteTableRow: (dbId: string, table: string, pk: Record<string, unknown>) =>
+    request<{ ok: boolean }>(`/databases/${dbId}/tables/${table}/rows`, {
+      method: 'DELETE',
+      body: JSON.stringify({ pk }),
+    }),
 
   executeQuery: (dbId: string, sql: string) =>
     request<QueryResponse>('/query', {
