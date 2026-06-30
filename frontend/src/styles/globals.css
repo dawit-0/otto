@@ -413,6 +413,152 @@ body {
   font-size: 10px !important;
 }
 
+/* ─── Query Workspace (multi-tab) ─── */
+.query-workspace {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  overflow: hidden;
+  min-height: 0;
+}
+
+.query-tabs {
+  display: flex;
+  align-items: stretch;
+  background: var(--bg-secondary);
+  border-bottom: 1px solid var(--border);
+  flex-shrink: 0;
+  overflow-x: auto;
+  overflow-y: hidden;
+  scrollbar-width: none;
+  min-height: 36px;
+}
+.query-tabs::-webkit-scrollbar { display: none; }
+
+.query-tab {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  padding: 0 8px 0 14px;
+  min-width: 108px;
+  max-width: 190px;
+  height: 36px;
+  cursor: pointer;
+  border-right: 1px solid var(--border);
+  border-top: 2px solid transparent;
+  font-size: 12.5px;
+  font-weight: 500;
+  color: var(--text-muted);
+  transition: background 0.1s ease, color 0.1s ease;
+  flex-shrink: 0;
+  user-select: none;
+}
+.query-tab:hover {
+  background: var(--bg-tertiary);
+  color: var(--text-secondary);
+}
+.query-tab.active {
+  background: var(--bg-primary);
+  color: var(--text-primary);
+  border-top-color: var(--accent);
+}
+
+.query-tab-name {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  min-width: 0;
+}
+
+.query-tab-name-input {
+  flex: 1;
+  background: var(--bg-tertiary);
+  border: 1px solid var(--accent);
+  border-radius: 3px;
+  color: var(--text-primary);
+  font-size: 12px;
+  font-family: inherit;
+  padding: 1px 5px;
+  outline: none;
+  min-width: 60px;
+}
+
+.query-tab-close {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  flex-shrink: 0;
+  border: none;
+  background: transparent;
+  color: var(--text-muted);
+  cursor: pointer;
+  border-radius: 3px;
+  font-size: 15px;
+  line-height: 1;
+  opacity: 0;
+  transition: opacity 0.1s ease, background 0.1s ease, color 0.1s ease;
+  font-family: inherit;
+  padding: 0;
+}
+.query-tab:hover .query-tab-close,
+.query-tab.active .query-tab-close {
+  opacity: 1;
+}
+.query-tab-close:hover {
+  background: var(--bg-hover);
+  color: var(--text-primary);
+}
+
+.query-tab-add {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 34px;
+  height: 36px;
+  flex-shrink: 0;
+  border: none;
+  background: transparent;
+  color: var(--text-muted);
+  cursor: pointer;
+  font-size: 20px;
+  line-height: 1;
+  transition: color 0.1s ease, background 0.1s ease;
+  font-family: inherit;
+  padding: 0;
+}
+.query-tab-add:hover {
+  color: var(--text-primary);
+  background: var(--bg-tertiary);
+}
+
+.query-tab-hint {
+  display: flex;
+  align-items: center;
+  margin-left: auto;
+  padding: 0 14px;
+  font-size: 11px;
+  color: var(--text-muted);
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+.query-workspace-content {
+  flex: 1;
+  display: flex;
+  overflow: hidden;
+  min-height: 0;
+}
+
+.query-workspace-pane {
+  flex: 1;
+  flex-direction: column;
+  overflow: hidden;
+  min-height: 0;
+}
+
 /* ─── Query Editor ─── */
 .query-panel {
   display: flex;

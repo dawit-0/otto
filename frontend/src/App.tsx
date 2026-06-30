@@ -1,8 +1,8 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { api, type Database, type TableInfo } from './api';
 import SchemaGraph from './components/SchemaGraph';
 import DataView from './components/DataView';
-import QueryEditor from './components/QueryEditor';
+import QueryWorkspace from './components/QueryWorkspace';
 import ConnectModal from './components/ConnectModal';
 import VisualizationDashboard from './components/VisualizationDashboard';
 import AskOtto from './components/AskOtto';
@@ -22,8 +22,8 @@ export default function App() {
   const [pendingVisualization, setPendingVisualization] = useState<{
     sql: string; chartType: ChartType; xColumn: string; yColumns: string[];
   } | null>(null);
-  const [askSeedSql, setAskSeedSql] = useState<string | null>(null);
-  const [queryKey, setQueryKey] = useState(0);
+  const [querySeed, setQuerySeed] = useState<{ sql: string; version: number } | null>(null);
+  const seedVersionRef = useRef(0);
   const [showPalette, setShowPalette] = useState(false);
 
   useEffect(() => {
@@ -98,8 +98,7 @@ export default function App() {
   };
 
   const handlePaletteLoadQuery = useCallback((sql: string) => {
-    setAskSeedSql(sql);
-    setQueryKey(k => k + 1);
+    setQuerySeed({ sql, version: ++seedVersionRef.current });
     setView('query');
   }, []);
 
@@ -208,13 +207,13 @@ export default function App() {
             )}
 
             {view === 'query' && (
-              <QueryEditor
-                key={`${activeDb.id}-${queryKey}`}
+              <QueryWorkspace
+                key={activeDb.id}
                 dbId={activeDb.id}
                 dbName={activeDb.name}
                 dbType={activeDb.db_type}
-                initialSql={askSeedSql ?? undefined}
                 onVisualize={handleVisualizeQuery}
+                seed={querySeed}
               />
             )}
 
@@ -234,8 +233,7 @@ export default function App() {
                 dbId={activeDb.id}
                 dbName={activeDb.name}
                 onUseSql={(sql) => {
-                  setAskSeedSql(sql);
-                  setQueryKey((k) => k + 1);
+                  setQuerySeed({ sql, version: ++seedVersionRef.current });
                   setView('query');
                 }}
               />
