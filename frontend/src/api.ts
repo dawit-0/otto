@@ -165,6 +165,20 @@ export interface TableProfileResponse {
   columns: ColumnProfile[];
 }
 
+export interface RelatedRecordGroup {
+  local_column: string;
+  foreign_table: string;
+  foreign_column: string;
+  columns: string[];
+  rows: Record<string, unknown>[];
+  has_more?: boolean;
+}
+
+export interface RelatedRecordsResponse {
+  parents: RelatedRecordGroup[];
+  children: RelatedRecordGroup[];
+}
+
 export interface OverviewTableSummary {
   name: string;
   row_count: number;
@@ -363,6 +377,11 @@ export const api = {
 
   getTableProfile: (dbId: string, table: string) =>
     request<TableProfileResponse>(`/databases/${dbId}/tables/${table}/profile`),
+
+  getRelatedRecords: (dbId: string, table: string, row: Record<string, unknown>) => {
+    const params = new URLSearchParams({ row_data: JSON.stringify(row) });
+    return request<RelatedRecordsResponse>(`/databases/${dbId}/tables/${table}/related-records?${params}`);
+  },
 
   // ── AI ──
 

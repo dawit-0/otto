@@ -2,11 +2,13 @@ import { useState, useEffect, useCallback, useRef } from 'react';
 import { api, type FilterRule, type FilterOp, type Column } from '../api';
 import DataTable from './DataTable';
 import ColumnProfilePanel from './ColumnProfilePanel';
+import RowInspectorPanel from './RowInspectorPanel';
 
 interface Props {
   dbId: string;
   tableName: string;
   columnDefs: Column[];
+  onNavigateToTable?: (table: string) => void;
 }
 
 interface SortState {
@@ -31,7 +33,7 @@ const VALUE_OPS: FilterOp[] = ['contains', 'equals', 'not_equals', 'starts_with'
 
 const LIMIT = 100;
 
-export default function TableBrowser({ dbId, tableName, columnDefs }: Props) {
+export default function TableBrowser({ dbId, tableName, columnDefs, onNavigateToTable }: Props) {
   const [rows, setRows] = useState<Record<string, unknown>[]>([]);
   const [columns, setColumns] = useState<string[]>([]);
   const [total, setTotal] = useState(0);
@@ -48,6 +50,8 @@ export default function TableBrowser({ dbId, tableName, columnDefs }: Props) {
   const [newVal, setNewVal] = useState('');
 
   const [showProfile, setShowProfile] = useState(false);
+  const [selectedRow, setSelectedRow] = useState<Record<string, unknown> | null>(null);
+  const [selectedRowIndex, setSelectedRowIndex] = useState<number | null>(null);
 
   const addFilterRef = useRef<HTMLDivElement>(null);
 
@@ -128,10 +132,21 @@ export default function TableBrowser({ dbId, tableName, columnDefs }: Props) {
     setSort(null);
   };
 
+  const handleRowClick = (row: Record<string, unknown>, index: number) => {
+    if (selectedRowIndex === index) {
+      setSelectedRow(null);
+      setSelectedRowIndex(null);
+    } else {
+      setSelectedRow(row);
+      setSelectedRowIndex(index);
+    }
+  };
+
   const hasActiveState = filters.length > 0 || sort !== null;
   const needsValueInput = VALUE_OPS.includes(newOp);
 
   return (
+  <div className={`table-browser-container${selectedRow !== null ? ' inspector-open' : ''}`}>
     <div className={`table-browser-wrapper${showProfile ? ' profile-open' : ''}`}>
       <div className="table-browser-main">
       {/* ── Toolbar ── */}
@@ -286,6 +301,8 @@ export default function TableBrowser({ dbId, tableName, columnDefs }: Props) {
           sortColumn={sort?.column}
           sortDirection={sort?.direction}
           onSort={handleSort}
+          onRowClick={handleRowClick}
+          selectedRowIndex={selectedRowIndex}
         />
       )}
       </div>
@@ -298,5 +315,16 @@ export default function TableBrowser({ dbId, tableName, columnDefs }: Props) {
         />
       )}
     </div>
+
+    {selectedRow !== null && (
+      <RowInspectorPanel
+        dbId={dbId}
+        tableName={tableName}
+        row={selectedRow}
+        onClose={() => { setSelectedRow(null); setSelectedRowIndex(null); }}
+        onNavigate={onNavigateToTable}
+      />
+    )}
+  </div>
   );
 }

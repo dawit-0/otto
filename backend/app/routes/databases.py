@@ -318,6 +318,100 @@ def get_table_data(
         driver.close(conn)
 
 
+@router.get("/{db_id}/tables/{table_name}/related-records")
+def get_related_records(
+    db_id: str,
+    table_name: str,
+    row_data: str,
+    db: Session = Depends(get_db),
+):
+    """Return parent and child records linked to a specific row via FK relationships."""
+    try:
+        row = json.loads(row_data)
+    except (json.JSONDecodeError, ValueError):
+        raise HTTPException(status_code=400, detail="Invalid row_data JSON")
+
+    driver = get_driver_for_db(db_id, db)
+    conn = driver.connect()
+    try:
+        all_tables = driver.get_table_info(conn)
+        table_map = {t["name"]: t for t in all_tables}
+
+        table_info = table_map.get(table_name)
+        if table_info is None:
+            raise HTTPException(status_code=404, detail=f"Table '{table_name}' not found")
+
+        parents = []
+        children = []
+
+        # Parents: FK from this table → referenced table
+        for fk in table_info["foreign_keys"]:
+            local_col = fk["from_column"]
+            ref_table = fk["to_table"]
+            ref_col = fk["to_column"]
+
+            if ref_table not in table_map:
+                continue
+            local_val = row.get(local_col)
+            if local_val is None:
+                continue
+
+            ref_tq = driver.quote_identifier(ref_table)
+            ref_cq = driver.quote_identifier(ref_col)
+            try:
+                cols, rows = driver.execute_with_params(
+                    conn,
+                    f"SELECT * FROM {ref_tq} WHERE {ref_cq} = {driver.placeholder} LIMIT 1",
+                    [local_val],
+                )
+                parents.append({
+                    "local_column": local_col,
+                    "foreign_table": ref_table,
+                    "foreign_column": ref_col,
+                    "columns": cols,
+                    "rows": rows,
+                })
+            except Exception as e:
+                logger.warning("Failed to fetch parent from %s: %s", ref_table, e)
+
+        # Children: FK from other tables → this table
+        for other_info in all_tables:
+            if other_info["name"] == table_name:
+                continue
+            for fk in other_info["foreign_keys"]:
+                if fk["to_table"] != table_name:
+                    continue
+                local_ref_col = fk["to_column"]
+                other_col = fk["from_column"]
+
+                ref_val = row.get(local_ref_col)
+                if ref_val is None:
+                    continue
+
+                other_tq = driver.quote_identifier(other_info["name"])
+                other_cq = driver.quote_identifier(other_col)
+                try:
+                    cols, rows = driver.execute_with_params(
+                        conn,
+                        f"SELECT * FROM {other_tq} WHERE {other_cq} = {driver.placeholder} LIMIT 10",
+                        [ref_val],
+                    )
+                    children.append({
+                        "foreign_table": other_info["name"],
+                        "foreign_column": other_col,
+                        "local_column": local_ref_col,
+                        "columns": cols,
+                        "rows": rows,
+                        "has_more": len(rows) == 10,
+                    })
+                except Exception as e:
+                    logger.warning("Failed to fetch children from %s: %s", other_info["name"], e)
+
+        return {"parents": parents, "children": children}
+    finally:
+        driver.close(conn)
+
+
 @router.get("/{db_id}/tables/{table_name}/profile")
 def get_table_profile(db_id: str, table_name: str, db: Session = Depends(get_db)):
     driver = get_driver_for_db(db_id, db)

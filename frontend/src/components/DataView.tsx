@@ -7,6 +7,7 @@ interface DataViewProps {
   selectedTable: string | null;
   onSelectTable: (name: string) => void;
   onClearTable: () => void;
+  onNavigateToTable?: (name: string) => void;
 }
 
 // ── TablePicker ───────────────────────────────────────────────────────────────
@@ -81,6 +82,7 @@ export default function DataView({
   selectedTable,
   onSelectTable,
   onClearTable,
+  onNavigateToTable,
 }: DataViewProps) {
   if (!selectedTable) {
     return <TablePicker tables={tables} onSelect={onSelectTable} />;
@@ -96,6 +98,7 @@ export default function DataView({
         dbId={dbId}
         tableName={selectedTable}
         columnDefs={columnDefs}
+        onNavigateToTable={onNavigateToTable ?? onSelectTable}
       />
     </div>
   );

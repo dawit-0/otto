@@ -33,6 +33,11 @@ class DatabaseDriver(ABC):
         ...
 
     @abstractmethod
+    def execute_with_params(self, conn: Any, sql: str, params: list) -> tuple[list[str], list[dict]]:
+        """Execute parameterized SQL and return (column_names, rows_as_dicts)."""
+        ...
+
+    @abstractmethod
     def explain_analyze(self, conn: Any, sql: str) -> dict:
         """Run the database's EXPLAIN ANALYZE equivalent for ``sql``.
 
