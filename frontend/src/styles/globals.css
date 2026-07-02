@@ -420,6 +420,139 @@ body {
   flex: 1;
   overflow: hidden;
 }
+
+/* ─── Query Tab Bar ─── */
+.query-tabs-bar {
+  display: flex;
+  align-items: stretch;
+  border-bottom: 1px solid var(--border);
+  background: var(--bg-primary);
+  overflow-x: auto;
+  scrollbar-width: none;
+  flex-shrink: 0;
+}
+.query-tabs-bar::-webkit-scrollbar {
+  display: none;
+}
+.query-tabs-list {
+  display: flex;
+  align-items: stretch;
+  flex: 1;
+  min-width: 0;
+}
+.query-tab {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 0 14px;
+  height: 34px;
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--text-muted);
+  border-right: 1px solid var(--border);
+  cursor: pointer;
+  white-space: nowrap;
+  flex-shrink: 0;
+  user-select: none;
+  transition: background 0.1s ease, color 0.1s ease;
+  position: relative;
+}
+.query-tab:hover {
+  background: var(--bg-secondary);
+  color: var(--text-primary);
+}
+.query-tab-active {
+  background: var(--bg-secondary);
+  color: var(--text-primary);
+}
+.query-tab-active::after {
+  content: '';
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  height: 2px;
+  background: var(--accent);
+  border-radius: 2px 2px 0 0;
+}
+.query-tab-name {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  max-width: 140px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.query-tab-spinner {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  border: 1.5px solid var(--accent);
+  border-top-color: transparent;
+  border-radius: 50%;
+  animation: spin 0.7s linear infinite;
+  flex-shrink: 0;
+}
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+.query-tab-close {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  height: 16px;
+  border-radius: 3px;
+  border: none;
+  background: transparent;
+  color: var(--text-muted);
+  font-size: 14px;
+  line-height: 1;
+  cursor: pointer;
+  padding: 0;
+  flex-shrink: 0;
+  opacity: 0;
+  transition: opacity 0.1s ease, background 0.1s ease, color 0.1s ease;
+}
+.query-tab:hover .query-tab-close,
+.query-tab-active .query-tab-close {
+  opacity: 1;
+}
+.query-tab-close:hover {
+  background: var(--bg-tertiary);
+  color: var(--text-primary);
+}
+.query-tab-rename-input {
+  background: var(--bg-primary);
+  border: 1px solid var(--accent);
+  border-radius: 3px;
+  color: var(--text-primary);
+  font-size: 12px;
+  font-weight: 500;
+  padding: 1px 5px;
+  width: 100px;
+  outline: none;
+}
+.query-tab-add-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 34px;
+  height: 34px;
+  border: none;
+  background: transparent;
+  color: var(--text-muted);
+  font-size: 18px;
+  cursor: pointer;
+  flex-shrink: 0;
+  border-left: 1px solid var(--border);
+  transition: background 0.1s ease, color 0.1s ease;
+}
+.query-tab-add-btn:hover {
+  background: var(--bg-secondary);
+  color: var(--text-primary);
+}
+
 .query-editor {
   padding: 16px;
   border-bottom: 1px solid var(--border);
