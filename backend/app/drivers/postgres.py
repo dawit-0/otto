@@ -95,6 +95,24 @@ class PostgresDriver(DatabaseDriver):
             })
         return tables
 
+    def get_primary_key_columns(self, conn: Any, table: str) -> list[str]:
+        return self._get_pk_columns(conn, table)
+
+    def _execute_insert(self, conn: Any, table: str, sql: str, params: list) -> dict:
+        cur = conn.cursor()
+        cur.execute(sql + " RETURNING *", params)
+        conn.commit()
+        cols = [desc[0] for desc in cur.description]
+        row = cur.fetchone()
+        cur.close()
+        return {"row": dict(zip(cols, row)) if row else {}, "sql": sql, "affected": 1}
+
+    def _execute_dml(self, conn: Any, sql: str, params: list) -> None:
+        cur = conn.cursor()
+        cur.execute(sql, params)
+        conn.commit()
+        cur.close()
+
     def get_column_names(self, conn: Any, table: str) -> list[str]:
         return [c["name"] for c in self._get_columns(conn, table)]
 

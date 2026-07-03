@@ -151,6 +151,75 @@ class DatabaseDriver(ABC):
                 clauses.append(f"{qcol} IS NOT NULL")
         return "WHERE " + " AND ".join(clauses), params
 
+    @abstractmethod
+    def get_primary_key_columns(self, conn: Any, table: str) -> list[str]:
+        """Return the primary key column name(s) for a table, in key order."""
+        ...
+
+    def insert_row(self, conn: Any, table: str, data: dict) -> dict:
+        """Insert a row and return the inserted row + the SQL used."""
+        self.assert_valid_table(conn, table)
+        valid_cols = set(self.get_column_names(conn, table))
+        for col in data:
+            if col not in valid_cols:
+                raise ValueError(f"Unknown column: {col!r}")
+        if not data:
+            raise ValueError("No data provided for insert")
+
+        ph = self.placeholder
+        cols = list(data.keys())
+        quoted_cols = ", ".join(self.quote_identifier(c) for c in cols)
+        placeholders = ", ".join(ph for _ in cols)
+        tq = self.quote_identifier(table)
+        sql = f"INSERT INTO {tq} ({quoted_cols}) VALUES ({placeholders})"
+        return self._execute_insert(conn, table, sql, [data[c] for c in cols])
+
+    @abstractmethod
+    def _execute_insert(self, conn: Any, table: str, sql: str, params: list) -> dict:
+        """Execute an INSERT and return {row: {...}, sql: str, affected: int}."""
+        ...
+
+    def update_cell(
+        self, conn: Any, table: str, pk_cols: list[str], pk_vals: list, column: str, value: Any
+    ) -> str:
+        """Update a single cell identified by primary key. Returns the SQL used."""
+        self.assert_valid_table(conn, table)
+        valid_cols = set(self.get_column_names(conn, table))
+        if column not in valid_cols:
+            raise ValueError(f"Unknown column: {column!r}")
+        for pk in pk_cols:
+            if pk not in valid_cols:
+                raise ValueError(f"Unknown PK column: {pk!r}")
+
+        ph = self.placeholder
+        tq = self.quote_identifier(table)
+        set_clause = f"{self.quote_identifier(column)} = {ph}"
+        where_parts = " AND ".join(f"{self.quote_identifier(pk)} = {ph}" for pk in pk_cols)
+        sql = f"UPDATE {tq} SET {set_clause} WHERE {where_parts}"
+        params: list = [value, *pk_vals]
+        self._execute_dml(conn, sql, params)
+        return sql
+
+    def delete_row(self, conn: Any, table: str, pk_cols: list[str], pk_vals: list) -> str:
+        """Delete a row identified by its primary key. Returns the SQL used."""
+        self.assert_valid_table(conn, table)
+        valid_cols = set(self.get_column_names(conn, table))
+        for pk in pk_cols:
+            if pk not in valid_cols:
+                raise ValueError(f"Unknown PK column: {pk!r}")
+
+        ph = self.placeholder
+        tq = self.quote_identifier(table)
+        where_parts = " AND ".join(f"{self.quote_identifier(pk)} = {ph}" for pk in pk_cols)
+        sql = f"DELETE FROM {tq} WHERE {where_parts}"
+        self._execute_dml(conn, sql, list(pk_vals))
+        return sql
+
+    @abstractmethod
+    def _execute_dml(self, conn: Any, sql: str, params: list) -> None:
+        """Execute a parameterized DML statement (UPDATE / DELETE) and commit."""
+        ...
+
     def build_order_by(
         self,
         sort_column: str | None,

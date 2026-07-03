@@ -3395,3 +3395,354 @@ body {
   font-family: inherit;
   color: var(--text-muted);
 }
+
+
+/* ─── Inline CRUD / Edit Mode ─────────────────────────────────────────────── */
+
+/* Spin animation for loading spinners */
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+.spin {
+  animation: spin 0.8s linear infinite;
+}
+
+/* Edit mode toggle button */
+.btn-edit-toggle {
+  position: relative;
+}
+.btn-edit-toggle-active {
+  background: rgba(99, 102, 241, 0.15);
+  border-color: var(--accent);
+  color: var(--accent-hover);
+}
+.btn-edit-toggle-active:hover {
+  background: rgba(99, 102, 241, 0.25);
+}
+.btn-edit-toggle:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+/* Editable table cells */
+.editable-cell {
+  cursor: default;
+  transition: background 0.1s ease;
+  position: relative;
+}
+.editable-cell:hover {
+  background: rgba(99, 102, 241, 0.06) !important;
+}
+.editable-cell:hover::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border: 1px dashed rgba(99, 102, 241, 0.25);
+  pointer-events: none;
+}
+.cell-is-editing {
+  padding: 3px 6px !important;
+  background: var(--bg-tertiary) !important;
+  box-shadow: inset 0 0 0 2px var(--accent);
+}
+
+/* Cell edit wrapper & input */
+.cell-edit-wrapper {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  min-width: 120px;
+}
+.cell-edit-input {
+  flex: 1;
+  min-width: 0;
+  padding: 3px 6px;
+  font-size: 12px;
+  font-family: var(--font-mono);
+  background: transparent;
+  border: none;
+  outline: none;
+  color: var(--text-primary);
+  caret-color: var(--accent);
+}
+.cell-set-null-btn {
+  flex-shrink: 0;
+  padding: 1px 5px;
+  font-size: 10px;
+  font-family: var(--font-mono);
+  background: var(--bg-hover);
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  color: var(--text-muted);
+  cursor: pointer;
+  white-space: nowrap;
+}
+.cell-set-null-btn:hover {
+  color: var(--warning);
+  border-color: var(--warning);
+}
+
+/* Cell saving state */
+.cell-saving {
+  opacity: 0.7;
+}
+.cell-saving-content {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+}
+
+/* Primary key column indicator in header */
+.pk-col-header {
+  background: rgba(99, 102, 241, 0.05) !important;
+}
+.pk-indicator {
+  font-size: 10px;
+  margin-right: 4px;
+  opacity: 0.7;
+}
+
+/* Delete column */
+.delete-col-header {
+  width: 36px;
+  min-width: 36px;
+  max-width: 36px;
+  padding: 0 !important;
+  border-right: 1px solid var(--border) !important;
+}
+.delete-col-cell {
+  width: 36px;
+  min-width: 36px;
+  max-width: 36px;
+  padding: 4px !important;
+  border-right: 1px solid var(--border);
+  text-align: center;
+  vertical-align: middle;
+}
+
+/* Trash icon button */
+.btn-row-delete {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  padding: 0;
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: var(--radius-sm);
+  color: var(--text-muted);
+  cursor: pointer;
+  transition: all 0.15s ease;
+  opacity: 0;
+}
+tr:hover .btn-row-delete {
+  opacity: 1;
+}
+.btn-row-delete:hover {
+  color: var(--danger);
+  background: rgba(239, 68, 68, 0.1);
+  border-color: rgba(239, 68, 68, 0.3);
+}
+
+/* Row states */
+.row-deleting td {
+  opacity: 0.4;
+  pointer-events: none;
+}
+.row-confirming-delete td {
+  background: rgba(239, 68, 68, 0.04) !important;
+}
+.delete-spinner {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--text-muted);
+  width: 26px;
+  height: 26px;
+}
+
+/* Delete confirm inline group */
+.delete-confirm-group {
+  display: flex;
+  gap: 3px;
+  align-items: center;
+  white-space: nowrap;
+}
+.btn-delete-confirm {
+  background: rgba(239, 68, 68, 0.15) !important;
+  border-color: rgba(239, 68, 68, 0.4) !important;
+  color: var(--danger) !important;
+  font-size: 11px !important;
+  padding: 3px 7px !important;
+}
+.btn-delete-confirm:hover {
+  background: rgba(239, 68, 68, 0.25) !important;
+}
+
+/* Error banner inside the table */
+.crud-error-banner {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 14px;
+  background: rgba(239, 68, 68, 0.08);
+  border-bottom: 1px solid rgba(239, 68, 68, 0.2);
+  color: var(--danger);
+  font-size: 12px;
+}
+.crud-error-dismiss {
+  margin-left: auto;
+  background: none;
+  border: none;
+  color: var(--danger);
+  cursor: pointer;
+  font-size: 16px;
+  line-height: 1;
+  padding: 0 2px;
+  opacity: 0.7;
+}
+.crud-error-dismiss:hover { opacity: 1; }
+
+/* Edit mode hint bar at the bottom of the table */
+.edit-mode-hint {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 14px;
+  font-size: 11px;
+  color: var(--text-muted);
+  background: rgba(99, 102, 241, 0.04);
+  border-top: 1px solid var(--border);
+  border-bottom: 1px solid var(--border);
+}
+
+/* ─── Add Row Modal ──────────────────────────────────────────────────────────── */
+
+.add-row-modal {
+  width: 520px;
+  max-width: 96vw;
+  max-height: 85vh;
+  display: flex;
+  flex-direction: column;
+  padding: 0;
+}
+.add-row-modal-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 20px 24px 16px;
+  border-bottom: 1px solid var(--border);
+}
+.add-row-modal-header .modal-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 0;
+  font-size: 15px;
+}
+.add-row-modal-header .modal-title code {
+  font-family: var(--font-mono);
+  font-size: 13px;
+  color: var(--accent-hover);
+  background: var(--accent-subtle);
+  padding: 1px 6px;
+  border-radius: 4px;
+}
+.add-row-error {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 24px;
+  background: rgba(239, 68, 68, 0.08);
+  border-bottom: 1px solid rgba(239, 68, 68, 0.2);
+  color: var(--danger);
+  font-size: 12px;
+  flex-shrink: 0;
+}
+.add-row-form {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+}
+.add-row-fields {
+  flex: 1;
+  overflow-y: auto;
+  padding: 16px 24px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.add-row-field {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+.add-row-label {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--text-secondary);
+}
+.add-row-type {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: var(--text-muted);
+  margin-left: auto;
+}
+.add-row-required {
+  color: var(--danger);
+  font-size: 13px;
+  line-height: 1;
+}
+.add-row-badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 1px 5px;
+  border-radius: 3px;
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.03em;
+}
+.add-row-badge-pk {
+  background: rgba(99, 102, 241, 0.15);
+  color: var(--accent-hover);
+  border: 1px solid rgba(99, 102, 241, 0.3);
+}
+.add-row-input {
+  width: 100%;
+  padding: 8px 10px;
+  font-size: 13px;
+  font-family: var(--font-mono);
+  background: var(--bg-primary);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-sm);
+  color: var(--text-primary);
+  transition: border-color 0.15s ease;
+}
+.add-row-input:focus {
+  outline: none;
+  border-color: var(--accent);
+  box-shadow: 0 0 0 2px var(--ring-color);
+}
+.add-row-input::placeholder {
+  color: var(--text-muted);
+  font-family: 'Inter', sans-serif;
+  font-size: 12px;
+}
+.add-row-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 14px 24px 20px;
+  border-top: 1px solid var(--border);
+  gap: 16px;
+  flex-shrink: 0;
+}
+.add-row-hint {
+  font-size: 11px;
+  color: var(--text-muted);
+}

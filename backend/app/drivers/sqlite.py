@@ -126,6 +126,27 @@ class SQLiteDriver(DatabaseDriver):
             })
         return tables
 
+    def get_primary_key_columns(self, conn: Any, table: str) -> list[str]:
+        quoted = self.quote_identifier(table)
+        cursor = conn.execute(f"PRAGMA table_info({quoted})")
+        rows = cursor.fetchall()
+        pk_rows = [(row["pk"], row["name"]) for row in rows if row["pk"] > 0]
+        return [name for _, name in sorted(pk_rows)]
+
+    def _execute_insert(self, conn: Any, table: str, sql: str, params: list) -> dict:
+        cursor = conn.execute(sql, params)
+        conn.commit()
+        rowid = cursor.lastrowid
+        tq = self.quote_identifier(table)
+        result_cursor = conn.execute(f"SELECT * FROM {tq} WHERE rowid = ?", (rowid,))
+        row = result_cursor.fetchone()
+        cols = [desc[0] for desc in result_cursor.description] if result_cursor.description else []
+        return {"row": dict(zip(cols, row)) if row else {}, "sql": sql, "affected": 1}
+
+    def _execute_dml(self, conn: Any, sql: str, params: list) -> None:
+        conn.execute(sql, params)
+        conn.commit()
+
     def get_column_names(self, conn: Any, table: str) -> list[str]:
         quoted = self.quote_identifier(table)
         cursor = conn.execute(f"PRAGMA table_info({quoted})")

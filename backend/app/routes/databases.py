@@ -318,6 +318,77 @@ def get_table_data(
         driver.close(conn)
 
 
+class InsertRowRequest(BaseModel):
+    data: dict[str, Any]
+
+
+class UpdateCellRequest(BaseModel):
+    pk_cols: list[str]
+    pk_vals: list[Any]
+    column: str
+    value: Any
+
+
+class DeleteRowRequest(BaseModel):
+    pk_cols: list[str]
+    pk_vals: list[Any]
+
+
+@router.post("/{db_id}/tables/{table_name}/rows")
+def insert_row(db_id: str, table_name: str, body: InsertRowRequest, db: Session = Depends(get_db)):
+    driver = get_driver_for_db(db_id, db)
+    conn = driver.connect()
+    try:
+        result = driver.insert_row(conn, table_name, body.data)
+        logger.info("Inserted row into '%s' (db=%s)", table_name, db_id)
+        return result
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        logger.error("Insert failed on '%s': %s", table_name, e)
+        raise HTTPException(status_code=400, detail=str(e))
+    finally:
+        driver.close(conn)
+
+
+@router.patch("/{db_id}/tables/{table_name}/rows")
+def update_cell(db_id: str, table_name: str, body: UpdateCellRequest, db: Session = Depends(get_db)):
+    if len(body.pk_cols) != len(body.pk_vals):
+        raise HTTPException(status_code=400, detail="pk_cols and pk_vals must have the same length")
+    driver = get_driver_for_db(db_id, db)
+    conn = driver.connect()
+    try:
+        sql = driver.update_cell(conn, table_name, body.pk_cols, body.pk_vals, body.column, body.value)
+        logger.info("Updated cell '%s' in '%s' (db=%s)", body.column, table_name, db_id)
+        return {"sql": sql, "affected": 1}
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        logger.error("Update failed on '%s': %s", table_name, e)
+        raise HTTPException(status_code=400, detail=str(e))
+    finally:
+        driver.close(conn)
+
+
+@router.delete("/{db_id}/tables/{table_name}/rows")
+def delete_row(db_id: str, table_name: str, body: DeleteRowRequest, db: Session = Depends(get_db)):
+    if len(body.pk_cols) != len(body.pk_vals):
+        raise HTTPException(status_code=400, detail="pk_cols and pk_vals must have the same length")
+    driver = get_driver_for_db(db_id, db)
+    conn = driver.connect()
+    try:
+        sql = driver.delete_row(conn, table_name, body.pk_cols, body.pk_vals)
+        logger.info("Deleted row from '%s' (db=%s)", table_name, db_id)
+        return {"sql": sql, "affected": 1}
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        logger.error("Delete failed on '%s': %s", table_name, e)
+        raise HTTPException(status_code=400, detail=str(e))
+    finally:
+        driver.close(conn)
+
+
 @router.get("/{db_id}/tables/{table_name}/profile")
 def get_table_profile(db_id: str, table_name: str, db: Session = Depends(get_db)):
     driver = get_driver_for_db(db_id, db)

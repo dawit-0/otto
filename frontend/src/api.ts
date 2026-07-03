@@ -361,6 +361,31 @@ export const api = {
       body: JSON.stringify({ db_id: dbId, parameters }),
     }),
 
+  insertRow: (dbId: string, table: string, data: Record<string, unknown>) =>
+    request<{ row: Record<string, unknown>; sql: string; affected: number }>(
+      `/databases/${dbId}/tables/${encodeURIComponent(table)}/rows`,
+      { method: 'POST', body: JSON.stringify({ data }) },
+    ),
+
+  updateCell: (
+    dbId: string,
+    table: string,
+    pkCols: string[],
+    pkVals: unknown[],
+    column: string,
+    value: unknown,
+  ) =>
+    request<{ sql: string; affected: number }>(
+      `/databases/${dbId}/tables/${encodeURIComponent(table)}/rows`,
+      { method: 'PATCH', body: JSON.stringify({ pk_cols: pkCols, pk_vals: pkVals, column, value }) },
+    ),
+
+  deleteRow: (dbId: string, table: string, pkCols: string[], pkVals: unknown[]) =>
+    request<{ sql: string; affected: number }>(
+      `/databases/${dbId}/tables/${encodeURIComponent(table)}/rows`,
+      { method: 'DELETE', body: JSON.stringify({ pk_cols: pkCols, pk_vals: pkVals }) },
+    ),
+
   getTableProfile: (dbId: string, table: string) =>
     request<TableProfileResponse>(`/databases/${dbId}/tables/${table}/profile`),
 
