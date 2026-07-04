@@ -176,6 +176,25 @@ export interface OverviewTableSummary {
   indexes: Index[];
 }
 
+export interface ImportColumn {
+  original_name: string;
+  name: string;
+  inferred_type: 'TEXT' | 'INTEGER' | 'REAL';
+}
+
+export interface ImportPreviewResponse {
+  format: 'csv' | 'json';
+  total_rows: number;
+  columns: ImportColumn[];
+  preview: Record<string, string>[];
+  default_table_name: string;
+}
+
+export interface ImportExecuteResponse {
+  table_name: string;
+  rows_imported: number;
+}
+
 export interface OverviewResponse {
   db_info: {
     path: string;
@@ -363,6 +382,39 @@ export const api = {
 
   getTableProfile: (dbId: string, table: string) =>
     request<TableProfileResponse>(`/databases/${dbId}/tables/${table}/profile`),
+
+  // ── Import ──
+
+  importPreview: async (dbId: string, file: File): Promise<ImportPreviewResponse> => {
+    const form = new FormData();
+    form.append('file', file);
+    const res = await fetch(`${BASE}/databases/${dbId}/import/preview`, { method: 'POST', body: form });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({ detail: res.statusText }));
+      throw new Error(err.detail || 'Preview failed');
+    }
+    return res.json();
+  },
+
+  importExecute: async (
+    dbId: string,
+    file: File,
+    tableName: string,
+    ifExists: 'fail' | 'replace' | 'append',
+    columnTypes: Record<string, string>,
+  ): Promise<ImportExecuteResponse> => {
+    const form = new FormData();
+    form.append('file', file);
+    form.append('table_name', tableName);
+    form.append('if_exists', ifExists);
+    form.append('column_types', JSON.stringify(columnTypes));
+    const res = await fetch(`${BASE}/databases/${dbId}/import/execute`, { method: 'POST', body: form });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({ detail: res.statusText }));
+      throw new Error(err.detail || 'Import failed');
+    }
+    return res.json();
+  },
 
   // ── AI ──
 

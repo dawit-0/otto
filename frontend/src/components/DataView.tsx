@@ -1,5 +1,7 @@
+import { useState } from 'react';
 import { type TableInfo } from '../api';
 import TableBrowser from './TableBrowser';
+import ImportModal from './ImportModal';
 
 interface DataViewProps {
   dbId: string;
@@ -7,6 +9,7 @@ interface DataViewProps {
   selectedTable: string | null;
   onSelectTable: (name: string) => void;
   onClearTable: () => void;
+  onRefreshTables?: () => void;
 }
 
 // ── TablePicker ───────────────────────────────────────────────────────────────
@@ -14,16 +17,27 @@ interface DataViewProps {
 interface TablePickerProps {
   tables: TableInfo[];
   onSelect: (name: string) => void;
+  onImport: () => void;
 }
 
-function TablePicker({ tables, onSelect }: TablePickerProps) {
+function TablePicker({ tables, onSelect, onImport }: TablePickerProps) {
   return (
     <div className="data-picker">
       <div className="data-picker-header">
         <span className="data-picker-title">Tables</span>
-        <span className="data-picker-count">
-          {tables.length} table{tables.length !== 1 ? 's' : ''}
-        </span>
+        <div className="data-picker-header-right">
+          <span className="data-picker-count">
+            {tables.length} table{tables.length !== 1 ? 's' : ''}
+          </span>
+          <button className="btn btn-sm import-trigger-btn" onClick={onImport} title="Import CSV or JSON file into a new table">
+            <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" style={{ marginRight: 4 }}>
+              <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+              <polyline points="17 8 12 3 7 8" />
+              <line x1="12" y1="3" x2="12" y2="15" />
+            </svg>
+            Import
+          </button>
+        </div>
       </div>
       <div className="data-picker-list">
         {tables.map((table) => (
@@ -81,9 +95,29 @@ export default function DataView({
   selectedTable,
   onSelectTable,
   onClearTable,
+  onRefreshTables,
 }: DataViewProps) {
+  const [showImport, setShowImport] = useState(false);
+
+  const handleImportComplete = (tableName: string) => {
+    setShowImport(false);
+    onRefreshTables?.();
+    onSelectTable(tableName);
+  };
+
   if (!selectedTable) {
-    return <TablePicker tables={tables} onSelect={onSelectTable} />;
+    return (
+      <>
+        <TablePicker tables={tables} onSelect={onSelectTable} onImport={() => setShowImport(true)} />
+        {showImport && (
+          <ImportModal
+            dbId={dbId}
+            onClose={() => setShowImport(false)}
+            onImportComplete={handleImportComplete}
+          />
+        )}
+      </>
+    );
   }
 
   const columnDefs = tables.find((t) => t.name === selectedTable)?.columns ?? [];
