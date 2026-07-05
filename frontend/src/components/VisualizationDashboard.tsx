@@ -266,7 +266,7 @@ export default function VisualizationDashboard({ dbId, dbName, dbType, initialQu
   };
 
   return (
-    <div className="viz-dashboard" ref={containerRef}>
+    <div className="viz-dashboard" ref={containerRef as React.RefObject<HTMLDivElement>}>
       {/* Toolbar */}
       <div className="viz-toolbar">
         <div className="viz-toolbar-left">

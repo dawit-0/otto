@@ -364,6 +364,26 @@ export const api = {
   getTableProfile: (dbId: string, table: string) =>
     request<TableProfileResponse>(`/databases/${dbId}/tables/${table}/profile`),
 
+  importCsv: async (
+    dbId: string,
+    file: File,
+    tableName: string,
+    columnTypes: { name: string; type: 'TEXT' | 'INTEGER' | 'REAL' }[],
+    ifExists: 'fail' | 'replace' | 'append',
+  ): Promise<{ rows_imported: number; table: string; columns: number }> => {
+    const form = new FormData();
+    form.append('file', file);
+    form.append('table_name', tableName);
+    form.append('column_types', JSON.stringify(columnTypes));
+    form.append('if_exists', ifExists);
+    const res = await fetch(BASE + `/databases/${dbId}/import-csv`, { method: 'POST', body: form });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({ detail: res.statusText }));
+      throw new Error(err.detail || 'Import failed');
+    }
+    return res.json();
+  },
+
   // ── AI ──
 
   generateAiQuery: (dbId: string, prompt: string) =>

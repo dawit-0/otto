@@ -20,7 +20,7 @@ def _is_numeric_type(type_str: str | None) -> bool:
     base = type_str.lower().split("(")[0].strip().split()[0]
     return base in _NUMERIC_BASE_TYPES
 
-from fastapi import APIRouter, Depends, File, HTTPException, UploadFile
+from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
@@ -314,6 +314,133 @@ def get_table_data(
     except Exception as e:
         logger.error("Error reading table '%s' from db_id=%s: %s", table_name, db_id, e)
         raise HTTPException(status_code=400, detail=str(e))
+    finally:
+        driver.close(conn)
+
+
+@router.post("/{db_id}/import-csv")
+async def import_csv(
+    db_id: str,
+    file: UploadFile = File(...),
+    table_name: str = Form(...),
+    column_types: str = Form(...),
+    if_exists: str = Form("fail"),
+    db: Session = Depends(get_db),
+):
+    import csv as _csv
+    import io
+    import json as _json
+    import re
+
+    if not table_name or not re.match(r"^[A-Za-z_][A-Za-z0-9_]*$", table_name):
+        raise HTTPException(
+            status_code=400,
+            detail="Invalid table name. Use letters, numbers, and underscores; must start with a letter or underscore.",
+        )
+    if if_exists not in ("fail", "replace", "append"):
+        raise HTTPException(status_code=400, detail="if_exists must be 'fail', 'replace', or 'append'")
+
+    try:
+        cols: list[dict] = _json.loads(column_types)
+        if not isinstance(cols, list) or not cols:
+            raise ValueError("column_types must be a non-empty array")
+        for c in cols:
+            if c.get("type") not in ("TEXT", "INTEGER", "REAL"):
+                raise ValueError(f"invalid type: {c.get('type')!r}")
+    except Exception as exc:
+        raise HTTPException(status_code=400, detail=f"Invalid column_types: {exc}")
+
+    content = await file.read()
+    try:
+        text = content.decode("utf-8-sig")
+    except UnicodeDecodeError:
+        text = content.decode("latin-1")
+
+    reader = _csv.DictReader(io.StringIO(text))
+    rows = list(reader)
+
+    record = _resolve_record(db_id, db)
+    driver = get_driver(record)
+    conn = driver.connect()
+    try:
+        tq = driver.quote_identifier(table_name)
+        col_names = [c["name"] for c in cols]
+        pg_type_map = {"TEXT": "TEXT", "INTEGER": "BIGINT", "REAL": "DOUBLE PRECISION"}
+
+        col_defs = []
+        for c in cols:
+            cq = driver.quote_identifier(c["name"])
+            sql_type = pg_type_map[c["type"]] if record.db_type == "postgres" else c["type"]
+            col_defs.append(f"{cq} {sql_type}")
+        create_sql = f"CREATE TABLE {tq} ({', '.join(col_defs)})"
+
+        existing_tables = driver.list_table_names(conn)
+        if if_exists == "replace":
+            driver.execute(conn, f"DROP TABLE IF EXISTS {tq}")
+            driver.execute(conn, create_sql)
+        elif if_exists == "fail":
+            if table_name in existing_tables:
+                raise HTTPException(
+                    status_code=409,
+                    detail=f"Table '{table_name}' already exists. Choose 'Replace' to overwrite or 'Append' to add rows.",
+                )
+            driver.execute(conn, create_sql)
+        else:  # append
+            if table_name not in existing_tables:
+                raise HTTPException(
+                    status_code=404,
+                    detail=f"Table '{table_name}' does not exist. Choose 'Create' to make a new table.",
+                )
+
+        if rows:
+            type_map = {c["name"]: c["type"] for c in cols}
+
+            def _cast(v: str | None, t: str):
+                if v is None or v.strip() == "":
+                    return None
+                if t == "INTEGER":
+                    try:
+                        return int(v)
+                    except (ValueError, TypeError):
+                        return None
+                if t == "REAL":
+                    try:
+                        return float(v)
+                    except (ValueError, TypeError):
+                        return None
+                return v
+
+            col_quotes = ", ".join(driver.quote_identifier(c) for c in col_names)
+            tuples = [
+                tuple(_cast(row.get(c, ""), type_map[c]) for c in col_names)
+                for row in rows
+            ]
+
+            if record.db_type == "postgres":
+                import psycopg2.extras
+                insert_sql = f"INSERT INTO {tq} ({col_quotes}) VALUES ({', '.join(['%s'] * len(col_names))})"
+                cur = conn.cursor()
+                try:
+                    psycopg2.extras.execute_batch(cur, insert_sql, tuples, page_size=500)
+                    conn.commit()
+                finally:
+                    cur.close()
+            else:
+                insert_sql = f"INSERT INTO {tq} ({col_quotes}) VALUES ({', '.join(['?'] * len(col_names))})"
+                conn.executemany(insert_sql, tuples)
+                conn.commit()
+
+        logger.info(
+            "CSV import: db_id=%s table='%s' rows=%d cols=%d",
+            db_id, table_name, len(rows), len(cols),
+        )
+        return {"rows_imported": len(rows), "table": table_name, "columns": len(cols)}
+
+    except HTTPException:
+        raise
+    except Exception as exc:
+        logger.error("CSV import failed for db_id=%s table='%s': %s", db_id, table_name, exc)
+        raise HTTPException(status_code=400, detail=f"Import failed: {exc}")
     finally:
         driver.close(conn)
 

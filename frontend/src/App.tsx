@@ -204,6 +204,7 @@ export default function App() {
                 selectedTable={selectedTable}
                 onSelectTable={handleSelectTable}
                 onClearTable={handleClearTable}
+                onImportSuccess={() => loadSchema(activeDb)}
               />
             )}
 

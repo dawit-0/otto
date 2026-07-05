@@ -3395,3 +3395,280 @@ body {
   font-family: inherit;
   color: var(--text-muted);
 }
+
+/* ─── Import CSV Modal ─── */
+.modal-import {
+  width: 520px;
+  max-width: 92vw;
+  padding: 0;
+  overflow: hidden;
+}
+
+.import-modal-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 16px 20px;
+  border-bottom: 1px solid var(--border);
+}
+
+.import-modal-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.import-dropzone {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  min-height: 200px;
+  margin: 20px;
+  border: 2px dashed var(--border-strong);
+  border-radius: var(--radius-lg);
+  cursor: pointer;
+  transition: all 0.15s ease;
+  padding: 32px 20px;
+  text-align: center;
+}
+.import-dropzone:hover,
+.import-dropzone-active {
+  border-color: var(--accent);
+  background: var(--accent-subtle);
+}
+
+.import-dropzone-label {
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--text-primary);
+}
+.import-dropzone-sub {
+  font-size: 12px;
+  color: var(--text-muted);
+  margin-top: 4px;
+}
+
+.import-file-info {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 12px 20px;
+  background: var(--bg-primary);
+  border-bottom: 1px solid var(--border);
+  font-size: 12px;
+}
+.import-file-name {
+  font-weight: 600;
+  font-family: var(--font-mono);
+  color: var(--text-primary);
+  max-width: 160px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.import-file-meta {
+  color: var(--text-muted);
+}
+
+.modal-import .modal-field {
+  padding: 0 20px;
+  margin-top: 16px;
+  margin-bottom: 0;
+}
+
+.import-field-hint {
+  font-size: 11px;
+  margin-top: 4px;
+  color: var(--text-muted);
+}
+.import-field-hint-error {
+  color: var(--danger);
+}
+
+.import-columns-section {
+  padding: 14px 20px 0;
+}
+.import-columns-label {
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--text-muted);
+  margin-bottom: 8px;
+}
+.import-columns-list {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  max-height: 180px;
+  overflow-y: auto;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--bg-primary);
+  padding: 4px 0;
+}
+.import-column-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 5px 10px;
+}
+.import-column-row:not(:last-child) {
+  border-bottom: 1px solid var(--border);
+}
+.import-column-name {
+  flex: 1;
+  font-size: 12px;
+  font-family: var(--font-mono);
+  color: var(--text-primary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.import-type-select {
+  padding: 3px 8px;
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  color: var(--text-primary);
+  font-size: 11px;
+  font-weight: 600;
+  font-family: var(--font-mono);
+  cursor: pointer;
+  outline: none;
+  min-width: 82px;
+}
+.import-type-select:focus {
+  border-color: var(--accent);
+}
+
+.import-preview-section {
+  padding: 14px 20px 0;
+}
+.import-preview-scroll {
+  overflow-x: auto;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  max-height: 140px;
+  overflow-y: auto;
+}
+.import-preview-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 11px;
+}
+.import-preview-table th {
+  background: var(--bg-tertiary);
+  padding: 6px 10px;
+  text-align: left;
+  font-weight: 600;
+  color: var(--text-secondary);
+  font-family: var(--font-mono);
+  position: sticky;
+  top: 0;
+  white-space: nowrap;
+  border-bottom: 1px solid var(--border);
+}
+.import-preview-table td {
+  padding: 5px 10px;
+  color: var(--text-secondary);
+  font-family: var(--font-mono);
+  white-space: nowrap;
+  border-bottom: 1px solid var(--border);
+  max-width: 160px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.import-preview-table tr:last-child td {
+  border-bottom: none;
+}
+
+.import-exists-row {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 14px 20px 0;
+  flex-wrap: wrap;
+}
+.import-exists-label {
+  font-size: 12px;
+  color: var(--text-muted);
+  font-weight: 500;
+}
+.import-radio-label {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 12px;
+  color: var(--text-secondary);
+  cursor: pointer;
+}
+.import-radio-label input[type="radio"] {
+  accent-color: var(--accent);
+  cursor: pointer;
+}
+
+.import-error {
+  margin: 10px 20px 0;
+  padding: 8px 12px;
+  background: rgba(239, 68, 68, 0.08);
+  border: 1px solid rgba(239, 68, 68, 0.25);
+  border-radius: var(--radius-sm);
+  font-size: 12px;
+  color: var(--danger);
+  line-height: 1.5;
+}
+
+.modal-import .modal-actions {
+  padding: 16px 20px;
+  margin-top: 12px;
+  border-top: 1px solid var(--border);
+}
+
+/* Success state */
+.import-success {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 32px 24px 24px;
+  text-align: center;
+  gap: 8px;
+}
+.import-success-icon {
+  color: var(--success);
+  margin-bottom: 4px;
+}
+.import-success-title {
+  font-size: 15px;
+  font-weight: 600;
+}
+.import-success-body {
+  font-size: 13px;
+  color: var(--text-secondary);
+  line-height: 1.6;
+}
+.import-success-body code {
+  font-family: var(--font-mono);
+  color: var(--accent-hover);
+  background: var(--accent-subtle);
+  padding: 1px 5px;
+  border-radius: 3px;
+}
+.import-success .modal-actions {
+  border-top: none;
+  padding: 8px 0 0;
+  margin-top: 8px;
+  width: 100%;
+  justify-content: center;
+}
+
+/* Import button in data picker header */
+.data-picker-actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
