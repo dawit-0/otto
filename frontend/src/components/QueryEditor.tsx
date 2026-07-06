@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { api, type QueryResponse, type QueryHistoryEntry, type SavedQueryEntry, type QueryParam, type ExplainPlanResponse } from '../api';
 import DataTable from './DataTable';
 import QueryInsights from './QueryInsights';
@@ -6,13 +6,76 @@ import QueryPlan from './QueryPlan';
 import SQLEditor from './SQLEditor';
 import { type ChartType } from './charts/ChartRenderer';
 
-interface Props {
-  dbId: string;
-  dbName: string;
-  dbType?: 'sqlite' | 'postgres';
-  initialSql?: string;
-  onVisualize?: (sql: string, chartType: ChartType, xColumn: string, yColumns: string[]) => void;
+// ─── Tab types ───────────────────────────────────────────────────────────────
+
+interface QueryTab {
+  id: string;
+  label: string;
+  sql: string;
+  result: QueryResponse | null;
+  error: string | null;
+  plan: ExplainPlanResponse | null;
+  planError: string | null;
 }
+
+function makeTab(label: string, sql = ''): QueryTab {
+  return {
+    id: crypto.randomUUID(),
+    label,
+    sql,
+    result: null,
+    error: null,
+    plan: null,
+    planError: null,
+  };
+}
+
+function storageKey(dbId: string) {
+  return `otto-tabs-${dbId}`;
+}
+
+type StoredTabs = { tabs: Array<{ id: string; label: string; sql: string }>; activeTabId: string };
+
+function loadFromStorage(dbId: string, initialSql?: string): { tabs: QueryTab[]; activeTabId: string } {
+  try {
+    const raw = localStorage.getItem(storageKey(dbId));
+    if (raw) {
+      const parsed: StoredTabs = JSON.parse(raw);
+      if (Array.isArray(parsed.tabs) && parsed.tabs.length > 0 && parsed.activeTabId) {
+        const tabs: QueryTab[] = parsed.tabs.map((t) => ({
+          ...makeTab(t.label, t.sql),
+          id: t.id,
+        }));
+        if (initialSql) {
+          // Route initialSql into the active tab if it's empty, otherwise open a new tab
+          const activeIdx = tabs.findIndex((t) => t.id === parsed.activeTabId);
+          if (activeIdx >= 0 && !tabs[activeIdx].sql.trim()) {
+            tabs[activeIdx] = { ...tabs[activeIdx], sql: initialSql };
+            return { tabs, activeTabId: parsed.activeTabId };
+          }
+          const newTab = makeTab(`Query ${tabs.length + 1}`, initialSql);
+          return { tabs: [...tabs, newTab], activeTabId: newTab.id };
+        }
+        return { tabs, activeTabId: parsed.activeTabId };
+      }
+    }
+  } catch { /* ignore corrupt storage */ }
+
+  const first = makeTab('Query 1', initialSql ?? '');
+  return { tabs: [first], activeTabId: first.id };
+}
+
+function saveToStorage(dbId: string, tabs: QueryTab[], activeTabId: string) {
+  try {
+    const stored: StoredTabs = {
+      tabs: tabs.map((t) => ({ id: t.id, label: t.label, sql: t.sql })),
+      activeTabId,
+    };
+    localStorage.setItem(storageKey(dbId), JSON.stringify(stored));
+  } catch { /* ignore quota errors */ }
+}
+
+// ─── Param helpers ───────────────────────────────────────────────────────────
 
 function detectParams(sql: string): string[] {
   const matches = [...sql.matchAll(/\{\{(\w+)\}\}/g)];
@@ -24,23 +87,49 @@ function detectParams(sql: string): string[] {
   return unique;
 }
 
+// ─── Component ───────────────────────────────────────────────────────────────
+
+interface Props {
+  dbId: string;
+  dbName: string;
+  dbType?: 'sqlite' | 'postgres';
+  initialSql?: string;
+  onVisualize?: (sql: string, chartType: ChartType, xColumn: string, yColumns: string[]) => void;
+}
+
 export default function QueryEditor({ dbId, dbName, dbType, initialSql, onVisualize }: Props) {
-  const [sql, setSql] = useState(initialSql ?? '');
+  // ── Tab state ──
+  const [tabs, setTabs] = useState<QueryTab[]>(() => loadFromStorage(dbId, initialSql).tabs);
+  const [activeTabId, setActiveTabId] = useState<string>(() => loadFromStorage(dbId, initialSql).activeTabId);
+  const [renamingTabId, setRenamingTabId] = useState<string | null>(null);
+  const [renameValue, setRenameValue] = useState('');
+  const renameInputRef = useRef<HTMLInputElement>(null);
+
+  const activeTab = tabs.find((t) => t.id === activeTabId) ?? tabs[0];
+
+  // Persist tabs whenever they change
+  useEffect(() => {
+    saveToStorage(dbId, tabs, activeTabId);
+  }, [dbId, tabs, activeTabId]);
+
+  // Focus rename input when it appears
+  useEffect(() => {
+    if (renamingTabId && renameInputRef.current) {
+      renameInputRef.current.focus();
+      renameInputRef.current.select();
+    }
+  }, [renamingTabId]);
+
+  // ── Shared state ──
   const [schema, setSchema] = useState<Record<string, string[]>>({});
-  const [result, setResult] = useState<QueryResponse | null>(null);
-  const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
-  const [plan, setPlan] = useState<ExplainPlanResponse | null>(null);
   const [planLoading, setPlanLoading] = useState(false);
-  const [planError, setPlanError] = useState<string | null>(null);
   const [showHistory, setShowHistory] = useState(false);
   const [history, setHistory] = useState<QueryHistoryEntry[]>([]);
   const [showAiInput, setShowAiInput] = useState(false);
   const [aiPrompt, setAiPrompt] = useState('');
   const [aiLoading, setAiLoading] = useState(false);
   const [aiError, setAiError] = useState<string | null>(null);
-
-  // Saved queries state
   const [showSaved, setShowSaved] = useState(false);
   const [savedQueries, setSavedQueries] = useState<SavedQueryEntry[]>([]);
   const [showSaveModal, setShowSaveModal] = useState(false);
@@ -48,8 +137,6 @@ export default function QueryEditor({ dbId, dbName, dbType, initialSql, onVisual
   const [saveDescription, setSaveDescription] = useState('');
   const [saveParams, setSaveParams] = useState<QueryParam[]>([]);
   const [editingQuery, setEditingQuery] = useState<SavedQueryEntry | null>(null);
-
-  // Parameter run modal state
   const [runTarget, setRunTarget] = useState<SavedQueryEntry | null>(null);
   const [runValues, setRunValues] = useState<Record<string, string>>({});
   const [runLoading, setRunLoading] = useState(false);
@@ -62,6 +149,63 @@ export default function QueryEditor({ dbId, dbName, dbType, initialSql, onVisual
       setSchema(s);
     }).catch(() => {});
   }, [dbId]);
+
+  // ── Tab operations ──
+
+  const updateActiveTab = useCallback((patch: Partial<QueryTab>) => {
+    setTabs((prev) => prev.map((t) => t.id === activeTabId ? { ...t, ...patch } : t));
+  }, [activeTabId]);
+
+  const addTab = useCallback(() => {
+    const newTab = makeTab(`Query ${tabs.length + 1}`);
+    setTabs((prev) => [...prev, newTab]);
+    setActiveTabId(newTab.id);
+    setShowHistory(false);
+    setShowSaved(false);
+    setShowAiInput(false);
+  }, [tabs.length]);
+
+  const closeTab = useCallback((id: string, e: React.MouseEvent) => {
+    e.stopPropagation();
+    setTabs((prev) => {
+      if (prev.length === 1) return prev; // never close the last tab
+      const idx = prev.findIndex((t) => t.id === id);
+      const next = prev.filter((t) => t.id !== id);
+      if (id === activeTabId) {
+        const newActive = next[Math.max(0, idx - 1)];
+        setActiveTabId(newActive.id);
+      }
+      return next;
+    });
+  }, [activeTabId]);
+
+  const startRename = useCallback((tab: QueryTab) => {
+    setRenamingTabId(tab.id);
+    setRenameValue(tab.label);
+  }, []);
+
+  const commitRename = useCallback(() => {
+    const trimmed = renameValue.trim();
+    if (trimmed && renamingTabId) {
+      setTabs((prev) => prev.map((t) => t.id === renamingTabId ? { ...t, label: trimmed } : t));
+    }
+    setRenamingTabId(null);
+  }, [renamingTabId, renameValue]);
+
+  // Cmd/Ctrl+T → new tab
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      if ((e.metaKey || e.ctrlKey) && e.key === 't' && !e.shiftKey) {
+        // Only intercept if the query view is active (the editor is in the DOM)
+        e.preventDefault();
+        addTab();
+      }
+    };
+    window.addEventListener('keydown', handler);
+    return () => window.removeEventListener('keydown', handler);
+  }, [addTab]);
+
+  // ── History / Saved ──
 
   const fetchHistory = useCallback(async () => {
     try {
@@ -85,6 +229,8 @@ export default function QueryEditor({ dbId, dbName, dbType, initialSql, onVisual
     if (showSaved) fetchSavedQueries();
   }, [showSaved, fetchSavedQueries]);
 
+  // ── Save modal ──
+
   const openSaveModal = (existing?: SavedQueryEntry) => {
     if (existing) {
       setEditingQuery(existing);
@@ -95,8 +241,7 @@ export default function QueryEditor({ dbId, dbName, dbType, initialSql, onVisual
       setEditingQuery(null);
       setSaveName('');
       setSaveDescription('');
-      // Auto-detect parameters from current SQL
-      const detected = detectParams(sql);
+      const detected = detectParams(activeTab.sql);
       setSaveParams(detected.map((name) => ({
         name,
         label: name.replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase()),
@@ -108,12 +253,12 @@ export default function QueryEditor({ dbId, dbName, dbType, initialSql, onVisual
   };
 
   const handleSaveQuery = async () => {
-    if (!saveName.trim() || !sql.trim()) return;
+    if (!saveName.trim() || !activeTab.sql.trim()) return;
     try {
       if (editingQuery) {
         const updated = await api.updateSavedQuery(editingQuery.id, {
           name: saveName,
-          sql,
+          sql: activeTab.sql,
           description: saveDescription || undefined,
           parameters: saveParams,
         });
@@ -123,7 +268,7 @@ export default function QueryEditor({ dbId, dbName, dbType, initialSql, onVisual
           db_id: dbId,
           db_name: dbName,
           name: saveName,
-          sql,
+          sql: activeTab.sql,
           description: saveDescription || undefined,
           parameters: saveParams,
         });
@@ -143,7 +288,7 @@ export default function QueryEditor({ dbId, dbName, dbType, initialSql, onVisual
   };
 
   const loadFromSaved = (entry: SavedQueryEntry) => {
-    setSql(entry.sql);
+    updateActiveTab({ sql: entry.sql, result: null, error: null, plan: null, planError: null });
     setShowSaved(false);
   };
 
@@ -161,8 +306,7 @@ export default function QueryEditor({ dbId, dbName, dbType, initialSql, onVisual
     setRunError(null);
     try {
       const res = await api.runSavedQuery(runTarget.id, dbId, runValues);
-      setResult(res);
-      setError(null);
+      updateActiveTab({ result: res, error: null });
       setRunTarget(null);
       setShowSaved(false);
     } catch (e: any) {
@@ -172,18 +316,17 @@ export default function QueryEditor({ dbId, dbName, dbType, initialSql, onVisual
     }
   };
 
+  // ── Query execution ──
+
   const run = async () => {
-    if (!sql.trim()) return;
+    if (!activeTab.sql.trim()) return;
     setLoading(true);
-    setError(null);
-    setPlan(null);
-    setPlanError(null);
+    updateActiveTab({ error: null, plan: null, planError: null });
     try {
-      const res = await api.executeQuery(dbId, sql);
-      setResult(res);
+      const res = await api.executeQuery(dbId, activeTab.sql);
+      updateActiveTab({ result: res, error: null });
     } catch (e: any) {
-      setError(e.message);
-      setResult(null);
+      updateActiveTab({ error: e.message, result: null });
     } finally {
       setLoading(false);
       if (showHistory) fetchHistory();
@@ -191,22 +334,21 @@ export default function QueryEditor({ dbId, dbName, dbType, initialSql, onVisual
   };
 
   const explain = async () => {
-    if (!sql.trim()) return;
+    if (!activeTab.sql.trim()) return;
     setPlanLoading(true);
-    setPlanError(null);
+    updateActiveTab({ planError: null });
     try {
-      const res = await api.explainQuery(dbId, sql);
-      setPlan(res);
+      const res = await api.explainQuery(dbId, activeTab.sql);
+      updateActiveTab({ plan: res });
     } catch (e: any) {
-      setPlanError(e.message);
-      setPlan(null);
+      updateActiveTab({ planError: e.message, plan: null });
     } finally {
       setPlanLoading(false);
     }
   };
 
   const loadFromHistory = (entry: QueryHistoryEntry) => {
-    setSql(entry.sql);
+    updateActiveTab({ sql: entry.sql, result: null, error: null, plan: null, planError: null });
     setShowHistory(false);
   };
 
@@ -216,7 +358,7 @@ export default function QueryEditor({ dbId, dbName, dbType, initialSql, onVisual
     setAiError(null);
     try {
       const res = await api.generateAiQuery(dbId, aiPrompt);
-      setSql(res.sql);
+      updateActiveTab({ sql: res.sql });
       setAiPrompt('');
       setShowAiInput(false);
     } catch (e: any) {
@@ -252,9 +394,8 @@ export default function QueryEditor({ dbId, dbName, dbType, initialSql, onVisual
     setSaveParams((prev) => prev.map((p, i) => i === index ? { ...p, [field]: value } : p));
   };
 
-  // Sync save params when SQL changes in edit mode (detect new/removed params)
   const handleSqlChange = (newSql: string) => {
-    setSql(newSql);
+    updateActiveTab({ sql: newSql });
     if (showSaveModal && !editingQuery) {
       const detected = detectParams(newSql);
       setSaveParams((prev) => {
@@ -269,14 +410,60 @@ export default function QueryEditor({ dbId, dbName, dbType, initialSql, onVisual
     }
   };
 
-  const detectedParamNames = detectParams(sql);
+  const detectedParamNames = detectParams(activeTab.sql);
   const hasTemplateParams = detectedParamNames.length > 0;
 
   return (
     <div className="query-panel">
+      {/* ── Tab Bar ── */}
+      <div className="query-tabs-bar">
+        <div className="query-tabs-list">
+          {tabs.map((tab) => (
+            <div
+              key={tab.id}
+              className={`query-tab${tab.id === activeTabId ? ' active' : ''}`}
+              onClick={() => { if (renamingTabId !== tab.id) setActiveTabId(tab.id); }}
+              onDoubleClick={() => startRename(tab)}
+              title="Double-click to rename"
+            >
+              {renamingTabId === tab.id ? (
+                <input
+                  ref={renameInputRef}
+                  className="query-tab-rename-input"
+                  value={renameValue}
+                  onChange={(e) => setRenameValue(e.target.value)}
+                  onBlur={commitRename}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') commitRename();
+                    if (e.key === 'Escape') setRenamingTabId(null);
+                    e.stopPropagation();
+                  }}
+                  onClick={(e) => e.stopPropagation()}
+                />
+              ) : (
+                <span className="query-tab-label">{tab.label}</span>
+              )}
+              {tabs.length > 1 && (
+                <button
+                  className="query-tab-close"
+                  onClick={(e) => closeTab(tab.id, e)}
+                  title="Close tab"
+                >
+                  ×
+                </button>
+              )}
+            </div>
+          ))}
+        </div>
+        <button className="query-tab-add" onClick={addTab} title="New tab (⌘T)">
+          +
+        </button>
+      </div>
+
+      {/* ── SQL Editor ── */}
       <div className="query-editor">
         <SQLEditor
-          value={sql}
+          value={activeTab.sql}
           onChange={handleSqlChange}
           onExecute={run}
           schema={schema}
@@ -292,14 +479,14 @@ export default function QueryEditor({ dbId, dbName, dbType, initialSql, onVisual
           </div>
         )}
         <div className="query-editor-actions">
-          <button className="btn btn-primary" onClick={run} disabled={loading || !sql.trim()}>
+          <button className="btn btn-primary" onClick={run} disabled={loading || !activeTab.sql.trim()}>
             {loading ? 'Running...' : 'Run Query'}
           </button>
           <button
             className="btn"
             onClick={explain}
-            disabled={planLoading || !sql.trim()}
-            title="Run EXPLAIN ANALYZE (PostgreSQL) / EXPLAIN QUERY PLAN (SQLite) on this query"
+            disabled={planLoading || !activeTab.sql.trim()}
+            title="Run EXPLAIN ANALYZE (PostgreSQL) / EXPLAIN QUERY PLAN (SQLite)"
           >
             {planLoading ? 'Explaining...' : 'Explain Analyze'}
           </button>
@@ -312,7 +499,7 @@ export default function QueryEditor({ dbId, dbName, dbType, initialSql, onVisual
           <button
             className="btn btn-sm"
             onClick={() => openSaveModal()}
-            disabled={!sql.trim()}
+            disabled={!activeTab.sql.trim()}
             title="Save current query"
           >
             Save
@@ -330,11 +517,11 @@ export default function QueryEditor({ dbId, dbName, dbType, initialSql, onVisual
             History
           </button>
           <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>Cmd+Enter to execute</span>
-          {planError && <span className="query-status error">{planError}</span>}
-          {error && <span className="query-status error">{error}</span>}
-          {result && !error && (
+          {activeTab.planError && <span className="query-status error">{activeTab.planError}</span>}
+          {activeTab.error && <span className="query-status error">{activeTab.error}</span>}
+          {activeTab.result && !activeTab.error && (
             <span className="query-status success">
-              {result.message || `${result.row_count} row${result.row_count !== 1 ? 's' : ''} returned`}
+              {activeTab.result.message || `${activeTab.result.row_count} row${activeTab.result.row_count !== 1 ? 's' : ''} returned`}
             </span>
           )}
         </div>
@@ -439,7 +626,7 @@ export default function QueryEditor({ dbId, dbName, dbType, initialSql, onVisual
                     )}
                     <button
                       className="btn-icon"
-                      onClick={() => { setSql(entry.sql); openSaveModal(entry); }}
+                      onClick={() => { updateActiveTab({ sql: entry.sql }); openSaveModal(entry); }}
                       title="Edit"
                     >
                       <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -489,7 +676,7 @@ export default function QueryEditor({ dbId, dbName, dbType, initialSql, onVisual
             </div>
             <div className="saved-query-preview">
               <label style={{ display: 'block', fontSize: 12, fontWeight: 500, color: 'var(--text-secondary)', marginBottom: 6 }}>SQL</label>
-              <pre className="saved-query-preview-sql">{sql}</pre>
+              <pre className="saved-query-preview-sql">{activeTab.sql}</pre>
             </div>
 
             {saveParams.length > 0 && (
@@ -582,27 +769,27 @@ export default function QueryEditor({ dbId, dbName, dbType, initialSql, onVisual
         </div>
       )}
 
-      {plan && <QueryPlan plan={plan} dbType={dbType} />}
+      {activeTab.plan && <QueryPlan plan={activeTab.plan} dbType={dbType} />}
 
-      {result && result.columns.length > 0 && (
+      {activeTab.result && activeTab.result.columns.length > 0 && (
         <>
           <QueryInsights
-            columns={result.columns}
-            rows={result.rows}
+            columns={activeTab.result.columns}
+            rows={activeTab.result.rows}
             onVisualize={(chartType, xColumn, yColumns) => {
-              if (onVisualize) onVisualize(sql, chartType, xColumn, yColumns);
+              if (onVisualize) onVisualize(activeTab.sql, chartType, xColumn, yColumns);
             }}
           />
-          <DataTable columns={result.columns} rows={result.rows} exportFilename="query-results" />
+          <DataTable columns={activeTab.result.columns} rows={activeTab.result.rows} exportFilename="query-results" />
         </>
       )}
-      {result && result.columns.length === 0 && !error && (
+      {activeTab.result && activeTab.result.columns.length === 0 && !activeTab.error && (
         <div className="empty-state">
           <div className="empty-state-title">Query executed</div>
-          <div className="empty-state-text">{result.message || 'No rows returned.'}</div>
+          <div className="empty-state-text">{activeTab.result.message || 'No rows returned.'}</div>
         </div>
       )}
-      {!result && !error && !showHistory && (
+      {!activeTab.result && !activeTab.error && !showHistory && (
         <div className="empty-state">
           <div className="empty-state-icon">{'>'}_</div>
           <div className="empty-state-title">SQL Query Editor</div>
