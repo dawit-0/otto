@@ -131,6 +131,60 @@ class SQLiteDriver(DatabaseDriver):
         cursor = conn.execute(f"PRAGMA table_info({quoted})")
         return [row["name"] for row in cursor.fetchall()]
 
+    def insert_row(self, conn: Any, table: str, values: dict) -> dict:
+        self.assert_valid_table(conn, table)
+        valid_cols = set(self.get_column_names(conn, table))
+        for col in values:
+            if col not in valid_cols:
+                raise ValueError(f"Unknown column: {col!r}")
+        if not values:
+            raise ValueError("No column values provided")
+        tq = self.quote_identifier(table)
+        col_sql = ", ".join(self.quote_identifier(c) for c in values)
+        placeholders = ", ".join("?" for _ in values)
+        cursor = conn.execute(
+            f"INSERT INTO {tq} ({col_sql}) VALUES ({placeholders})",
+            list(values.values()),
+        )
+        conn.commit()
+        row = conn.execute(f"SELECT * FROM {tq} WHERE rowid = ?", (cursor.lastrowid,)).fetchone()
+        return dict(row) if row else {}
+
+    def update_row(self, conn: Any, table: str, pk_values: dict, updates: dict) -> dict:
+        self.assert_valid_table(conn, table)
+        valid_cols = set(self.get_column_names(conn, table))
+        for col in list(pk_values) + list(updates):
+            if col not in valid_cols:
+                raise ValueError(f"Unknown column: {col!r}")
+        if not updates:
+            return {}
+        tq = self.quote_identifier(table)
+        set_sql = ", ".join(f"{self.quote_identifier(c)} = ?" for c in updates)
+        where_sql = " AND ".join(f"{self.quote_identifier(c)} = ?" for c in pk_values)
+        conn.execute(
+            f"UPDATE {tq} SET {set_sql} WHERE {where_sql}",
+            list(updates.values()) + list(pk_values.values()),
+        )
+        conn.commit()
+        row = conn.execute(
+            f"SELECT * FROM {tq} WHERE {where_sql}", list(pk_values.values())
+        ).fetchone()
+        return dict(row) if row else {}
+
+    def delete_row(self, conn: Any, table: str, pk_values: dict) -> int:
+        self.assert_valid_table(conn, table)
+        valid_cols = set(self.get_column_names(conn, table))
+        for col in pk_values:
+            if col not in valid_cols:
+                raise ValueError(f"Unknown column: {col!r}")
+        tq = self.quote_identifier(table)
+        where_sql = " AND ".join(f"{self.quote_identifier(c)} = ?" for c in pk_values)
+        cursor = conn.execute(
+            f"DELETE FROM {tq} WHERE {where_sql}", list(pk_values.values())
+        )
+        conn.commit()
+        return cursor.rowcount
+
     def get_table_data(
         self, conn: Any, table: str, limit: int, offset: int,
         sort_column: str | None = None,

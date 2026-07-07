@@ -81,6 +81,21 @@ class DatabaseDriver(ABC):
         """Test connectivity. Raise on failure."""
         ...
 
+    @abstractmethod
+    def insert_row(self, conn: Any, table: str, values: dict) -> dict:
+        """Insert a new row. Returns the inserted row as a dict."""
+        ...
+
+    @abstractmethod
+    def update_row(self, conn: Any, table: str, pk_values: dict, updates: dict) -> dict:
+        """Update a row identified by pk_values. Returns the updated row."""
+        ...
+
+    @abstractmethod
+    def delete_row(self, conn: Any, table: str, pk_values: dict) -> int:
+        """Delete a row identified by pk_values. Returns affected row count."""
+        ...
+
     def quote_identifier(self, name: str) -> str:
         if not isinstance(name, str) or name == "":
             raise ValueError("Identifier must be a non-empty string")

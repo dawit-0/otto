@@ -34,6 +34,19 @@ logger = get_logger("databases")
 router = APIRouter(prefix="/api/databases", tags=["databases"])
 
 
+class InsertRowRequest(BaseModel):
+    values: dict[str, Any]
+
+
+class UpdateRowRequest(BaseModel):
+    pk_values: dict[str, Any]
+    updates: dict[str, Any]
+
+
+class DeleteRowRequest(BaseModel):
+    pk_values: dict[str, Any]
+
+
 class ConnectRequest(BaseModel):
     db_type: str = "sqlite"
     path: str | None = None
@@ -313,6 +326,58 @@ def get_table_data(
         raise HTTPException(status_code=status, detail=str(e))
     except Exception as e:
         logger.error("Error reading table '%s' from db_id=%s: %s", table_name, db_id, e)
+        raise HTTPException(status_code=400, detail=str(e))
+    finally:
+        driver.close(conn)
+
+
+@router.post("/{db_id}/tables/{table_name}/rows")
+def insert_row(db_id: str, table_name: str, req: InsertRowRequest, db: Session = Depends(get_db)):
+    driver = get_driver_for_db(db_id, db)
+    conn = driver.connect()
+    try:
+        row = driver.insert_row(conn, table_name, req.values)
+        return {"row": row}
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        logger.error("Error inserting row into '%s': %s", table_name, e)
+        raise HTTPException(status_code=400, detail=str(e))
+    finally:
+        driver.close(conn)
+
+
+@router.put("/{db_id}/tables/{table_name}/rows")
+def update_row(db_id: str, table_name: str, req: UpdateRowRequest, db: Session = Depends(get_db)):
+    driver = get_driver_for_db(db_id, db)
+    conn = driver.connect()
+    try:
+        row = driver.update_row(conn, table_name, req.pk_values, req.updates)
+        return {"row": row}
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        logger.error("Error updating row in '%s': %s", table_name, e)
+        raise HTTPException(status_code=400, detail=str(e))
+    finally:
+        driver.close(conn)
+
+
+@router.delete("/{db_id}/tables/{table_name}/rows")
+def delete_row(db_id: str, table_name: str, req: DeleteRowRequest, db: Session = Depends(get_db)):
+    driver = get_driver_for_db(db_id, db)
+    conn = driver.connect()
+    try:
+        count = driver.delete_row(conn, table_name, req.pk_values)
+        if count == 0:
+            raise HTTPException(status_code=404, detail="Row not found")
+        return {"deleted": count}
+    except HTTPException:
+        raise
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        logger.error("Error deleting row from '%s': %s", table_name, e)
         raise HTTPException(status_code=400, detail=str(e))
     finally:
         driver.close(conn)

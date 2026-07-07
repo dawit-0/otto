@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { api, type FilterRule, type FilterOp, type Column } from '../api';
-import DataTable from './DataTable';
+import DataTable, { type EditConfig } from './DataTable';
 import ColumnProfilePanel from './ColumnProfilePanel';
 
 interface Props {
@@ -52,6 +52,7 @@ export default function TableBrowser({ dbId, tableName, columnDefs }: Props) {
   const addFilterRef = useRef<HTMLDivElement>(null);
 
   const colNames = columnDefs.map((c) => c.name);
+  const pkColumns = columnDefs.filter((c) => c.pk).map((c) => c.name);
 
   const loadData = useCallback(async (nextOffset: number, currentSort: SortState | null, currentFilters: FilterRule[]) => {
     setLoading(true);
@@ -131,6 +132,28 @@ export default function TableBrowser({ dbId, tableName, columnDefs }: Props) {
   const hasActiveState = filters.length > 0 || sort !== null;
   const needsValueInput = VALUE_OPS.includes(newOp);
 
+  // ── Row editing callbacks ──
+  const editConfig: EditConfig | undefined = pkColumns.length > 0 ? {
+    pkColumns,
+    columnDefs,
+    onSaveEdit: async (originalRow, updates) => {
+      const pk_values: Record<string, unknown> = {};
+      pkColumns.forEach((col) => { pk_values[col] = originalRow[col]; });
+      await api.updateRow(dbId, tableName, pk_values, updates);
+      await loadData(offset, sort, filters);
+    },
+    onDelete: async (row) => {
+      const pk_values: Record<string, unknown> = {};
+      pkColumns.forEach((col) => { pk_values[col] = row[col]; });
+      await api.deleteRow(dbId, tableName, pk_values);
+      await loadData(offset, sort, filters);
+    },
+    onInsert: async (values) => {
+      await api.insertRow(dbId, tableName, values);
+      await loadData(0, sort, filters);
+    },
+  } : undefined;
+
   return (
     <div className={`table-browser-wrapper${showProfile ? ' profile-open' : ''}`}>
       <div className="table-browser-main">
@@ -190,6 +213,14 @@ export default function TableBrowser({ dbId, tableName, columnDefs }: Props) {
             <span className="filter-row-count">
               {total.toLocaleString()} {hasActiveState ? 'matching ' : ''}row{total !== 1 ? 's' : ''}
             </span>
+            {pkColumns.length === 0 && (
+              <span className="no-pk-hint" title="This table has no primary key — editing is disabled">
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/>
+                </svg>
+                Read-only (no PK)
+              </span>
+            )}
             <button
               className={`btn btn-sm${showProfile ? ' btn-profile-active' : ''}`}
               onClick={() => setShowProfile((v) => !v)}
@@ -286,6 +317,7 @@ export default function TableBrowser({ dbId, tableName, columnDefs }: Props) {
           sortColumn={sort?.column}
           sortDirection={sort?.direction}
           onSort={handleSort}
+          editConfig={editConfig}
         />
       )}
       </div>
