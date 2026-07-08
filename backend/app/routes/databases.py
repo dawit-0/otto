@@ -318,6 +318,108 @@ def get_table_data(
         driver.close(conn)
 
 
+class UpdateCellRequest(BaseModel):
+    pk_column: str
+    pk_value: str
+    column: str
+    value: str | None = None
+
+
+class InsertRowRequest(BaseModel):
+    data: dict
+
+
+class DeleteRowRequest(BaseModel):
+    pk_column: str
+    pk_value: str
+
+
+@router.get("/{db_id}/tables/{table_name}/pk")
+def get_table_pk(db_id: str, table_name: str, db: Session = Depends(get_db)):
+    driver = get_driver_for_db(db_id, db)
+    conn = driver.connect()
+    try:
+        try:
+            driver.assert_valid_table(conn, table_name)
+        except ValueError as e:
+            raise HTTPException(status_code=404, detail=str(e))
+        pk_cols = driver.get_pk_columns(conn, table_name)
+        return {"table": table_name, "pk_columns": pk_cols}
+    finally:
+        driver.close(conn)
+
+
+@router.patch("/{db_id}/tables/{table_name}/rows")
+def update_cell(
+    db_id: str, table_name: str,
+    req: UpdateCellRequest,
+    db: Session = Depends(get_db),
+):
+    driver = get_driver_for_db(db_id, db)
+    conn = driver.connect()
+    try:
+        affected = driver.update_row(conn, table_name, req.pk_column, req.pk_value, req.column, req.value)
+        if affected == 0:
+            raise HTTPException(status_code=404, detail="Row not found")
+        logger.info("Updated %s.%s where %s=%s", table_name, req.column, req.pk_column, req.pk_value)
+        return {"ok": True, "affected": affected}
+    except HTTPException:
+        raise
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        logger.error("update_cell error: %s", e)
+        raise HTTPException(status_code=400, detail=str(e))
+    finally:
+        driver.close(conn)
+
+
+@router.post("/{db_id}/tables/{table_name}/rows")
+def insert_row(
+    db_id: str, table_name: str,
+    req: InsertRowRequest,
+    db: Session = Depends(get_db),
+):
+    driver = get_driver_for_db(db_id, db)
+    conn = driver.connect()
+    try:
+        driver.insert_row(conn, table_name, req.data)
+        logger.info("Inserted row into %s", table_name)
+        return {"ok": True}
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        logger.error("insert_row error: %s", e)
+        raise HTTPException(status_code=400, detail=str(e))
+    finally:
+        driver.close(conn)
+
+
+@router.delete("/{db_id}/tables/{table_name}/rows")
+def delete_row(
+    db_id: str, table_name: str,
+    req: DeleteRowRequest,
+    db: Session = Depends(get_db),
+):
+    driver = get_driver_for_db(db_id, db)
+    conn = driver.connect()
+    try:
+        affected = driver.delete_row(conn, table_name, req.pk_column, req.pk_value)
+        if affected == 0:
+            raise HTTPException(status_code=404, detail="Row not found")
+        logger.info("Deleted from %s where %s=%s", table_name, req.pk_column, req.pk_value)
+        return {"ok": True, "affected": affected}
+    except HTTPException:
+        raise
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        logger.error("delete_row error: %s", e)
+        raise HTTPException(status_code=400, detail=str(e))
+    finally:
+        driver.close(conn)
+
+
 @router.get("/{db_id}/tables/{table_name}/profile")
 def get_table_profile(db_id: str, table_name: str, db: Session = Depends(get_db)):
     driver = get_driver_for_db(db_id, db)

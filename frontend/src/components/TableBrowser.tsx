@@ -49,9 +49,35 @@ export default function TableBrowser({ dbId, tableName, columnDefs }: Props) {
 
   const [showProfile, setShowProfile] = useState(false);
 
+  // Edit mode
+  const [editMode, setEditMode] = useState(false);
+  const [pkColumn, setPkColumn] = useState<string | null>(null);
+  const [pkLoaded, setPkLoaded] = useState(false);
+
   const addFilterRef = useRef<HTMLDivElement>(null);
 
   const colNames = columnDefs.map((c) => c.name);
+
+  // Detect PK column from columnDefs first, fall back to API
+  useEffect(() => {
+    const pkFromDefs = columnDefs.find((c) => c.pk)?.name ?? null;
+    if (pkFromDefs) {
+      setPkColumn(pkFromDefs);
+      setPkLoaded(true);
+      return;
+    }
+    // Only fetch if not already determined
+    setPkLoaded(false);
+    api.getTablePk(dbId, tableName)
+      .then((res) => {
+        setPkColumn(res.pk_columns[0] ?? null);
+        setPkLoaded(true);
+      })
+      .catch(() => {
+        setPkColumn(null);
+        setPkLoaded(true);
+      });
+  }, [dbId, tableName, columnDefs]);
 
   const loadData = useCallback(async (nextOffset: number, currentSort: SortState | null, currentFilters: FilterRule[]) => {
     setLoading(true);
@@ -77,7 +103,6 @@ export default function TableBrowser({ dbId, tableName, columnDefs }: Props) {
     }
   }, [dbId, tableName]);
 
-  // Reload from page 1 whenever sort or filters change
   useEffect(() => {
     loadData(0, sort, filters);
   }, [dbId, tableName, sort, filters, loadData]);
@@ -128,14 +153,48 @@ export default function TableBrowser({ dbId, tableName, columnDefs }: Props) {
     setSort(null);
   };
 
+  const toggleEditMode = () => {
+    if (!pkColumn) return;
+    setEditMode((v) => !v);
+  };
+
+  // Edit callbacks
+  const handleUpdateCell = useCallback(async (pkValue: string, column: string, value: string | null) => {
+    if (!pkColumn) return;
+    await api.updateCell(dbId, tableName, pkColumn, pkValue, column, value);
+    // Update local row state immediately
+    setRows((prev) =>
+      prev.map((row) => {
+        if (String(row[pkColumn] ?? '') === pkValue) {
+          return { ...row, [column]: value };
+        }
+        return row;
+      }),
+    );
+  }, [dbId, tableName, pkColumn]);
+
+  const handleDeleteRow = useCallback(async (pkValue: string) => {
+    if (!pkColumn) return;
+    await api.deleteRow(dbId, tableName, pkColumn, pkValue);
+    setRows((prev) => prev.filter((row) => String(row[pkColumn] ?? '') !== pkValue));
+    setTotal((prev) => Math.max(0, prev - 1));
+  }, [dbId, tableName, pkColumn]);
+
+  const handleInsertRow = useCallback(async (data: Record<string, string | null>) => {
+    await api.insertRow(dbId, tableName, data);
+    // Reload to pick up the inserted row with server-generated values
+    await loadData(0, sort, filters);
+  }, [dbId, tableName, sort, filters, loadData]);
+
   const hasActiveState = filters.length > 0 || sort !== null;
   const needsValueInput = VALUE_OPS.includes(newOp);
+  const canEdit = pkLoaded && pkColumn !== null;
 
   return (
     <div className={`table-browser-wrapper${showProfile ? ' profile-open' : ''}`}>
       <div className="table-browser-main">
       {/* ── Toolbar ── */}
-      <div className="filter-toolbar">
+      <div className={`filter-toolbar${editMode ? ' filter-toolbar-edit-mode' : ''}`}>
         <div className="filter-toolbar-controls">
           <div className="filter-toolbar-left">
             <button
@@ -190,6 +249,29 @@ export default function TableBrowser({ dbId, tableName, columnDefs }: Props) {
             <span className="filter-row-count">
               {total.toLocaleString()} {hasActiveState ? 'matching ' : ''}row{total !== 1 ? 's' : ''}
             </span>
+
+            {/* Edit mode toggle */}
+            <button
+              className={`btn btn-sm${editMode ? ' btn-edit-active' : ''}`}
+              onClick={toggleEditMode}
+              disabled={!canEdit}
+              title={
+                !pkLoaded ? 'Detecting primary key…'
+                : !pkColumn ? 'This table has no primary key — editing is unavailable'
+                : editMode ? 'Exit edit mode'
+                : 'Edit table data inline'
+              }
+            >
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" />
+                <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z" />
+              </svg>
+              {editMode ? 'Editing' : 'Edit'}
+              {editMode && pkColumn && (
+                <span className="edit-mode-pk-hint">via {pkColumn}</span>
+              )}
+            </button>
+
             <button
               className={`btn btn-sm${showProfile ? ' btn-profile-active' : ''}`}
               onClick={() => setShowProfile((v) => !v)}
@@ -286,6 +368,11 @@ export default function TableBrowser({ dbId, tableName, columnDefs }: Props) {
           sortColumn={sort?.column}
           sortDirection={sort?.direction}
           onSort={handleSort}
+          editMode={editMode}
+          pkColumn={pkColumn ?? undefined}
+          onUpdateCell={handleUpdateCell}
+          onDeleteRow={handleDeleteRow}
+          onInsertRow={handleInsertRow}
         />
       )}
       </div>

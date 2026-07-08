@@ -151,6 +151,75 @@ class DatabaseDriver(ABC):
                 clauses.append(f"{qcol} IS NOT NULL")
         return "WHERE " + " AND ".join(clauses), params
 
+    def get_pk_columns(self, conn: Any, table: str) -> list[str]:
+        """Return the primary key column names for a table (empty list if none)."""
+        info = self.get_table_info(conn)
+        for t in info:
+            if t["name"] == table:
+                return [c["name"] for c in t["columns"] if c.get("pk")]
+        return []
+
+    def update_row(
+        self, conn: Any, table: str,
+        pk_column: str, pk_value: str,
+        column: str, value: str | None,
+    ) -> int:
+        """UPDATE a single cell. Returns affected row count."""
+        self.assert_valid_table(conn, table)
+        valid = set(self.get_column_names(conn, table))
+        if pk_column not in valid:
+            raise ValueError(f"Unknown column: {pk_column!r}")
+        if column not in valid:
+            raise ValueError(f"Unknown column: {column!r}")
+        ph = self.placeholder
+        tq = self.quote_identifier(table)
+        cq = self.quote_identifier(column)
+        pkq = self.quote_identifier(pk_column)
+        return self._execute_write(
+            conn,
+            f"UPDATE {tq} SET {cq} = {ph} WHERE {pkq} = {ph}",
+            (value, pk_value),
+        )
+
+    def insert_row(self, conn: Any, table: str, data: dict) -> None:
+        """INSERT a row with the given column→value mapping."""
+        self.assert_valid_table(conn, table)
+        valid = set(self.get_column_names(conn, table))
+        filtered = {k: v for k, v in data.items() if k in valid}
+        if not filtered:
+            raise ValueError("No valid columns provided")
+        ph = self.placeholder
+        tq = self.quote_identifier(table)
+        cols = ", ".join(self.quote_identifier(c) for c in filtered)
+        placeholders = ", ".join(ph for _ in filtered)
+        self._execute_write(
+            conn,
+            f"INSERT INTO {tq} ({cols}) VALUES ({placeholders})",
+            list(filtered.values()),
+        )
+
+    def delete_row(
+        self, conn: Any, table: str, pk_column: str, pk_value: str,
+    ) -> int:
+        """DELETE a single row by primary key. Returns affected row count."""
+        self.assert_valid_table(conn, table)
+        valid = set(self.get_column_names(conn, table))
+        if pk_column not in valid:
+            raise ValueError(f"Unknown column: {pk_column!r}")
+        ph = self.placeholder
+        tq = self.quote_identifier(table)
+        pkq = self.quote_identifier(pk_column)
+        return self._execute_write(
+            conn,
+            f"DELETE FROM {tq} WHERE {pkq} = {ph}",
+            (pk_value,),
+        )
+
+    @abstractmethod
+    def _execute_write(self, conn: Any, sql: str, params: tuple) -> int:
+        """Execute a write statement and return rowcount. Commits automatically."""
+        ...
+
     def build_order_by(
         self,
         sort_column: str | None,

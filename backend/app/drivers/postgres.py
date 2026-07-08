@@ -137,6 +137,19 @@ class PostgresDriver(DatabaseDriver):
             "offset": offset,
         }
 
+    def _execute_write(self, conn: Any, sql: str, params: tuple) -> int:
+        cur = conn.cursor()
+        try:
+            cur.execute(sql, params)
+            rowcount = cur.rowcount
+        finally:
+            cur.close()
+        conn.commit()
+        return rowcount
+
+    def get_pk_columns(self, conn: Any, table: str) -> list[str]:
+        return self._get_pk_columns(conn, table)
+
     # ── Private helpers ──
 
     def _get_columns(self, conn: Any, table: str) -> list[dict]:
