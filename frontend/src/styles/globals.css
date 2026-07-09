@@ -3395,3 +3395,163 @@ body {
   font-family: inherit;
   color: var(--text-muted);
 }
+
+/* ─── Query Tabs ─── */
+.query-tabs-bar {
+  display: flex;
+  align-items: stretch;
+  border-bottom: 1px solid var(--border);
+  background: var(--bg-secondary);
+  flex-shrink: 0;
+  min-height: 36px;
+  overflow: hidden;
+}
+
+.query-tabs-scroll {
+  display: flex;
+  align-items: stretch;
+  overflow-x: auto;
+  overflow-y: hidden;
+  flex: 1;
+  scrollbar-width: none;
+}
+.query-tabs-scroll::-webkit-scrollbar {
+  display: none;
+}
+
+.query-tab {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 0 4px 0 12px;
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--text-muted);
+  cursor: pointer;
+  border: none;
+  border-right: 1px solid var(--border);
+  border-bottom: 2px solid transparent;
+  background: none;
+  white-space: nowrap;
+  min-width: 90px;
+  max-width: 180px;
+  transition: color 0.12s ease, background 0.12s ease, border-color 0.12s ease;
+  position: relative;
+  user-select: none;
+}
+.query-tab:hover {
+  color: var(--text-secondary);
+  background: var(--bg-tertiary);
+}
+.query-tab.active {
+  color: var(--text-primary);
+  background: var(--bg-primary);
+  border-bottom-color: var(--accent);
+}
+.query-tab.loading {
+  color: var(--text-secondary);
+}
+
+.query-tab-name {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  min-width: 0;
+}
+
+.query-tab-rows {
+  font-size: 10px;
+  font-weight: 600;
+  color: var(--success);
+  background: rgba(34, 197, 94, 0.1);
+  padding: 1px 5px;
+  border-radius: 9999px;
+  flex-shrink: 0;
+  line-height: 1.4;
+}
+
+.query-tab-err-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--danger);
+  flex-shrink: 0;
+  display: inline-block;
+}
+
+.query-tab-spinner {
+  width: 8px;
+  height: 8px;
+  border: 1.5px solid var(--accent);
+  border-top-color: transparent;
+  border-radius: 50%;
+  display: inline-block;
+  flex-shrink: 0;
+  animation: qtab-spin 0.6s linear infinite;
+}
+@keyframes qtab-spin {
+  to { transform: rotate(360deg); }
+}
+
+.query-tab-close {
+  flex-shrink: 0;
+  width: 18px;
+  height: 18px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: none;
+  background: none;
+  color: var(--text-muted);
+  cursor: pointer;
+  border-radius: 4px;
+  font-size: 14px;
+  line-height: 1;
+  opacity: 0;
+  transition: opacity 0.1s ease, background 0.1s ease, color 0.1s ease;
+}
+.query-tab:hover .query-tab-close,
+.query-tab.active .query-tab-close {
+  opacity: 1;
+}
+.query-tab-close:hover {
+  background: var(--bg-hover);
+  color: var(--text-primary);
+}
+
+.query-tab-rename-input {
+  flex: 1;
+  min-width: 0;
+  font-size: 12px;
+  font-weight: 500;
+  font-family: inherit;
+  background: var(--bg-tertiary);
+  border: 1px solid var(--accent);
+  border-radius: 3px;
+  color: var(--text-primary);
+  padding: 1px 4px;
+  outline: none;
+}
+
+.query-tab-add {
+  flex-shrink: 0;
+  width: 36px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: none;
+  border-left: 1px solid var(--border);
+  background: none;
+  color: var(--text-muted);
+  cursor: pointer;
+  font-size: 18px;
+  line-height: 1;
+  transition: color 0.12s ease, background 0.12s ease;
+}
+.query-tab-add:hover {
+  color: var(--text-primary);
+  background: var(--bg-tertiary);
+}
