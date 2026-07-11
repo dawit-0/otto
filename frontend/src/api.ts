@@ -364,6 +364,30 @@ export const api = {
   getTableProfile: (dbId: string, table: string) =>
     request<TableProfileResponse>(`/databases/${dbId}/tables/${table}/profile`),
 
+  insertTableRow: (dbId: string, table: string, values: Record<string, unknown>) =>
+    request<{ ok: boolean; affected_rows: number }>(`/databases/${dbId}/tables/${table}/rows`, {
+      method: 'POST',
+      body: JSON.stringify({ values }),
+    }),
+
+  updateTableRow: (
+    dbId: string,
+    table: string,
+    pkColumn: string,
+    pkValue: unknown,
+    updates: Record<string, unknown>,
+  ) =>
+    request<{ ok: boolean; affected_rows: number }>(`/databases/${dbId}/tables/${table}/rows`, {
+      method: 'PUT',
+      body: JSON.stringify({ pk_column: pkColumn, pk_value: pkValue, updates }),
+    }),
+
+  deleteTableRows: (dbId: string, table: string, pkColumn: string, pkValues: unknown[]) =>
+    request<{ ok: boolean; affected_rows: number }>(`/databases/${dbId}/tables/${table}/rows`, {
+      method: 'DELETE',
+      body: JSON.stringify({ pk_column: pkColumn, pk_values: pkValues }),
+    }),
+
   // ── AI ──
 
   generateAiQuery: (dbId: string, prompt: string) =>

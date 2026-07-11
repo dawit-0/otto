@@ -81,6 +81,11 @@ class DatabaseDriver(ABC):
         """Test connectivity. Raise on failure."""
         ...
 
+    @abstractmethod
+    def execute_dml(self, conn: Any, sql: str, params: list) -> int:
+        """Execute a parameterized DML statement, commit, and return affected row count."""
+        ...
+
     def quote_identifier(self, name: str) -> str:
         if not isinstance(name, str) or name == "":
             raise ValueError("Identifier must be a non-empty string")

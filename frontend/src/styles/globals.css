@@ -3395,3 +3395,325 @@ body {
   font-family: inherit;
   color: var(--text-muted);
 }
+
+/* ─── Inline CRUD / Edit Mode ─── */
+
+.edit-mode-active {
+  background: var(--accent-subtle);
+  border-color: rgba(99, 102, 241, 0.3);
+  color: var(--accent-hover);
+}
+.edit-mode-active:hover {
+  background: rgba(99, 102, 241, 0.18);
+  border-color: rgba(99, 102, 241, 0.45);
+  color: var(--accent-hover);
+}
+
+.edit-mode-actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.delete-confirm-text {
+  font-size: 12px;
+  color: var(--danger);
+  font-weight: 500;
+}
+
+.no-pk-warning {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 16px;
+  background: rgba(245, 158, 11, 0.08);
+  border-bottom: 1px solid rgba(245, 158, 11, 0.2);
+  font-size: 12px;
+  color: var(--warning);
+  flex-shrink: 0;
+}
+
+/* Checkbox column */
+.checkbox-th {
+  width: 36px;
+  min-width: 36px;
+  padding: 8px 10px !important;
+  text-align: center !important;
+}
+.checkbox-td {
+  width: 36px;
+  min-width: 36px;
+  padding: 7px 10px !important;
+  text-align: center !important;
+  cursor: default !important;
+}
+.row-checkbox {
+  width: 14px;
+  height: 14px;
+  cursor: pointer;
+  accent-color: var(--accent);
+  flex-shrink: 0;
+}
+
+/* Selected row highlight */
+.row-selected td {
+  background: rgba(99, 102, 241, 0.06) !important;
+}
+.row-selected:hover td {
+  background: rgba(99, 102, 241, 0.1) !important;
+}
+
+/* PK badge in header */
+.col-pk-badge {
+  margin-left: 5px;
+  font-size: 8px;
+  font-weight: 700;
+  padding: 1px 4px;
+  border-radius: 3px;
+  background: rgba(245, 158, 11, 0.14);
+  color: var(--warning);
+  vertical-align: middle;
+  letter-spacing: 0.04em;
+}
+
+/* Editable cell */
+.data-table td.cell-editing {
+  padding: 3px 6px !important;
+  background: rgba(99, 102, 241, 0.08) !important;
+  outline: 1px solid var(--accent);
+  outline-offset: -1px;
+  max-width: none !important;
+  overflow: visible !important;
+}
+.data-table td:not(.checkbox-td):not(.cell-readonly) {
+  cursor: pointer;
+}
+.data-table td:not(.checkbox-td):not(.cell-readonly):hover {
+  background: rgba(99, 102, 241, 0.05);
+}
+.data-table td.cell-readonly {
+  cursor: default;
+}
+
+.cell-null {
+  color: var(--text-muted);
+  font-style: italic;
+}
+
+.cell-edit-wrapper {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 120px;
+}
+.cell-edit-input {
+  background: var(--bg-primary);
+  border: none;
+  outline: none;
+  color: var(--text-primary);
+  font-family: var(--font-mono);
+  font-size: 12px;
+  padding: 2px 4px;
+  width: 100%;
+  min-width: 80px;
+}
+.cell-edit-error {
+  font-size: 10px;
+  color: var(--danger);
+  line-height: 1.3;
+  max-width: 200px;
+  white-space: normal;
+}
+
+.editable-table-empty {
+  text-align: center;
+  color: var(--text-muted);
+  font-style: italic;
+  padding: 32px 16px !important;
+}
+
+.edit-mode-hint {
+  font-size: 11px;
+  color: var(--text-muted);
+  font-style: italic;
+}
+
+/* ─── Toast Notification ─── */
+.crud-toast {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 16px;
+  font-size: 12px;
+  font-weight: 500;
+  border-bottom: 1px solid;
+  flex-shrink: 0;
+  animation: toast-in 0.15s ease;
+}
+@keyframes toast-in {
+  from { opacity: 0; transform: translateY(-4px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+.crud-toast-success {
+  background: rgba(34, 197, 94, 0.08);
+  border-color: rgba(34, 197, 94, 0.2);
+  color: var(--success);
+}
+.crud-toast-error {
+  background: rgba(239, 68, 68, 0.08);
+  border-color: rgba(239, 68, 68, 0.2);
+  color: var(--danger);
+}
+
+/* ─── Insert Row Modal ─── */
+.modal-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.6);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+  backdrop-filter: blur(2px);
+}
+.modal-panel {
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-lg);
+  width: 480px;
+  max-width: 95vw;
+  max-height: 85vh;
+  display: flex;
+  flex-direction: column;
+  box-shadow: var(--shadow-lg);
+  overflow: hidden;
+}
+.modal-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 16px 20px;
+  border-bottom: 1px solid var(--border);
+  flex-shrink: 0;
+}
+.modal-title {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+.insert-modal-auto-note {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  padding: 8px 20px;
+  font-size: 12px;
+  color: var(--text-muted);
+  background: var(--bg-tertiary);
+  border-bottom: 1px solid var(--border);
+  flex-shrink: 0;
+}
+.insert-modal-form {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  overflow: hidden;
+}
+.insert-modal-fields {
+  flex: 1;
+  overflow-y: auto;
+  padding: 16px 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+.insert-field {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+.insert-field-label {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+.insert-field-name {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-primary);
+  font-family: var(--font-mono);
+}
+.insert-field-meta {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 11px;
+  color: var(--text-muted);
+  font-family: var(--font-mono);
+}
+.insert-field-pk {
+  font-size: 9px;
+  font-weight: 700;
+  padding: 1px 5px;
+  border-radius: 3px;
+  background: rgba(245, 158, 11, 0.14);
+  color: var(--warning);
+  font-family: inherit;
+}
+.insert-field-required {
+  font-size: 9px;
+  font-weight: 600;
+  padding: 1px 5px;
+  border-radius: 3px;
+  background: rgba(239, 68, 68, 0.1);
+  color: var(--danger);
+  font-family: inherit;
+}
+.insert-field-input {
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  color: var(--text-primary);
+  font-family: var(--font-mono);
+  font-size: 13px;
+  padding: 7px 10px;
+  width: 100%;
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+}
+.insert-field-input:focus {
+  outline: none;
+  border-color: var(--accent);
+  box-shadow: 0 0 0 2px var(--ring-color);
+}
+.insert-field-input::placeholder {
+  color: var(--text-muted);
+  font-style: italic;
+}
+.insert-modal-error {
+  display: flex;
+  align-items: flex-start;
+  gap: 7px;
+  margin: 0 20px 4px;
+  padding: 8px 12px;
+  background: rgba(239, 68, 68, 0.08);
+  border: 1px solid rgba(239, 68, 68, 0.2);
+  border-radius: var(--radius-sm);
+  font-size: 12px;
+  color: var(--danger);
+  flex-shrink: 0;
+}
+.insert-modal-no-cols {
+  text-align: center;
+  color: var(--text-muted);
+  font-size: 13px;
+  padding: 24px 0;
+}
+.modal-footer {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+  padding: 14px 20px;
+  border-top: 1px solid var(--border);
+  flex-shrink: 0;
+}
