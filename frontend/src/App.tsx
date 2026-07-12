@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback } from 'react';
 import { api, type Database, type TableInfo } from './api';
 import SchemaGraph from './components/SchemaGraph';
 import DataView from './components/DataView';
-import QueryEditor from './components/QueryEditor';
+import MultiTabQueryEditor from './components/MultiTabQueryEditor';
 import ConnectModal from './components/ConnectModal';
 import VisualizationDashboard from './components/VisualizationDashboard';
 import AskOtto from './components/AskOtto';
@@ -208,12 +208,12 @@ export default function App() {
             )}
 
             {view === 'query' && (
-              <QueryEditor
-                key={`${activeDb.id}-${queryKey}`}
+              <MultiTabQueryEditor
                 dbId={activeDb.id}
                 dbName={activeDb.name}
                 dbType={activeDb.db_type}
-                initialSql={askSeedSql ?? undefined}
+                seedSql={askSeedSql ?? undefined}
+                seedVersion={queryKey}
                 onVisualize={handleVisualizeQuery}
               />
             )}

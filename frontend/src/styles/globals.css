@@ -413,6 +413,122 @@ body {
   font-size: 10px !important;
 }
 
+/* ─── Multi-tab Query Editor ─── */
+.multi-tab-query {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  overflow: hidden;
+}
+
+.query-tab-bar {
+  display: flex;
+  align-items: center;
+  background: var(--bg-secondary);
+  border-bottom: 1px solid var(--border);
+  padding: 0 8px;
+  min-height: 36px;
+  flex-shrink: 0;
+  gap: 4px;
+}
+
+.query-tab-bar-tabs {
+  display: flex;
+  flex: 1;
+  gap: 1px;
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+
+.query-tab-bar-tabs::-webkit-scrollbar {
+  display: none;
+}
+
+.query-tab {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 6px 12px;
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--text-muted);
+  background: transparent;
+  border: none;
+  border-bottom: 2px solid transparent;
+  cursor: pointer;
+  white-space: nowrap;
+  max-width: 160px;
+  font-family: inherit;
+  transition: color 0.12s, border-color 0.12s, background 0.12s;
+  margin-bottom: -1px;
+  border-radius: var(--radius-sm) var(--radius-sm) 0 0;
+  flex-shrink: 0;
+}
+
+.query-tab:hover {
+  color: var(--text-secondary);
+  background: var(--bg-tertiary);
+}
+
+.query-tab.active {
+  color: var(--text-primary);
+  border-bottom-color: var(--accent);
+  background: var(--bg-primary);
+}
+
+.query-tab-label {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 120px;
+}
+
+.query-tab-close {
+  display: none;
+  align-items: center;
+  justify-content: center;
+  width: 14px;
+  height: 14px;
+  border-radius: 3px;
+  color: var(--text-muted);
+  font-size: 13px;
+  line-height: 1;
+  flex-shrink: 0;
+  cursor: pointer;
+  transition: background 0.1s, color 0.1s;
+  font-style: normal;
+}
+
+.query-tab:hover .query-tab-close,
+.query-tab.active .query-tab-close {
+  display: flex;
+}
+
+.query-tab-close:hover {
+  background: var(--bg-hover);
+  color: var(--text-primary);
+}
+
+.query-tab-add {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  border: none;
+  color: var(--text-muted);
+  cursor: pointer;
+  transition: background 0.12s, color 0.12s;
+  flex-shrink: 0;
+}
+
+.query-tab-add:hover {
+  background: var(--bg-tertiary);
+  color: var(--text-primary);
+}
+
 /* ─── Query Editor ─── */
 .query-panel {
   display: flex;

@@ -12,6 +12,7 @@ interface Props {
   dbType?: 'sqlite' | 'postgres';
   initialSql?: string;
   onVisualize?: (sql: string, chartType: ChartType, xColumn: string, yColumns: string[]) => void;
+  onSqlChange?: (sql: string) => void;
 }
 
 function detectParams(sql: string): string[] {
@@ -24,7 +25,7 @@ function detectParams(sql: string): string[] {
   return unique;
 }
 
-export default function QueryEditor({ dbId, dbName, dbType, initialSql, onVisualize }: Props) {
+export default function QueryEditor({ dbId, dbName, dbType, initialSql, onVisualize, onSqlChange }: Props) {
   const [sql, setSql] = useState(initialSql ?? '');
   const [schema, setSchema] = useState<Record<string, string[]>>({});
   const [result, setResult] = useState<QueryResponse | null>(null);
@@ -255,6 +256,7 @@ export default function QueryEditor({ dbId, dbName, dbType, initialSql, onVisual
   // Sync save params when SQL changes in edit mode (detect new/removed params)
   const handleSqlChange = (newSql: string) => {
     setSql(newSql);
+    onSqlChange?.(newSql);
     if (showSaveModal && !editingQuery) {
       const detected = detectParams(newSql);
       setSaveParams((prev) => {
