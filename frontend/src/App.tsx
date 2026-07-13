@@ -200,10 +200,12 @@ export default function App() {
             {view === 'data' && (
               <DataView
                 dbId={activeDb.id}
+                dbType={activeDb.db_type}
                 tables={tables}
                 selectedTable={selectedTable}
                 onSelectTable={handleSelectTable}
                 onClearTable={handleClearTable}
+                onImportComplete={() => loadSchema(activeDb)}
               />
             )}
 

@@ -1,3 +1,5 @@
+import csv
+import io
 import json
 import os
 import shutil
@@ -20,7 +22,7 @@ def _is_numeric_type(type_str: str | None) -> bool:
     base = type_str.lower().split("(")[0].strip().split()[0]
     return base in _NUMERIC_BASE_TYPES
 
-from fastapi import APIRouter, Depends, File, HTTPException, UploadFile
+from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
@@ -425,3 +427,120 @@ def get_table_profile(db_id: str, table_name: str, db: Session = Depends(get_db)
         return {"table": table_name, "row_count": total, "columns": result_columns}
     finally:
         driver.close(conn)
+
+
+def _infer_col_type(values: list[str]) -> str:
+    non_empty = [v for v in values if v.strip()]
+    if not non_empty:
+        return "TEXT"
+    try:
+        for v in non_empty:
+            int(v)
+        return "INTEGER"
+    except ValueError:
+        pass
+    try:
+        for v in non_empty:
+            float(v)
+        return "REAL"
+    except ValueError:
+        pass
+    return "TEXT"
+
+
+def _quote(name: str) -> str:
+    return '"' + name.replace('"', '""') + '"'
+
+
+@router.post("/{db_id}/import-csv")
+async def import_csv(
+    db_id: str,
+    file: UploadFile = File(...),
+    table_name: str = Form(...),
+    if_exists: str = Form("fail"),
+    db: Session = Depends(get_db),
+):
+    record = _resolve_record(db_id, db)
+    if record.db_type != "sqlite":
+        raise HTTPException(status_code=400, detail="CSV import is only supported for SQLite databases")
+
+    if not table_name.strip():
+        raise HTTPException(status_code=400, detail="Table name is required")
+
+    raw = await file.read()
+    try:
+        text = raw.decode("utf-8-sig")
+    except UnicodeDecodeError:
+        text = raw.decode("latin-1")
+
+    reader = csv.DictReader(io.StringIO(text))
+    rows = list(reader)
+    columns = list(reader.fieldnames or [])
+
+    if not columns:
+        raise HTTPException(status_code=400, detail="CSV file has no columns")
+
+    col_types = {col: _infer_col_type([r.get(col, "") for r in rows]) for col in columns}
+
+    conn = sqlite3.connect(record.path)
+    try:
+        table_q = _quote(table_name.strip())
+
+        cursor = conn.execute(
+            "SELECT name FROM sqlite_master WHERE type='table' AND name=?",
+            (table_name.strip(),),
+        )
+        exists = cursor.fetchone() is not None
+
+        if exists:
+            if if_exists == "fail":
+                raise HTTPException(status_code=400, detail=f"Table '{table_name}' already exists. Choose 'Replace' or 'Append'.")
+            if if_exists == "replace":
+                conn.execute(f"DROP TABLE {table_q}")
+                exists = False
+
+        if not exists:
+            col_defs = ", ".join(f"{_quote(col)} {col_types[col]}" for col in columns)
+            conn.execute(f"CREATE TABLE {table_q} ({col_defs})")
+
+        if rows:
+            col_list = ", ".join(_quote(col) for col in columns)
+            placeholders = ", ".join(["?"] * len(columns))
+            insert_sql = f"INSERT INTO {table_q} ({col_list}) VALUES ({placeholders})"
+            for row in rows:
+                vals = []
+                for col in columns:
+                    v = row.get(col, "")
+                    if v == "" or v is None:
+                        vals.append(None)
+                    elif col_types[col] == "INTEGER":
+                        try:
+                            vals.append(int(v))
+                        except ValueError:
+                            vals.append(v or None)
+                    elif col_types[col] == "REAL":
+                        try:
+                            vals.append(float(v))
+                        except ValueError:
+                            vals.append(v or None)
+                    else:
+                        vals.append(v)
+                conn.execute(insert_sql, vals)
+
+        conn.commit()
+        logger.info("CSV import: table='%s' rows=%d db_id=%s", table_name, len(rows), db_id)
+        return {
+            "table": table_name.strip(),
+            "rows_imported": len(rows),
+            "columns": [{"name": col, "type": col_types[col]} for col in columns],
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        conn.rollback()
+        logger.error("CSV import failed for db_id=%s: %s", db_id, e)
+        raise HTTPException(status_code=400, detail=str(e))
+    finally:
+        conn.close()
+
+

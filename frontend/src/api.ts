@@ -383,4 +383,23 @@ export const api = {
       method: 'POST',
       body: JSON.stringify({ db_id: dbId, question }),
     }),
+
+  // ── CSV Import ──
+
+  importCSV: async (dbId: string, file: File, tableName: string, ifExists: 'fail' | 'replace' | 'append'): Promise<{
+    table: string;
+    rows_imported: number;
+    columns: { name: string; type: string }[];
+  }> => {
+    const form = new FormData();
+    form.append('file', file);
+    form.append('table_name', tableName);
+    form.append('if_exists', ifExists);
+    const res = await fetch(BASE + `/databases/${dbId}/import-csv`, { method: 'POST', body: form });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({ detail: res.statusText }));
+      throw new Error(err.detail || 'Import failed');
+    }
+    return res.json();
+  },
 };
