@@ -1,4 +1,5 @@
-import { type TableInfo } from '../api';
+import { useRef } from 'react';
+import { type TableInfo, type FilterRule } from '../api';
 import TableBrowser from './TableBrowser';
 
 interface DataViewProps {
@@ -82,11 +83,31 @@ export default function DataView({
   onSelectTable,
   onClearTable,
 }: DataViewProps) {
+  // Holds filters to pre-seed on the next TableBrowser mount (FK navigation).
+  // Using a ref so writing to it doesn't trigger a re-render of DataView.
+  const pendingFiltersRef = useRef<FilterRule[]>([]);
+
   if (!selectedTable) {
     return <TablePicker tables={tables} onSelect={onSelectTable} />;
   }
 
-  const columnDefs = tables.find((t) => t.name === selectedTable)?.columns ?? [];
+  const tableInfo = tables.find((t) => t.name === selectedTable);
+  const columnDefs = tableInfo?.columns ?? [];
+  const foreignKeys = tableInfo?.foreign_keys ?? [];
+
+  // Consume pending filters for this mount; clear ref so they don't repeat.
+  const initialFilters = pendingFiltersRef.current;
+  pendingFiltersRef.current = [];
+
+  const handleNavigateTo = (targetTable: string, filterCol: string, filterVal: string) => {
+    pendingFiltersRef.current = [{
+      id: `fk-nav-${Date.now()}`,
+      column: filterCol,
+      op: 'equals',
+      value: filterVal,
+    }];
+    onSelectTable(targetTable);
+  };
 
   return (
     <div className="data-view">
@@ -96,6 +117,10 @@ export default function DataView({
         dbId={dbId}
         tableName={selectedTable}
         columnDefs={columnDefs}
+        foreignKeys={foreignKeys}
+        allTables={tables}
+        initialFilters={initialFilters}
+        onNavigateTo={handleNavigateTo}
       />
     </div>
   );

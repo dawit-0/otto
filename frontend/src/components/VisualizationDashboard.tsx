@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useRef } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { Responsive, useContainerWidth, type LayoutItem } from 'react-grid-layout';
 import 'react-grid-layout/css/styles.css';
 import 'react-resizable/css/styles.css';
@@ -266,7 +266,7 @@ export default function VisualizationDashboard({ dbId, dbName, dbType, initialQu
   };
 
   return (
-    <div className="viz-dashboard" ref={containerRef}>
+    <div className="viz-dashboard" ref={containerRef as React.RefObject<HTMLDivElement>}>
       {/* Toolbar */}
       <div className="viz-toolbar">
         <div className="viz-toolbar-left">

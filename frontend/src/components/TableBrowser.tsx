@@ -1,12 +1,17 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
-import { api, type FilterRule, type FilterOp, type Column } from '../api';
+import { api, type FilterRule, type FilterOp, type Column, type ForeignKey, type TableInfo } from '../api';
 import DataTable from './DataTable';
 import ColumnProfilePanel from './ColumnProfilePanel';
+import RowDetailPanel from './RowDetailPanel';
 
 interface Props {
   dbId: string;
   tableName: string;
   columnDefs: Column[];
+  foreignKeys?: ForeignKey[];
+  allTables?: TableInfo[];
+  initialFilters?: FilterRule[];
+  onNavigateTo?: (tableName: string, filterCol: string, filterVal: string) => void;
 }
 
 interface SortState {
@@ -31,7 +36,7 @@ const VALUE_OPS: FilterOp[] = ['contains', 'equals', 'not_equals', 'starts_with'
 
 const LIMIT = 100;
 
-export default function TableBrowser({ dbId, tableName, columnDefs }: Props) {
+export default function TableBrowser({ dbId, tableName, columnDefs, foreignKeys = [], allTables = [], initialFilters, onNavigateTo }: Props) {
   const [rows, setRows] = useState<Record<string, unknown>[]>([]);
   const [columns, setColumns] = useState<string[]>([]);
   const [total, setTotal] = useState(0);
@@ -40,7 +45,10 @@ export default function TableBrowser({ dbId, tableName, columnDefs }: Props) {
   const [error, setError] = useState<string | null>(null);
 
   const [sort, setSort] = useState<SortState | null>(null);
-  const [filters, setFilters] = useState<FilterRule[]>([]);
+  const [filters, setFilters] = useState<FilterRule[]>(initialFilters ?? []);
+
+  const [selectedRow, setSelectedRow] = useState<Record<string, unknown> | null>(null);
+  const [selectedRowIndex, setSelectedRowIndex] = useState<number | null>(null);
 
   const [showAddFilter, setShowAddFilter] = useState(false);
   const [newCol, setNewCol] = useState('');
@@ -131,8 +139,26 @@ export default function TableBrowser({ dbId, tableName, columnDefs }: Props) {
   const hasActiveState = filters.length > 0 || sort !== null;
   const needsValueInput = VALUE_OPS.includes(newOp);
 
+  const handleRowClick = (row: Record<string, unknown>, index: number) => {
+    if (selectedRowIndex === index) {
+      setSelectedRow(null);
+      setSelectedRowIndex(null);
+    } else {
+      setSelectedRow(row);
+      setSelectedRowIndex(index);
+    }
+  };
+
+  const handleNavigateTo = (targetTable: string, filterCol: string, filterVal: string) => {
+    setSelectedRow(null);
+    setSelectedRowIndex(null);
+    onNavigateTo?.(targetTable, filterCol, filterVal);
+  };
+
+  const showDetailPanel = selectedRow !== null;
+
   return (
-    <div className={`table-browser-wrapper${showProfile ? ' profile-open' : ''}`}>
+    <div className={`table-browser-wrapper${showProfile ? ' profile-open' : ''}${showDetailPanel ? ' detail-open' : ''}`}>
       <div className="table-browser-main">
       {/* ── Toolbar ── */}
       <div className="filter-toolbar">
@@ -286,6 +312,8 @@ export default function TableBrowser({ dbId, tableName, columnDefs }: Props) {
           sortColumn={sort?.column}
           sortDirection={sort?.direction}
           onSort={handleSort}
+          onRowClick={handleRowClick}
+          selectedRowIndex={selectedRowIndex}
         />
       )}
       </div>
@@ -295,6 +323,19 @@ export default function TableBrowser({ dbId, tableName, columnDefs }: Props) {
           dbId={dbId}
           tableName={tableName}
           onClose={() => setShowProfile(false)}
+        />
+      )}
+
+      {showDetailPanel && selectedRow && (
+        <RowDetailPanel
+          row={selectedRow}
+          tableName={tableName}
+          columnDefs={columnDefs}
+          foreignKeys={foreignKeys}
+          allTables={allTables}
+          dbId={dbId}
+          onClose={() => { setSelectedRow(null); setSelectedRowIndex(null); }}
+          onNavigateTo={handleNavigateTo}
         />
       )}
     </div>
