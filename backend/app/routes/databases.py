@@ -7,19 +7,6 @@ from hashlib import sha256
 from pathlib import Path
 from typing import Any, Optional
 
-_NUMERIC_BASE_TYPES = frozenset({
-    "int", "integer", "bigint", "smallint", "tinyint", "mediumint",
-    "real", "float", "double", "numeric", "decimal", "number",
-    "serial", "bigserial", "float4", "float8", "int2", "int4", "int8",
-})
-
-
-def _is_numeric_type(type_str: str | None) -> bool:
-    if not type_str:
-        return False
-    base = type_str.lower().split("(")[0].strip().split()[0]
-    return base in _NUMERIC_BASE_TYPES
-
 from fastapi import APIRouter, Depends, File, HTTPException, UploadFile
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
@@ -28,6 +15,38 @@ from app.database import get_db
 from app.drivers import DatabaseDriver, get_driver
 from app.logging import get_logger
 from app.models.connection import ConnectedDatabase
+
+_NUMERIC_BASE_TYPES = frozenset(
+    {
+        "int",
+        "integer",
+        "bigint",
+        "smallint",
+        "tinyint",
+        "mediumint",
+        "real",
+        "float",
+        "double",
+        "numeric",
+        "decimal",
+        "number",
+        "serial",
+        "bigserial",
+        "float4",
+        "float8",
+        "int2",
+        "int4",
+        "int8",
+    }
+)
+
+
+def _is_numeric_type(type_str: str | None) -> bool:
+    if not type_str:
+        return False
+    base = type_str.lower().split("(")[0].strip().split()[0]
+    return base in _NUMERIC_BASE_TYPES
+
 
 logger = get_logger("databases")
 
@@ -45,7 +64,9 @@ class ConnectRequest(BaseModel):
 
 
 def _resolve_record(db_id: str, db: Session) -> ConnectedDatabase:
-    record = db.query(ConnectedDatabase).filter(ConnectedDatabase.db_id == db_id).first()
+    record = (
+        db.query(ConnectedDatabase).filter(ConnectedDatabase.db_id == db_id).first()
+    )
     if not record:
         raise HTTPException(status_code=404, detail="Database not found")
     return record
@@ -63,23 +84,41 @@ def get_connection(db_id: str, db: Session) -> Any:
 
 
 def get_db_name(db_id: str, db: Session) -> str:
-    record = db.query(ConnectedDatabase).filter(ConnectedDatabase.db_id == db_id).first()
+    record = (
+        db.query(ConnectedDatabase).filter(ConnectedDatabase.db_id == db_id).first()
+    )
     return record.name if record else db_id
 
 
 def get_db_type(db_id: str, db: Session) -> str:
-    record = db.query(ConnectedDatabase).filter(ConnectedDatabase.db_id == db_id).first()
+    record = (
+        db.query(ConnectedDatabase).filter(ConnectedDatabase.db_id == db_id).first()
+    )
     return record.db_type if record else "sqlite"
 
 
-def _register(db_id: str, name: str, db: Session, *, path: str = "",
-              db_type: str = "sqlite", connection_string: str | None = None) -> None:
-    existing = db.query(ConnectedDatabase).filter(ConnectedDatabase.db_id == db_id).first()
+def _register(
+    db_id: str,
+    name: str,
+    db: Session,
+    *,
+    path: str = "",
+    db_type: str = "sqlite",
+    connection_string: str | None = None,
+) -> None:
+    existing = (
+        db.query(ConnectedDatabase).filter(ConnectedDatabase.db_id == db_id).first()
+    )
     if not existing:
-        db.add(ConnectedDatabase(
-            db_id=db_id, name=name, path=path,
-            db_type=db_type, connection_string=connection_string,
-        ))
+        db.add(
+            ConnectedDatabase(
+                db_id=db_id,
+                name=name,
+                path=path,
+                db_type=db_type,
+                connection_string=connection_string,
+            )
+        )
         db.commit()
 
 
@@ -96,16 +135,21 @@ def _build_pg_connection_string(req: ConnectRequest) -> str:
 def connect_database(req: ConnectRequest, db: Session = Depends(get_db)):
     if req.db_type == "postgres":
         if not req.host or not req.database:
-            raise HTTPException(status_code=400, detail="host and database are required for PostgreSQL")
+            raise HTTPException(
+                status_code=400, detail="host and database are required for PostgreSQL"
+            )
 
         conn_str = _build_pg_connection_string(req)
         from app.drivers.postgres import PostgresDriver
+
         driver = PostgresDriver(conn_str)
         try:
             driver.validate()
         except Exception as e:
             logger.error("Failed to connect to PostgreSQL: %s", e)
-            raise HTTPException(status_code=400, detail=f"Cannot connect to PostgreSQL: {e}")
+            raise HTTPException(
+                status_code=400, detail=f"Cannot connect to PostgreSQL: {e}"
+            )
 
         raw = f"{req.host}:{req.port}/{req.database}"
         db_id = f"pg_{req.database}_{sha256(raw.encode()).hexdigest()[:8]}"
@@ -167,9 +211,13 @@ def list_databases(db: Session = Depends(get_db)):
     result = []
     for r in records:
         if r.db_type == "postgres":
-            result.append({"id": r.db_id, "name": r.name, "path": "", "db_type": "postgres"})
+            result.append(
+                {"id": r.db_id, "name": r.name, "path": "", "db_type": "postgres"}
+            )
         elif os.path.isfile(r.path):
-            result.append({"id": r.db_id, "name": r.name, "path": r.path, "db_type": "sqlite"})
+            result.append(
+                {"id": r.db_id, "name": r.name, "path": r.path, "db_type": "sqlite"}
+            )
         else:
             db.delete(r)
     db.commit()
@@ -178,7 +226,9 @@ def list_databases(db: Session = Depends(get_db)):
 
 @router.delete("/{db_id}")
 def disconnect_database(db_id: str, db: Session = Depends(get_db)):
-    record = db.query(ConnectedDatabase).filter(ConnectedDatabase.db_id == db_id).first()
+    record = (
+        db.query(ConnectedDatabase).filter(ConnectedDatabase.db_id == db_id).first()
+    )
     if not record:
         logger.warning("Disconnect requested for unknown db_id=%s", db_id)
         raise HTTPException(status_code=404, detail="Database not found")
@@ -251,7 +301,12 @@ def get_overview(db_id: str, db: Session = Depends(get_db)):
                 "fk_count": len(t["foreign_keys"]),
                 "has_pk": any(c["pk"] for c in t["columns"]),
                 "columns": [
-                    {"name": c["name"], "type": c["type"] or "ANY", "pk": c["pk"], "notnull": c["notnull"]}
+                    {
+                        "name": c["name"],
+                        "type": c["type"] or "ANY",
+                        "pk": c["pk"],
+                        "notnull": c["notnull"],
+                    }
                     for c in t["columns"]
                 ],
                 "indexes": t["indexes"],
@@ -302,7 +357,10 @@ def get_table_data(
     conn = driver.connect()
     try:
         return driver.get_table_data(
-            conn, table_name, limit, offset,
+            conn,
+            table_name,
+            limit,
+            offset,
             sort_column=sort_column,
             sort_direction=sort_direction,
             filters=parsed_filters,
@@ -330,24 +388,36 @@ def get_table_profile(db_id: str, table_name: str, db: Session = Depends(get_db)
         all_tables = driver.get_table_info(conn)
         table_info = next((t for t in all_tables if t["name"] == table_name), None)
         if table_info is None:
-            raise HTTPException(status_code=404, detail=f"Table '{table_name}' not found")
+            raise HTTPException(
+                status_code=404, detail=f"Table '{table_name}' not found"
+            )
 
         columns = table_info["columns"]
         row_count = table_info["row_count"]
 
         empty_profile = [
             {
-                "name": c["name"], "type": c["type"] or "ANY",
-                "null_count": 0, "null_pct": 0.0,
-                "distinct_count": 0, "distinct_pct": 0.0,
+                "name": c["name"],
+                "type": c["type"] or "ANY",
+                "null_count": 0,
+                "null_pct": 0.0,
+                "distinct_count": 0,
+                "distinct_pct": 0.0,
                 "is_numeric": _is_numeric_type(c["type"]),
-                "min": None, "max": None, "avg": None, "top_values": [],
+                "min": None,
+                "max": None,
+                "avg": None,
+                "top_values": [],
             }
             for c in columns
         ]
 
         if not columns or row_count == 0:
-            return {"table": table_name, "row_count": row_count, "columns": empty_profile}
+            return {
+                "table": table_name,
+                "row_count": row_count,
+                "columns": empty_profile,
+            }
 
         tq = driver.quote_identifier(table_name)
 
@@ -363,7 +433,9 @@ def get_table_profile(db_id: str, table_name: str, db: Session = Depends(get_db)
         total = int(agg.get("__total") or row_count)
 
         # Second query: min / max / avg for numeric columns only
-        numeric_idx = [(i, col) for i, col in enumerate(columns) if _is_numeric_type(col["type"])]
+        numeric_idx = [
+            (i, col) for i, col in enumerate(columns) if _is_numeric_type(col["type"])
+        ]
         num_stats: dict = {}
         if numeric_idx:
             num_exprs = []
@@ -373,7 +445,9 @@ def get_table_profile(db_id: str, table_name: str, db: Session = Depends(get_db)
                 num_exprs.append(f"MAX({cq}) AS __c{i}_max")
                 num_exprs.append(f"AVG({cq}) AS __c{i}_avg")
             try:
-                _, num_rows = driver.execute(conn, f"SELECT {', '.join(num_exprs)} FROM {tq}")
+                _, num_rows = driver.execute(
+                    conn, f"SELECT {', '.join(num_exprs)} FROM {tq}"
+                )
                 num_stats = num_rows[0] if num_rows else {}
             except Exception:
                 pass
@@ -408,19 +482,21 @@ def get_table_profile(db_id: str, table_name: str, db: Session = Depends(get_db)
                 except Exception:
                     pass
 
-            result_columns.append({
-                "name": col["name"],
-                "type": col["type"] or "ANY",
-                "null_count": null_count,
-                "null_pct": null_pct,
-                "distinct_count": distinct,
-                "distinct_pct": distinct_pct,
-                "is_numeric": is_num,
-                "min": str(min_val) if min_val is not None else None,
-                "max": str(max_val) if max_val is not None else None,
-                "avg": avg_val,
-                "top_values": top_values,
-            })
+            result_columns.append(
+                {
+                    "name": col["name"],
+                    "type": col["type"] or "ANY",
+                    "null_count": null_count,
+                    "null_pct": null_pct,
+                    "distinct_count": distinct,
+                    "distinct_pct": distinct_pct,
+                    "is_numeric": is_num,
+                    "min": str(min_val) if min_val is not None else None,
+                    "max": str(max_val) if max_val is not None else None,
+                    "avg": avg_val,
+                    "top_values": top_values,
+                }
+            )
 
         return {"table": table_name, "row_count": total, "columns": result_columns}
     finally:

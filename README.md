@@ -21,15 +21,15 @@ A lightweight web-based database explorer with schema visualization, data browsi
 
 ## Quick Start
 
-**Prerequisites:** Node.js, Python 3
+**Prerequisites:** Node.js, Python 3, [uv](https://docs.astral.sh/uv/)
 
 ```bash
 # Install dependencies
-pip install -r backend/requirements.txt
+cd backend && uv sync && cd ..
 cd frontend && npm install && cd ..
 
 # Start the backend (port 8000)
-cd backend && python main.py
+cd backend && uv run python main.py
 
 # Start the frontend (port 5173) — in a new terminal
 cd frontend && npm run dev
@@ -40,7 +40,7 @@ Open **http://localhost:5173**, then connect a database from the sidebar.
 ### Sample database
 
 ```bash
-python scripts/create_sample_db.py
+uv run python scripts/create_sample_db.py
 ```
 
 Generates `sample.db` with four related tables (users, projects, tasks, comments).
@@ -59,5 +59,5 @@ Generates `sample.db` with four related tables (users, projects, tasks, comments
 ## Running Tests
 
 ```bash
-cd backend && pytest
+cd backend && uv run pytest
 ```

@@ -31,7 +31,10 @@
       "Bash(node -e \"const pkg = require\\(''/Users/dawit/dev/otto/frontend/node_modules/react-grid-layout/package.json''\\); console.log\\(JSON.stringify\\(pkg.peerDependencies, null, 2\\)\\)\")",
       "Bash(ls /Users/dawit/dev/otto/*.db)",
       "Bash(curl -s -X POST http://localhost:8000/api/databases/connect -F \"file=@/Users/dawit/dev/otto/sample.db\")",
-      "Bash(curl -s -X DELETE http://localhost:8000/api/databases/sample_77201259)"
+      "Bash(curl -s -X DELETE http://localhost:8000/api/databases/sample_77201259)",
+      "Bash(uv --version)",
+      "Bash(uv init:*)",
+      "Bash(uv add:*)"
     ]
   }
 }

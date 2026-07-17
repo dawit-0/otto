@@ -7,7 +7,7 @@ from sqlalchemy.orm import Session
 
 from app.database import get_db
 from app.logging import get_logger
-from app.routes.databases import get_connection, get_driver_for_db, get_db_type
+from app.routes.databases import get_db_type, get_driver_for_db
 
 logger = get_logger("ai")
 
@@ -23,8 +23,7 @@ def _build_schema_summary(tables: list[dict]) -> str:
     lines = []
     for t in tables:
         cols = ", ".join(
-            f"{c['name']} {c['type']}{'  PK' if c['pk'] else ''}"
-            for c in t["columns"]
+            f"{c['name']} {c['type']}{'  PK' if c['pk'] else ''}" for c in t["columns"]
         )
         lines.append(f"  {t['name']} ({cols})  -- {t['row_count']} rows")
 
@@ -38,7 +37,9 @@ def _build_schema_summary(tables: list[dict]) -> str:
 
 @router.post("/generate-query")
 def generate_query(req: AiQueryRequest, db: Session = Depends(get_db)):
-    logger.info("AI query generation requested for db_id=%s: %.100s", req.db_id, req.prompt)
+    logger.info(
+        "AI query generation requested for db_id=%s: %.100s", req.db_id, req.prompt
+    )
     driver = get_driver_for_db(req.db_id, db)
     conn = driver.connect()
     try:
@@ -69,7 +70,8 @@ def generate_query(req: AiQueryRequest, db: Session = Depends(get_db)):
             [
                 "claude",
                 "--print",
-                "--system-prompt", system_prompt,
+                "--system-prompt",
+                system_prompt,
                 user_prompt,
             ],
             capture_output=True,
@@ -78,7 +80,9 @@ def generate_query(req: AiQueryRequest, db: Session = Depends(get_db)):
         )
 
         if result.returncode != 0:
-            logger.error("Claude CLI returned non-zero exit code: %s", result.stderr.strip())
+            logger.error(
+                "Claude CLI returned non-zero exit code: %s", result.stderr.strip()
+            )
             raise HTTPException(
                 status_code=500,
                 detail=f"Claude CLI error: {result.stderr.strip() or 'Unknown error'}",
@@ -172,10 +176,7 @@ def ask_otto(req: AskRequest, db: Session = Depends(get_db)):
         f"Only generate SELECT queries — never INSERT, UPDATE, DELETE, or DDL."
     )
 
-    user_prompt = (
-        f"Database schema:\n{schema_summary}\n\n"
-        f"Question: {req.question}"
-    )
+    user_prompt = f"Database schema:\n{schema_summary}\n\nQuestion: {req.question}"
 
     try:
         result = subprocess.run(
@@ -186,7 +187,9 @@ def ask_otto(req: AskRequest, db: Session = Depends(get_db)):
         )
 
         if result.returncode != 0:
-            logger.error("Claude CLI returned non-zero exit code: %s", result.stderr.strip())
+            logger.error(
+                "Claude CLI returned non-zero exit code: %s", result.stderr.strip()
+            )
             raise HTTPException(
                 status_code=500,
                 detail=f"Claude CLI error: {result.stderr.strip() or 'Unknown error'}",
@@ -195,13 +198,17 @@ def ask_otto(req: AskRequest, db: Session = Depends(get_db)):
         sql, explanation = _parse_ask_response(result.stdout)
 
         if not sql:
-            raise HTTPException(status_code=500, detail="Could not parse SQL from AI response")
+            raise HTTPException(
+                status_code=500, detail="Could not parse SQL from AI response"
+            )
 
         logger.info("Ask Otto generated SQL for db_id=%s: %.100s", req.db_id, sql)
 
     except subprocess.TimeoutExpired:
         driver.close(conn)
-        raise HTTPException(status_code=504, detail="Ask Otto timed out — try a simpler question")
+        raise HTTPException(
+            status_code=504, detail="Ask Otto timed out — try a simpler question"
+        )
     except FileNotFoundError:
         driver.close(conn)
         raise HTTPException(
@@ -217,7 +224,9 @@ def ask_otto(req: AskRequest, db: Session = Depends(get_db)):
         columns = [desc[0] for desc in cursor.description] if cursor.description else []
         rows = [dict(zip(columns, row)) for row in cursor.fetchall()]
         row_count = len(rows)
-        logger.info("Ask Otto query executed in %.1fms, %d rows", duration_ms, row_count)
+        logger.info(
+            "Ask Otto query executed in %.1fms, %d rows", duration_ms, row_count
+        )
         return {
             "sql": sql,
             "explanation": explanation,
