@@ -1,3 +1,5 @@
+from contextlib import asynccontextmanager
+
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 
@@ -10,7 +12,16 @@ import time
 setup_logging()
 logger = get_logger("main")
 
-app = FastAPI(title="Otto")
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    logger.info("Otto starting up")
+    init_db()
+    logger.info("Database initialized")
+    yield
+
+
+app = FastAPI(title="Otto", lifespan=lifespan)
 
 app.add_middleware(
     CORSMiddleware,
@@ -37,13 +48,6 @@ async def log_requests(request: Request, call_next):
         request.method, request.url.path, response.status_code, duration_ms,
     )
     return response
-
-
-@app.on_event("startup")
-def on_startup():
-    logger.info("Otto starting up")
-    init_db()
-    logger.info("Database initialized")
 
 
 if __name__ == "__main__":
