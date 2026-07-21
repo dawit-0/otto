@@ -3395,3 +3395,249 @@ body {
   font-family: inherit;
   color: var(--text-muted);
 }
+
+/* ─── Inline Row Editing ─── */
+
+/* Edit toggle button */
+.edit-toggle-wrapper {
+  display: inline-flex;
+}
+
+.edit-toggle-btn {
+  gap: 5px;
+}
+
+.edit-toggle-btn.edit-toggle-active {
+  background: var(--accent-subtle);
+  border-color: rgba(99, 102, 241, 0.3);
+  color: var(--accent-hover);
+}
+
+.edit-toggle-btn:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.edit-mode-badge {
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  color: var(--accent);
+  background: rgba(99, 102, 241, 0.18);
+  padding: 1px 5px;
+  border-radius: 9999px;
+}
+
+/* PK badge in column header */
+.pk-badge {
+  font-size: 9px;
+  font-weight: 600;
+  color: var(--warning);
+  background: rgba(245, 158, 11, 0.12);
+  padding: 1px 4px;
+  border-radius: 3px;
+  margin-left: 5px;
+  vertical-align: middle;
+}
+
+/* Actions column */
+.edit-actions-th {
+  background: var(--bg-tertiary);
+  width: 68px;
+  min-width: 68px;
+  padding: 8px;
+}
+
+.edit-actions-cell {
+  width: 68px;
+  min-width: 68px;
+  padding: 4px 8px;
+  border-bottom: 1px solid var(--border);
+  white-space: nowrap;
+  display: flex;
+  align-items: center;
+  gap: 2px;
+}
+
+/* Row action buttons (edit / delete icons) */
+.row-action-btn {
+  padding: 4px;
+  background: transparent;
+  border: none;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  color: var(--text-muted);
+  transition: all 0.12s ease;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.row-action-btn:hover:not(:disabled) {
+  color: var(--text-primary);
+  background: var(--bg-hover);
+}
+
+.row-action-btn.danger:hover:not(:disabled) {
+  color: var(--danger);
+  background: rgba(239, 68, 68, 0.1);
+}
+
+.row-action-btn.save:hover:not(:disabled) {
+  color: var(--success);
+  background: rgba(34, 197, 94, 0.1);
+}
+
+.row-action-btn:disabled {
+  opacity: 0.35;
+  cursor: not-allowed;
+}
+
+/* Row being edited */
+.tr-editing td {
+  background: rgba(99, 102, 241, 0.05) !important;
+}
+
+.tr-editing .edit-actions-cell {
+  background: rgba(99, 102, 241, 0.05) !important;
+}
+
+/* Row flagged for deletion */
+.tr-deleting td {
+  background: rgba(239, 68, 68, 0.05) !important;
+}
+
+.tr-deleting .edit-actions-cell {
+  background: rgba(239, 68, 68, 0.05) !important;
+}
+
+/* New row at bottom */
+.tr-new-row td {
+  background: rgba(34, 197, 94, 0.04) !important;
+  border-bottom: 2px solid rgba(34, 197, 94, 0.25) !important;
+}
+
+.tr-new-row .edit-actions-cell {
+  background: rgba(34, 197, 94, 0.04) !important;
+}
+
+/* Editable cell */
+.edit-cell {
+  padding: 3px 6px !important;
+  border-bottom: 1px solid var(--border);
+}
+
+.new-row-cell {
+  border-bottom: 2px solid rgba(34, 197, 94, 0.25) !important;
+}
+
+/* Input inside editable cell */
+.cell-input {
+  width: 100%;
+  min-width: 80px;
+  padding: 4px 7px;
+  background: var(--bg-primary);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-sm);
+  color: var(--text-primary);
+  font-size: 12px;
+  font-family: var(--font-mono);
+  outline: none;
+  transition: border-color 0.12s, box-shadow 0.12s;
+}
+
+.cell-input:focus {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 2px var(--ring-color);
+}
+
+.cell-input-pk {
+  opacity: 0.5;
+  cursor: not-allowed;
+  background: var(--bg-tertiary);
+}
+
+/* Inline delete confirm */
+.delete-confirm-inline {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.btn-confirm-delete {
+  padding: 3px 8px;
+  font-size: 11px;
+  font-weight: 500;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--danger);
+  background: var(--danger);
+  color: #fff;
+  cursor: pointer;
+  font-family: inherit;
+  transition: background 0.12s;
+}
+
+.btn-confirm-delete:hover:not(:disabled) {
+  background: #dc2626;
+}
+
+.btn-cancel-delete {
+  padding: 3px 8px;
+  font-size: 11px;
+  font-weight: 500;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border-strong);
+  background: transparent;
+  color: var(--text-muted);
+  cursor: pointer;
+  font-family: inherit;
+  transition: all 0.12s;
+}
+
+.btn-cancel-delete:hover:not(:disabled) {
+  background: var(--bg-hover);
+  color: var(--text-primary);
+}
+
+/* Add Row button in table footer */
+.btn-add-row {
+  color: var(--success);
+  border-color: rgba(34, 197, 94, 0.3);
+}
+
+.btn-add-row:hover:not(:disabled) {
+  background: rgba(34, 197, 94, 0.08);
+  border-color: rgba(34, 197, 94, 0.5);
+}
+
+/* Toast notification */
+.edit-toast {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  padding: 8px 12px;
+  margin: 6px 14px 0;
+  border-radius: var(--radius);
+  font-size: 12px;
+  font-weight: 500;
+  animation: toast-slide-in 0.18s ease;
+  flex-shrink: 0;
+}
+
+.edit-toast-success {
+  background: rgba(34, 197, 94, 0.1);
+  border: 1px solid rgba(34, 197, 94, 0.25);
+  color: var(--success);
+}
+
+.edit-toast-error {
+  background: rgba(239, 68, 68, 0.1);
+  border: 1px solid rgba(239, 68, 68, 0.25);
+  color: var(--danger);
+}
+
+@keyframes toast-slide-in {
+  from { opacity: 0; transform: translateY(-4px); }
+  to { opacity: 1; transform: translateY(0); }
+}
