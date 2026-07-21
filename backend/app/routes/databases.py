@@ -7,7 +7,7 @@ from hashlib import sha256
 from pathlib import Path
 from typing import Any, Optional
 
-from fastapi import APIRouter, Depends, File, HTTPException, UploadFile
+from fastapi import APIRouter, Body, Depends, File, HTTPException, UploadFile
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
@@ -371,6 +371,135 @@ def get_table_data(
         raise HTTPException(status_code=status, detail=str(e))
     except Exception as e:
         logger.error("Error reading table '%s' from db_id=%s: %s", table_name, db_id, e)
+        raise HTTPException(status_code=400, detail=str(e))
+    finally:
+        driver.close(conn)
+
+
+class InsertRowRequest(BaseModel):
+    values: dict[str, str | None]
+
+
+class UpdateRowRequest(BaseModel):
+    pk_values: dict[str, str | None]
+    updates: dict[str, str | None]
+
+
+class DeleteRowRequest(BaseModel):
+    pk_values: dict[str, str | None]
+
+
+@router.post("/{db_id}/tables/{table_name}/rows")
+def insert_row(
+    db_id: str,
+    table_name: str,
+    req: InsertRowRequest,
+    db: Session = Depends(get_db),
+):
+    driver = get_driver_for_db(db_id, db)
+    conn = driver.connect()
+    try:
+        try:
+            driver.assert_valid_table(conn, table_name)
+        except ValueError as e:
+            raise HTTPException(status_code=404, detail=str(e))
+        valid_cols = set(driver.get_column_names(conn, table_name))
+        filtered = {k: v for k, v in req.values.items() if v is not None and v != ""}
+        for col in filtered:
+            if col not in valid_cols:
+                raise HTTPException(status_code=400, detail=f"Unknown column: {col!r}")
+        if not filtered:
+            raise HTTPException(status_code=400, detail="No values provided")
+        tq = driver.quote_identifier(table_name)
+        col_names = list(filtered.keys())
+        col_exprs = ", ".join(driver.quote_identifier(c) for c in col_names)
+        placeholders = ", ".join(driver.placeholder for _ in col_names)
+        params = list(filtered.values())
+        sql = f"INSERT INTO {tq} ({col_exprs}) VALUES ({placeholders})"
+        driver.execute_params(conn, sql, params)
+        logger.info("Inserted row into '%s' in db_id=%s", table_name, db_id)
+        return {"ok": True}
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error("insert_row error for '%s': %s", table_name, e)
+        raise HTTPException(status_code=400, detail=str(e))
+    finally:
+        driver.close(conn)
+
+
+@router.patch("/{db_id}/tables/{table_name}/rows")
+def update_row(
+    db_id: str,
+    table_name: str,
+    req: UpdateRowRequest,
+    db: Session = Depends(get_db),
+):
+    driver = get_driver_for_db(db_id, db)
+    conn = driver.connect()
+    try:
+        try:
+            driver.assert_valid_table(conn, table_name)
+        except ValueError as e:
+            raise HTTPException(status_code=404, detail=str(e))
+        valid_cols = set(driver.get_column_names(conn, table_name))
+        for col in list(req.pk_values.keys()) + list(req.updates.keys()):
+            if col not in valid_cols:
+                raise HTTPException(status_code=400, detail=f"Unknown column: {col!r}")
+        if not req.pk_values:
+            raise HTTPException(status_code=400, detail="pk_values required")
+        if not req.updates:
+            raise HTTPException(status_code=400, detail="No updates provided")
+        tq = driver.quote_identifier(table_name)
+        ph = driver.placeholder
+        set_parts = [f"{driver.quote_identifier(c)} = {ph}" for c in req.updates]
+        where_parts = [f"{driver.quote_identifier(c)} = {ph}" for c in req.pk_values]
+        sql = f"UPDATE {tq} SET {', '.join(set_parts)} WHERE {' AND '.join(where_parts)}"
+        params = list(req.updates.values()) + list(req.pk_values.values())
+        driver.execute_params(conn, sql, params)
+        logger.info("Updated row in '%s' in db_id=%s", table_name, db_id)
+        return {"ok": True}
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error("update_row error for '%s': %s", table_name, e)
+        raise HTTPException(status_code=400, detail=str(e))
+    finally:
+        driver.close(conn)
+
+
+@router.delete("/{db_id}/tables/{table_name}/rows")
+def delete_row(
+    db_id: str,
+    table_name: str,
+    req: DeleteRowRequest = Body(...),
+    db: Session = Depends(get_db),
+):
+    driver = get_driver_for_db(db_id, db)
+    conn = driver.connect()
+    try:
+        try:
+            driver.assert_valid_table(conn, table_name)
+        except ValueError as e:
+            raise HTTPException(status_code=404, detail=str(e))
+        valid_cols = set(driver.get_column_names(conn, table_name))
+        for col in req.pk_values:
+            if col not in valid_cols:
+                raise HTTPException(status_code=400, detail=f"Unknown column: {col!r}")
+        if not req.pk_values:
+            raise HTTPException(status_code=400, detail="pk_values required")
+        tq = driver.quote_identifier(table_name)
+        ph = driver.placeholder
+        where_parts = [f"{driver.quote_identifier(c)} = {ph}" for c in req.pk_values]
+        sql = f"DELETE FROM {tq} WHERE {' AND '.join(where_parts)}"
+        params = list(req.pk_values.values())
+        driver.execute_params(conn, sql, params)
+        logger.info("Deleted row from '%s' in db_id=%s", table_name, db_id)
+        return {"ok": True}
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error("delete_row error for '%s': %s", table_name, e)
         raise HTTPException(status_code=400, detail=str(e))
     finally:
         driver.close(conn)

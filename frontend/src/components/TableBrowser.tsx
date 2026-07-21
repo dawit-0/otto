@@ -14,6 +14,11 @@ interface SortState {
   direction: 'asc' | 'desc';
 }
 
+interface Toast {
+  message: string;
+  kind: 'success' | 'error';
+}
+
 const OP_LABELS: Record<FilterOp, string> = {
   contains: 'contains',
   equals: '=',
@@ -49,9 +54,21 @@ export default function TableBrowser({ dbId, tableName, columnDefs }: Props) {
 
   const [showProfile, setShowProfile] = useState(false);
 
+  const [editMode, setEditMode] = useState(false);
+  const [toast, setToast] = useState<Toast | null>(null);
+  const toastTimeout = useRef<ReturnType<typeof setTimeout> | null>(null);
+
   const addFilterRef = useRef<HTMLDivElement>(null);
 
   const colNames = columnDefs.map((c) => c.name);
+  const pkColumns = columnDefs.filter((c) => c.pk).map((c) => c.name);
+  const canEdit = pkColumns.length > 0;
+
+  const showToast = useCallback((message: string, kind: 'success' | 'error') => {
+    setToast({ message, kind });
+    if (toastTimeout.current) clearTimeout(toastTimeout.current);
+    toastTimeout.current = setTimeout(() => setToast(null), 3000);
+  }, []);
 
   const loadData = useCallback(async (nextOffset: number, currentSort: SortState | null, currentFilters: FilterRule[]) => {
     setLoading(true);
@@ -77,12 +94,10 @@ export default function TableBrowser({ dbId, tableName, columnDefs }: Props) {
     }
   }, [dbId, tableName]);
 
-  // Reload from page 1 whenever sort or filters change
   useEffect(() => {
     loadData(0, sort, filters);
   }, [dbId, tableName, sort, filters, loadData]);
 
-  // Close add-filter popover on outside click
   useEffect(() => {
     if (!showAddFilter) return;
     const handler = (e: MouseEvent) => {
@@ -128,6 +143,39 @@ export default function TableBrowser({ dbId, tableName, columnDefs }: Props) {
     setSort(null);
   };
 
+  const handleSaveRow = async (pkValues: Record<string, unknown>, updates: Record<string, string | null>) => {
+    try {
+      await api.updateRow(dbId, tableName, pkValues, updates);
+      showToast('Row updated', 'success');
+      loadData(offset, sort, filters);
+    } catch (e) {
+      showToast(e instanceof Error ? e.message : 'Update failed', 'error');
+      throw e;
+    }
+  };
+
+  const handleDeleteRow = async (pkValues: Record<string, unknown>) => {
+    try {
+      await api.deleteRow(dbId, tableName, pkValues);
+      showToast('Row deleted', 'success');
+      loadData(offset, sort, filters);
+    } catch (e) {
+      showToast(e instanceof Error ? e.message : 'Delete failed', 'error');
+      throw e;
+    }
+  };
+
+  const handleAddRow = async (values: Record<string, string | null>) => {
+    try {
+      await api.insertRow(dbId, tableName, values);
+      showToast('Row added', 'success');
+      loadData(0, sort, filters);
+    } catch (e) {
+      showToast(e instanceof Error ? e.message : 'Insert failed', 'error');
+      throw e;
+    }
+  };
+
   const hasActiveState = filters.length > 0 || sort !== null;
   const needsValueInput = VALUE_OPS.includes(newOp);
 
@@ -149,7 +197,6 @@ export default function TableBrowser({ dbId, tableName, columnDefs }: Props) {
               {filters.length > 0 && <span className="filter-count-badge">{filters.length}</span>}
             </button>
 
-            {/* Active filter chips */}
             {filters.map((f) => (
               <div key={f.id} className="filter-chip">
                 <span className="filter-chip-text">
@@ -165,7 +212,6 @@ export default function TableBrowser({ dbId, tableName, columnDefs }: Props) {
               </div>
             ))}
 
-            {/* Active sort chip */}
             {sort && (
               <div className="filter-chip sort-chip">
                 <span className="filter-chip-text">
@@ -190,6 +236,23 @@ export default function TableBrowser({ dbId, tableName, columnDefs }: Props) {
             <span className="filter-row-count">
               {total.toLocaleString()} {hasActiveState ? 'matching ' : ''}row{total !== 1 ? 's' : ''}
             </span>
+
+            {/* Edit Mode Toggle */}
+            <div className="edit-toggle-wrapper" title={!canEdit ? 'This table has no primary key — editing unavailable' : undefined}>
+              <button
+                className={`btn btn-sm edit-toggle-btn${editMode ? ' edit-toggle-active' : ''}`}
+                disabled={!canEdit}
+                onClick={() => setEditMode((v) => !v)}
+              >
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" />
+                  <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z" />
+                </svg>
+                Edit
+                {editMode && <span className="edit-mode-badge">ON</span>}
+              </button>
+            </div>
+
             <button
               className={`btn btn-sm${showProfile ? ' btn-profile-active' : ''}`}
               onClick={() => setShowProfile((v) => !v)}
@@ -273,6 +336,22 @@ export default function TableBrowser({ dbId, tableName, columnDefs }: Props) {
         </div>
       )}
 
+      {/* ── Toast ── */}
+      {toast && (
+        <div className={`edit-toast edit-toast-${toast.kind}`}>
+          {toast.kind === 'success' ? (
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+              <polyline points="20 6 9 17 4 12" />
+            </svg>
+          ) : (
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <circle cx="12" cy="12" r="10" /><line x1="12" y1="8" x2="12" y2="12" /><line x1="12" y1="16" x2="12.01" y2="16" />
+            </svg>
+          )}
+          {toast.message}
+        </div>
+      )}
+
       {/* ── Data table ── */}
       {!error && (
         <DataTable
@@ -286,6 +365,12 @@ export default function TableBrowser({ dbId, tableName, columnDefs }: Props) {
           sortColumn={sort?.column}
           sortDirection={sort?.direction}
           onSort={handleSort}
+          editMode={editMode}
+          pkColumns={pkColumns}
+          columnDefs={columnDefs}
+          onSaveRow={handleSaveRow}
+          onDeleteRow={handleDeleteRow}
+          onAddRow={handleAddRow}
         />
       )}
       </div>
